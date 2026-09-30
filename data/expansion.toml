@@ -1,0 +1,67 @@
+# Redirect wrappers and short-link services Wye can expand (ADV-01,
+# docs/spec/17-dialogs.md "URL expansion sheet"). Shipped as data like the web
+# app catalogue; every entry must be verified before release (DLG-EXP-05).
+
+# Short-link domains, resolved by following HTTP redirects (DLG-EXP-02).
+short-links = [
+  "bit.ly",
+  "t.co",
+  "tinyurl.com",
+  "lnkd.in",
+  "ow.ly",
+  "buff.ly",
+  "is.gd",
+  "rb.gy",
+  "t.ly",
+  "cutt.ly",
+  "amzn.to",
+]
+
+# Redirect wrappers keep the real link in a query parameter. Wye unwraps them
+# locally, without network access (DLG-EXP-01).
+#
+# hosts: a host and its subdomains; "google.*" means google.<any TLD>.
+# paths: the path must equal one of these (a trailing slash is ignored).
+# params: the first present parameter holding an http(s) link is the target.
+
+[[wrapper]]
+id = "google"
+name = "Google search results (google.com/url)"
+hosts = ["google.*"]
+paths = ["/url"]
+params = ["q", "url"]
+
+[[wrapper]]
+id = "facebook"
+name = "Facebook and Instagram (l.facebook.com, l.instagram.com)"
+hosts = ["l.facebook.com", "lm.facebook.com", "l.messenger.com", "l.instagram.com"]
+paths = ["/l.php", "/"]
+params = ["u"]
+
+[[wrapper]]
+id = "safelinks"
+name = "Microsoft Safe Links (*.safelinks.protection.outlook.com)"
+hosts = ["safelinks.protection.outlook.com"]
+paths = ["/"]
+params = ["url"]
+
+[[wrapper]]
+id = "slack"
+name = "Slack (slack-redir.net)"
+hosts = ["slack-redir.net"]
+paths = ["/link"]
+params = ["url"]
+
+[[wrapper]]
+id = "steam"
+name = "Steam (steamcommunity.com/linkfilter)"
+hosts = ["steamcommunity.com"]
+paths = ["/linkfilter"]
+params = ["u", "url"]
+
+[[wrapper]]
+id = "youtube"
+name = "YouTube (youtube.com/redirect)"
+hosts = ["youtube.com"]
+paths = ["/redirect"]
+params = ["q"]

@@ -1,0 +1,145 @@
+# Web app catalogue for the Apps page (APP-07, docs/spec/06-apps.md).
+#
+# One entry per service. Services stay in the list even without a Linux
+# desktop app, because routing a service to a browser or profile is useful on
+# its own. Desktop IDs, Flatpak IDs and URL schemes are candidates that must be
+# verified before release (docs/spec/14-open-questions.md, "Items to verify").
+#
+# id:           stable key used in the configuration file ([apps] <id> = …)
+# hosts:        a host and its subdomains
+# paths:        optional path prefixes; empty means every path
+# desktop-apps: desktop IDs of the service's own app (distro, Flatpak, Snap)
+# hand-over:    "pass-through" (the https link as is), "spotify-uri"
+#               (open.spotify.com/track/<id> → spotify:track:<id>) or
+#               "steam-openurl" (steam://openurl/<link>)
+#
+# Discord, Slack, Telegram, Zoom, Signal and Element have their own URL
+# schemes in docs/spec/06-apps.md. Their "pass-through" hand-over is a
+# placeholder until each scheme is verified (06-apps.md, "verify").
+
+[[service]]
+id = "airtable"
+name = "Airtable"
+hosts = ["airtable.com"]
+
+[[service]]
+id = "amazon-chime"
+name = "Amazon Chime"
+hosts = ["chime.aws"]
+
+[[service]]
+id = "around"
+name = "Around"
+hosts = ["around.co"]
+
+[[service]]
+id = "asana"
+name = "Asana"
+hosts = ["app.asana.com"]
+
+[[service]]
+id = "claude"
+name = "Claude"
+hosts = ["claude.ai"]
+
+[[service]]
+id = "clickup"
+name = "ClickUp"
+hosts = ["app.clickup.com"]
+
+[[service]]
+id = "discord"
+name = "Discord"
+hosts = ["discord.com", "discord.gg", "discordapp.com"]
+desktop-apps = ["discord.desktop", "com.discordapp.Discord.desktop", "discord_discord.desktop"]
+
+[[service]]
+id = "element"
+name = "Element (Matrix)"
+hosts = ["matrix.to", "app.element.io"]
+desktop-apps = ["element-desktop.desktop", "im.riot.Riot.desktop", "element-desktop_element-desktop.desktop"]
+
+[[service]]
+id = "figma"
+name = "Figma"
+hosts = ["figma.com"]
+
+[[service]]
+id = "front"
+name = "Front"
+hosts = ["app.frontapp.com"]
+
+[[service]]
+id = "google-meet"
+name = "Google Meet"
+hosts = ["meet.google.com"]
+
+[[service]]
+id = "jitsi-meet"
+name = "Jitsi Meet"
+hosts = ["meet.jit.si"]
+desktop-apps = ["org.jitsi.jitsi-meet.desktop", "jitsi-meet.desktop"]
+
+[[service]]
+id = "linear"
+name = "Linear"
+hosts = ["linear.app"]
+
+[[service]]
+id = "microsoft-teams"
+name = "Microsoft Teams"
+hosts = ["teams.microsoft.com", "teams.live.com"]
+
+[[service]]
+id = "notion"
+name = "Notion"
+hosts = ["notion.so", "notion.com"]
+
+[[service]]
+id = "signal"
+name = "Signal"
+hosts = ["signal.me", "signal.group"]
+desktop-apps = ["signal-desktop.desktop", "org.signal.Signal.desktop", "signal-desktop_signal-desktop.desktop"]
+
+[[service]]
+id = "slack"
+name = "Slack"
+hosts = ["slack.com"]
+desktop-apps = ["slack.desktop", "com.slack.Slack.desktop", "slack_slack.desktop"]
+
+[[service]]
+id = "spotify"
+name = "Spotify"
+hosts = ["open.spotify.com"]
+desktop-apps = ["spotify.desktop", "com.spotify.Client.desktop", "spotify_spotify.desktop"]
+hand-over = "spotify-uri"
+
+[[service]]
+id = "steam"
+name = "Steam"
+hosts = ["store.steampowered.com", "steamcommunity.com"]
+desktop-apps = ["steam.desktop", "com.valvesoftware.Steam.desktop"]
+hand-over = "steam-openurl"
+
+[[service]]
+id = "telegram"
+name = "Telegram"
+hosts = ["t.me", "telegram.me"]
+desktop-apps = ["org.telegram.desktop.desktop", "telegramdesktop.desktop", "telegram-desktop_telegram-desktop.desktop"]
+
+[[service]]
+id = "webex"
+name = "Webex"
+hosts = ["webex.com"]
+
+[[service]]
+id = "zoom"
+name = "Zoom"
+hosts = ["zoom.us"]
+desktop-apps = ["Zoom.desktop", "us.zoom.Zoom.desktop", "zoom-client_zoom-client.desktop"]
+
+[[service]]
+id = "zulip"
+name = "Zulip"
+hosts = ["zulipchat.com"]
+desktop-apps = ["zulip.desktop", "org.zulip.Zulip.desktop"]

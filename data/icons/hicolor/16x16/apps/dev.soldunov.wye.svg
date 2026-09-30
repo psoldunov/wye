@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="16" viewBox="0 0 16 16">
+  <!-- Wye app icon, hand-tuned for 16 px: 14 px plate on whole pixels, 2 px pixel-aligned stem. -->
+  <defs>
+    <path id="plate-shape" d="M9.88 1c1.79 0 2.69 0 3.37 0.35a3.2 3.2 0 0 1 1.4 1.4c0.35 0.68 0.35 1.58 0.35 3.37V9.88c0 1.79 0 2.69-0.35 3.37a3.2 3.2 0 0 1-1.4 1.4c-0.68 0.35-1.58 0.35-3.37 0.35H6.12c-1.79 0-2.69 0-3.37-0.35a3.2 3.2 0 0 1-1.4-1.4c-0.35-0.68-0.35-1.58-0.35-3.37V6.12c0-1.79 0-2.69 0.35-3.37a3.2 3.2 0 0 1 1.4-1.4c0.68-0.35 1.58-0.35 3.37-0.35Z"/>
+    <linearGradient id="plate-fill" x1="0" y1="1" x2="0" y2="15" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3fd0ea"/>
+      <stop offset=".55" stop-color="#1f9ae8"/>
+      <stop offset="1" stop-color="#2458dc"/>
+    </linearGradient>
+    <linearGradient id="branch-fill" x1="0" y1="3.6" x2="0" y2="10.4" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#c8eefd"/>
+      <stop offset="1" stop-color="#a6d6fb"/>
+    </linearGradient>
+  </defs>
+  <use id="plate-shadow" xlink:href="#plate-shape" y="1" fill="#0a1a66" opacity=".14"/>
+  <use id="plate" xlink:href="#plate-shape" fill="url(#plate-fill)"/>
+  <g id="glyph" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path id="branch" d="M8 10.4C8 9.3 7.4 7.7 6.7 6.9L4.6 4.6" stroke="url(#branch-fill)"/>
+    <path id="route" d="M8 12V10.4C8 9.3 8.6 7.7 9.3 6.9L11.4 4.6" stroke="#fff"/>
+  </g>
+</svg>

@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Wye
+GenericName=Browser Picker
+Comment=Send every link to the right browser, profile or app
+Exec=wye open %U
+Icon=dev.soldunov.wye
+Terminal=false
+StartupNotify=true
+Categories=Network;WebBrowser;
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
+Keywords=
+# No DBusActivatable yet: this slice has no D-Bus service (see docs/architecture.md, DEF-04).

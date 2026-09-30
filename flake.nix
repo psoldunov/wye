@@ -99,6 +99,11 @@
                 desktop-file-validate $entry
                 grep -qxF 'Exec=${wye.package}/bin/wye open %U' $entry
                 grep -qxF 'TryExec=${wye.package}/bin/wye' $entry
+                # Exactly one TryExec, in the [Desktop Entry] group.
+                awk '/^\[Desktop Entry\]$/ { group = 1; next } /^\[/ { group = 0 } group && /^TryExec=/ { n++ } END { exit n != 1 }' $entry
+                # Every icon the package installs.
+                for icon in scalable 16x16 24x24 32x32; do test -f ${wye.package}/share/icons/hicolor/$icon/apps/dev.soldunov.wye.svg; done
+                test -f ${wye.package}/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg
                 touch $out
               '';
           nix-fmt = pkgs.runCommand "nix-fmt-check" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''

@@ -313,6 +313,7 @@ mod tests {
             data_dirs: vec![],
             current_desktops: vec![],
             search_path: vec![],
+            locale: crate::xdg::Locale::none(),
         };
         assert!(config_dirs(&id("firefox"), &xdg).is_empty());
         fs::create_dir_all(home.path().join(".config/mozilla/firefox")).unwrap();

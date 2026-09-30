@@ -235,3 +235,75 @@ fn ids_never_resolve_outside_applications() {
     assert!(find_entry(&fx.xdg, &id("sub-nested-..-ok")).is_none());
     assert_eq!(find_entry(&fx.xdg, &id("sub-ok")).unwrap().name, "Editor");
 }
+
+// DISC-03, DISC-08, TGT-02: the inventory as a target catalogue.
+#[test]
+fn the_catalogue_carries_localised_names_badges_and_abilities() {
+    let fx = Fixture::new();
+    fx.system_entry(
+        "firefox.desktop",
+        &FIREFOX.replace("Name=Firefox", "Name=Firefox\nName[de]=Feuerfuchs"),
+    );
+    fx.system_entry("google-chrome.desktop", CHROME);
+    fx.system_entry(
+        "spotify.desktop",
+        "[Desktop Entry]\nName=Spotify\nName[de]=Spotify DE\nIcon=spotify\nType=Application\nExec=spotify %U\n",
+    );
+    fx.system_entry("editor.desktop", EDITOR);
+    fs::create_dir_all(fx.xdg.home.join(".config/google-chrome")).unwrap();
+    fx.write(
+        "home/.config/google-chrome/Local State",
+        r#"{"profile":{"info_cache":{"Profile 1":{"name":"Work"}}}}"#,
+    );
+    let inventory = Inventory::scan(&fx.xdg, &wye());
+    let german = Locale::parse("de_DE.UTF-8").unwrap();
+    let catalog = inventory.catalog(&german, &[id("spotify"), id("missing"), id("firefox")]);
+
+    let names: Vec<_> = catalog.handlers.iter().map(|h| h.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["Feuerfuchs", "Google Chrome"],
+        "sorted by the localised name"
+    );
+    let firefox = &catalog.handlers[0];
+    assert!(firefox.browser && firefox.private && firefox.new_window);
+    assert_eq!(firefox.icon.as_deref(), Some("firefox"));
+    assert!(firefox.profiles.is_empty());
+    let chrome = &catalog.handlers[1];
+    assert_eq!(chrome.profiles.len(), 1);
+    assert_eq!(chrome.profiles[0].name, "Work");
+    assert!(
+        chrome.profiles[0].badge.is_some(),
+        "every profile has a badge"
+    );
+
+    // Only installed non-handlers are added; a handler is already a handler.
+    let extra: Vec<_> = catalog.apps.iter().map(|a| a.name.as_str()).collect();
+    assert_eq!(extra, ["Spotify DE"]);
+    assert!(catalog.custom.is_empty());
+
+    // Without a locale the plain names are used.
+    let plain = inventory.catalog(&Locale::none(), &[]);
+    assert_eq!(plain.handlers[0].name, "Firefox");
+    assert!(plain.apps.is_empty());
+}
+
+#[test]
+fn web_handlers_sort_by_their_name_in_the_locale() {
+    let fx = Fixture::new();
+    fx.system_entry(
+        "a.desktop",
+        &FIREFOX.replace("Name=Firefox", "Name=Alpha\nName[de]=Zeta"),
+    );
+    fx.system_entry("b.desktop", &CHROME.replace("Google Chrome", "Beta"));
+    let inventory = Inventory::scan(&fx.xdg, &wye());
+    let order = |locale: &Locale| -> Vec<String> {
+        inventory
+            .web_handlers_in(locale)
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect()
+    };
+    assert_eq!(order(&Locale::none()), ["Alpha", "Beta"]);
+    assert_eq!(order(&Locale::parse("de").unwrap()), ["Beta", "Zeta"]);
+}

@@ -1,8 +1,11 @@
 //! Desktop entries: the `[Desktop Entry]` group and its
 //! `[Desktop Action <id>]` groups ([Desktop Entry Specification]).
 //!
-//! Only the keys Wye uses are read. Localised keys such as `Name[de]` are
-//! ignored for now; the unlocalised value is used everywhere.
+//! Only the keys Wye uses are read. The fields hold the unlocalised values;
+//! [`DesktopEntry::name_in`], [`DesktopEntry::generic_name_in`] and
+//! [`DesktopEntry::keywords_in`] look up `Name[de_AT]` and friends for a
+//! [`Locale`] that the caller passes in (DISC-03), so nothing here reads the
+//! environment.
 //!
 //! [Desktop Entry Specification]: https://specifications.freedesktop.org/desktop-entry-spec/latest/
 
@@ -11,6 +14,7 @@ use std::path::{Path, PathBuf};
 use wye_core::DesktopId;
 
 use crate::keyfile::{self, Group};
+use crate::xdg::Locale;
 
 const MAIN_GROUP: &str = "Desktop Entry";
 const ACTION_PREFIX: &str = "Desktop Action ";
@@ -46,6 +50,9 @@ pub struct DesktopEntry {
     /// The actions listed in `Actions` that have a `[Desktop Action <id>]`
     /// group with a `Name`, in the order `Actions` lists them.
     pub actions: Vec<DesktopAction>,
+    /// Every `Name`, `GenericName` and `Keywords` key with its locale
+    /// variants, for the `*_in` lookups.
+    localized: Group,
 }
 
 /// An additional way to launch an app, such as "New Private Window".
@@ -120,10 +127,33 @@ impl DesktopEntry {
             keywords: main.list("Keywords"),
             dbus_activatable: main.bool("DBusActivatable"),
             terminal: main.bool("Terminal"),
+            localized: localized_keys(main),
             actions,
             id,
             path,
         })
+    }
+
+    /// The display name for `locale` (DISC-03): `Name[lang_COUNTRY@MODIFIER]`,
+    /// `Name[lang_COUNTRY]`, `Name[lang@MODIFIER]`, `Name[lang]`, `Name`,
+    /// then the application ID.
+    #[must_use]
+    pub fn name_in(&self, locale: &Locale) -> String {
+        self.localized
+            .localized_string("Name", locale)
+            .unwrap_or_else(|| self.name.clone())
+    }
+
+    /// `GenericName` for `locale`, looked up like [`DesktopEntry::name_in`].
+    #[must_use]
+    pub fn generic_name_in(&self, locale: &Locale) -> Option<String> {
+        self.localized.localized_string("GenericName", locale)
+    }
+
+    /// `Keywords` for `locale`, looked up like [`DesktopEntry::name_in`].
+    #[must_use]
+    pub fn keywords_in(&self, locale: &Locale) -> Vec<String> {
+        self.localized.localized_list("Keywords", locale)
     }
 
     /// True when `MimeType` lists `x-scheme-handler/http` or `https`
@@ -150,6 +180,23 @@ impl DesktopEntry {
     #[must_use]
     pub fn action(&self, id: &str) -> Option<&DesktopAction> {
         self.actions.iter().find(|action| action.id == id)
+    }
+}
+
+/// The localisable keys of the main group, with all their variants.
+fn localized_keys(main: &Group) -> Group {
+    let entries = main
+        .entries
+        .iter()
+        .filter(|(key, _)| {
+            let base = key.split_once('[').map_or(key.as_str(), |(base, _)| base);
+            matches!(base, "Name" | "GenericName" | "Keywords")
+        })
+        .cloned()
+        .collect();
+    Group {
+        name: main.name.clone(),
+        entries,
     }
 }
 
@@ -218,6 +265,47 @@ Exec=firefox
         assert_eq!(e.categories, vec!["Network", "WebBrowser"]);
         assert_eq!(e.keywords, vec!["web browser", "internet;www"]);
         assert!(e.handles_web());
+    }
+
+    const LOCALISED: &str = "[Desktop Entry]
+Name=Files
+Name[de]=Dateien
+Name[de_AT]=Dateien (AT)
+GenericName=File Manager
+GenericName[de]=Dateiverwaltung
+Keywords=folder;manager;
+Keywords[de]=Ordner;Verwaltung;
+Exec=files
+";
+
+    #[test]
+    fn looks_up_localised_keys_for_the_locale_it_is_given() {
+        let e = entry(LOCALISED);
+        let locale = |text: &str| Locale::parse(text).unwrap_or_default();
+        assert_eq!(e.name, "Files", "the plain field stays unlocalised");
+        assert_eq!(e.name_in(&locale("de_AT.UTF-8")), "Dateien (AT)");
+        assert_eq!(e.name_in(&locale("de_DE")), "Dateien");
+        assert_eq!(e.name_in(&locale("fr_FR")), "Files");
+        assert_eq!(e.name_in(&Locale::none()), "Files");
+        assert_eq!(
+            e.generic_name_in(&locale("de")).as_deref(),
+            Some("Dateiverwaltung")
+        );
+        assert_eq!(
+            e.generic_name_in(&locale("fr")).as_deref(),
+            Some("File Manager")
+        );
+        assert_eq!(e.keywords_in(&locale("de")), vec!["Ordner", "Verwaltung"]);
+        assert_eq!(e.keywords_in(&locale("fr")), vec!["folder", "manager"]);
+    }
+
+    #[test]
+    fn a_missing_name_falls_back_to_the_app_id_in_every_locale() {
+        let e = entry("[Desktop Entry]\nName[de]=Nur Deutsch\n");
+        assert_eq!(e.name_in(&Locale::parse("de").unwrap()), "Nur Deutsch");
+        assert_eq!(e.name_in(&Locale::parse("fr").unwrap()), "firefox");
+        assert_eq!(e.generic_name_in(&Locale::none()), None);
+        assert!(e.keywords_in(&Locale::none()).is_empty());
     }
 
     #[test]

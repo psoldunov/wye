@@ -246,7 +246,7 @@ pub fn set_keys(text: &str, group: &str, pairs: &[(&str, &str)]) -> String {
     out.into_iter().chain(missing).chain(tail).collect()
 }
 
-fn read_existing(path: &Path) -> Result<Option<String>, DefaultBrowserError> {
+pub(crate) fn read_existing(path: &Path) -> Result<Option<String>, DefaultBrowserError> {
     match fs::read_to_string(path) {
         Ok(text) => Ok(Some(text)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -257,7 +257,7 @@ fn read_existing(path: &Path) -> Result<Option<String>, DefaultBrowserError> {
     }
 }
 
-fn ensure_writable(path: &Path) -> Result<(), DefaultBrowserError> {
+pub(crate) fn ensure_writable(path: &Path) -> Result<(), DefaultBrowserError> {
     match fs::symlink_metadata(path) {
         Ok(meta) if meta.file_type().is_symlink() || meta.permissions().readonly() => {
             Err(DefaultBrowserError::Managed {

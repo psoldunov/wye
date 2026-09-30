@@ -4,6 +4,8 @@
 //!
 //! [Desktop Entry Specification, "Basic format of the file"]: https://specifications.freedesktop.org/desktop-entry-spec/latest/basic-format.html
 
+use crate::xdg::Locale;
+
 /// One `[Group]` and its `Key=Value` lines, in file order. Values are raw:
 /// escapes are left for the caller, because string lists and plain strings
 /// unescape differently.
@@ -34,6 +36,31 @@ impl Group {
     #[must_use]
     pub fn list(&self, key: &str) -> Vec<String> {
         self.get(key).map(unescape_list).unwrap_or_default()
+    }
+
+    /// The unescaped string value of `key` for `locale`: `Key[lang_COUNTRY@MODIFIER]`,
+    /// `Key[lang_COUNTRY]`, `Key[lang@MODIFIER]`, `Key[lang]`, then the plain
+    /// `Key`, as the Desktop Entry Specification orders them (DISC-03).
+    #[must_use]
+    pub fn localized_string(&self, key: &str, locale: &Locale) -> Option<String> {
+        self.localized_raw(key, locale).map(unescape)
+    }
+
+    /// The unescaped string-list value of `key` for `locale`, looked up like
+    /// [`Group::localized_string`]; empty when no variant of the key exists.
+    #[must_use]
+    pub fn localized_list(&self, key: &str, locale: &Locale) -> Vec<String> {
+        self.localized_raw(key, locale)
+            .map(unescape_list)
+            .unwrap_or_default()
+    }
+
+    fn localized_raw(&self, key: &str, locale: &Locale) -> Option<&str> {
+        locale
+            .candidates()
+            .iter()
+            .find_map(|suffix| self.get(&format!("{key}[{suffix}]")))
+            .or_else(|| self.get(key))
     }
 
     /// A boolean value; `true`/`1` are true, anything else is false.
@@ -175,6 +202,34 @@ mod tests {
         assert_eq!(unescape_list(r"a\;b;c\sd"), vec!["a;b", "c d"]);
         assert!(unescape_list("").is_empty());
         assert_eq!(unescape_list(";;x"), vec!["x"]);
+    }
+
+    #[test]
+    fn looks_up_localised_keys_in_specification_order() {
+        let group = &parse(
+            "[G]\nName=Plain\nName[de]=Deutsch\nName[de_AT]=Oesterreich\n\
+             Name[de@euro]=Euro\nName[de_AT@euro]=AT Euro\nKeywords=a;b;\nKeywords[de]=x\\;y;z;\n",
+        )[0];
+        let name = |locale: &str| {
+            let locale = Locale::parse(locale).unwrap_or_default();
+            group.localized_string("Name", &locale)
+        };
+        assert_eq!(name("de_AT@euro").as_deref(), Some("AT Euro"));
+        assert_eq!(name("de_AT").as_deref(), Some("Oesterreich"));
+        assert_eq!(name("de_CH").as_deref(), Some("Deutsch"));
+        assert_eq!(name("de@euro").as_deref(), Some("Euro"));
+        assert_eq!(name("de_DE.UTF-8").as_deref(), Some("Deutsch"));
+        assert_eq!(name("fr_FR").as_deref(), Some("Plain"));
+        assert_eq!(name("C").as_deref(), Some("Plain"));
+        assert_eq!(group.localized_string("Missing", &Locale::none()), None);
+
+        let de = Locale::parse("de").unwrap();
+        assert_eq!(group.localized_list("Keywords", &de), vec!["x;y", "z"]);
+        assert_eq!(
+            group.localized_list("Keywords", &Locale::none()),
+            vec!["a", "b"]
+        );
+        assert!(group.localized_list("Nothing", &de).is_empty());
     }
 
     #[test]

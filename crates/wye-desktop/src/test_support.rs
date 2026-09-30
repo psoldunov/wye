@@ -26,6 +26,7 @@ impl Fixture {
             data_dirs: vec![root.path().join("sys")],
             current_desktops: vec!["GNOME".into()],
             search_path: vec![root.path().join("bin")],
+            locale: crate::xdg::Locale::none(),
             home,
         };
         fs::create_dir_all(&xdg.home).unwrap();

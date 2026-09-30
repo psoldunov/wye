@@ -6,8 +6,12 @@
 |------|-----------|
 | `crates/wye-core` | Pure routing core: config, targets, rules, matchers, URL cleaning, redirect unwrapping, web app catalogue and the pipeline that turns a URL into a resolved target. No IO. |
 | `crates/wye-desktop` | Linux integration: desktop entry parsing, browser discovery, browser profiles, Exec expansion and launching, `mimeapps.list` default browser, source-app detection. |
+| `crates/wye-api` | The D-Bus contract ([dbus-api.md](dbus-api.md)): bus names, object paths, error names, the serde types of every JSON payload, and zbus proxies. Shared by the service and every client. |
+| `crates/wye-service` | The session service behind `wye service` (library): owns `dev.soldunov.wye`, serves `dev.soldunov.wye1`, `org.freedesktop.Application` and `dev.soldunov.wye.KWin1`. `bus/` holds the interface impls, which only delegate to one `api/<topic>.rs` per topic; `platform/` puts every session integration behind a trait with a no-op and a fake. tokio + zbus, no Qt. |
 | `crates/wye` | The `wye` binary: `open`, `test`, `browsers`, `default`, `config`. Wires the core to the desktop layer. |
-| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop` and the hicolor icon. |
+| `crates/wye-ui` | Planned: the Qt/Kirigami UI host (cxx-qt) that owns `dev.soldunov.wye.Ui` and shows the picker, Settings and the other windows. A D-Bus client of the service; holds no routing logic. |
+| `frontends/` | Planned: the Plasma tray applet (pure QML) and the browser extension. |
+| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user unit (`data/systemd/wye.service.in`). |
 | `nix/`, `flake.nix` | Package (crane), checks (clippy, tests, fmt, deny, machete, source and installed desktop entry, nixfmt) and dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
 
 ## Design decisions
@@ -18,13 +22,40 @@
 returns a decision. Everything that touches the system (files, processes, the desktop
 environment) lives in `wye-desktop` or `wye`. The core is testable without a desktop.
 
-### In-process pipeline, no daemon yet
+### Process model
 
-This first slice runs the pipeline inside `wye open`. There is no long-lived service. A
-D-Bus service (DEF-04, `DBusActivatable` in the desktop entry), the picker and the tray come
-with the frontends. The frontend strategy is still open decision #1 in
-[docs/spec/14-open-questions.md](spec/14-open-questions.md). Until then the desktop entry
-omits `DBusActivatable`.
+One Rust service per session plus desktop-native frontends, all talking over the D-Bus
+API in [dbus-api.md](dbus-api.md). KDE Plasma comes first.
+
+| Process | Binary | Bus name | Started by |
+|---------|--------|----------|------------|
+| Service | `wye service` (crate `wye` over the `wye-service` library) | `dev.soldunov.wye` | D-Bus activation (`SystemdService=wye.service`), the XDG autostart entry when "Launch at login" is on, or the tray applet |
+| UI host | `wye-ui` (cxx-qt, Kirigami) | `dev.soldunov.wye.Ui` | D-Bus activation by the service; stays resident once started |
+| Plasma tray | plasmoid `dev.soldunov.wye` (pure QML) | none | plasmashell |
+| SNI tray | inside the service | ksni's own | the service, unless a tray host called `RegisterTray` (5 s grace on KDE) |
+| Link handler fallback | `wye open %U` | none | launchers that do not honour `DBusActivatable` |
+
+Single instance: the service requests its name with `DoNotQueue` and exits with status 75
+when the name is taken; `wye.service` lists 75 in `RestartPreventExitStatus=` and uses
+`KillMode=process`, so launched browsers survive a restart (LAUNCH-06). The service serves
+its objects before requesting the name, so the very first call of a bus activation is
+answered.
+
+Structured data travels as JSON in `s` values (camelCase), described by the serde types in
+`wye-api`, because the QML applet parses JSON far more easily than nested D-Bus structs.
+
+Inside the service each interface impl is written once in `crates/wye-service/src/bus/` and
+delegates every member to a function in `crates/wye-service/src/api/<topic>.rs`; each topic
+also owns a `State` type held by `ServiceContext`. Every session integration (held
+modifiers, pointer, focused window, lock state, notifications, launching, systemd scopes,
+clipboard, global shortcuts, HTTP) sits behind a trait in
+`crates/wye-service/src/platform/mod.rs`, with a no-op implementation and a fake, so the
+service is tested on a private `dbus-daemon` without a desktop.
+
+The service is a skeleton today: its members answer
+`dev.soldunov.wye.Error.NotImplemented` (a temporary error name), except `Quit`, the
+properties, and `Status`'s capabilities. `wye` has no `service` subcommand yet and still
+runs the pipeline inside `wye open`; the desktop entry still omits `DBusActivatable`.
 
 ### Configuration and state
 
@@ -94,7 +125,9 @@ discovered browser. Wye prints a warning each time.
 - Picker
 - Tray
 - Settings UI
-- D-Bus service
+- D-Bus service: the contract, the bus plumbing and the private-bus tests exist; the
+  members behind them do not (they answer `NotImplemented`), and nothing starts the
+  service yet (`wye service`, `DBusActivatable`, packaged service files)
 - Transform scripts (rquickjs)
 - Network short-link expansion
 - Held-modifier detection

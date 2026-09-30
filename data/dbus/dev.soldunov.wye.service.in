@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=dev.soldunov.wye
+Exec=@bindir@/wye service
+SystemdService=wye.service

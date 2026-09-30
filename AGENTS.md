@@ -11,8 +11,12 @@ window or desktop app, or asks with a small picker. The specification is in
 |------|----------|
 | `crates/wye-core` | Pure routing core: config, targets, rules, matchers, URL cleaning, redirect unwrapping, web app catalogue, pipeline. No IO. |
 | `crates/wye-desktop` | Linux integration: desktop entries, browser discovery and profiles, Exec/launch, `mimeapps.list` default browser, source-app detection. |
+| `crates/wye-api` | The D-Bus contract: bus/interface/error names, JSON payload types (serde, camelCase), zbus proxies. See [docs/dbus-api.md](docs/dbus-api.md). |
+| `crates/wye-service` | The session service library behind `wye service`: `bus/` interface impls delegate to one `api/<topic>.rs` per topic; `platform/` holds session integrations behind traits, with no-op and fake implementations. |
 | `crates/wye` | The `wye` binary and CLI. |
-| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry and the icon. |
+| `crates/wye-ui` | The Qt/Kirigami UI host `wye-ui` (cxx-qt): picker, Settings and other windows. |
+| `frontends/` | Desktop frontends that are not Rust: the Plasma tray applet, the browser extension. |
+| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry, the icon, and `@bindir@` templates for the D-Bus service files (`data/dbus/`) and the systemd user unit (`data/systemd/`). |
 | `nix/`, `flake.nix` | Package, checks and dev shell. |
 | `docs/spec/` | The specification. |
 

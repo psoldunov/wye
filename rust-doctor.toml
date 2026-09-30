@@ -1,0 +1,8 @@
+# rust-doctor policy (AGENTS.md, review gate 4).
+
+[rules]
+# Two major versions of `syn` are unavoidable for now: the ecosystem is
+# mid-migration from syn 2 to syn 3. clap_derive, displaydoc (url/idna) and
+# async-trait are on syn 3; tokio-macros and zbus's macros are still on syn 2.
+# Revisit when zbus and tokio move to syn 3.
+"rust_doctor::cargo::duplicate_major_versions" = "off"

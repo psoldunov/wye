@@ -237,10 +237,10 @@ pub fn set_keys(text: &str, group: &str, pairs: &[(&str, &str)]) -> String {
         out.push(format!("[{group}]\n"));
         out.len()
     });
-    if let Some(previous) = at.checked_sub(1).and_then(|index| out.get_mut(index)) {
-        if !previous.ends_with('\n') {
-            previous.push('\n');
-        }
+    if let Some(previous) = at.checked_sub(1).and_then(|index| out.get_mut(index))
+        && !previous.ends_with('\n')
+    {
+        previous.push('\n');
     }
     let tail = out.split_off(at);
     out.into_iter().chain(missing).chain(tail).collect()

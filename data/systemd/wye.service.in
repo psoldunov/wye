@@ -1,0 +1,23 @@
+[Unit]
+Description=Wye browser picker service
+Documentation=https://github.com/psoldunov/wye
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=dev.soldunov.wye
+ExecStart=@bindir@/wye service
+Restart=on-failure
+RestartSec=2
+# Exit 75 (EX_TEMPFAIL) means another service already owns the bus name;
+# restarting would only lose that race again.
+RestartPreventExitStatus=75
+# Browsers Wye launches must outlive a restart of the service, even when
+# moving them into their own scope failed (LAUNCH-06).
+KillMode=process
+# No NoNewPrivileges=: launched browsers inherit it, and it breaks sandboxes
+# that need setuid helpers (Chromium's, bubblewrap's).
+
+[Install]
+WantedBy=graphical-session.target

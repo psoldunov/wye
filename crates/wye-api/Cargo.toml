@@ -1,0 +1,17 @@
+[package]
+name = "wye-api"
+description = "Wye's D-Bus contract: bus names, error names, JSON payload types and zbus proxies"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+zbus.workspace = true
+
+[lints]
+workspace = true

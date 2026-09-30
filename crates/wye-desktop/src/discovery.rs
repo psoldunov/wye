@@ -278,10 +278,11 @@ fn walk(dir: &Path, prefix: &str, depth: usize, found: &mut Vec<(DesktopId, Path
         };
         if meta.is_dir() && depth < MAX_DEPTH {
             walk(&path, &format!("{prefix}{name}-"), depth + 1, found);
-        } else if meta.is_file() && name.ends_with(DesktopId::SUFFIX) {
-            if let Ok(id) = DesktopId::new(format!("{prefix}{name}")) {
-                found.push((id, path));
-            }
+        } else if meta.is_file()
+            && name.ends_with(DesktopId::SUFFIX)
+            && let Ok(id) = DesktopId::new(format!("{prefix}{name}"))
+        {
+            found.push((id, path));
         }
     }
 }

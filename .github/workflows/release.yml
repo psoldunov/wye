@@ -119,10 +119,17 @@ jobs:
           branch="release/${TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
+          git switch -C "$branch"
           git add nix/release.json
           git commit -m "chore: record release ${TAG} in nix/release.json"
-          git push origin "$branch"
+          # A re-run finds the branch (and maybe the pull request) of an
+          # earlier attempt: replace the branch, reuse the pull request.
+          remote=$(git ls-remote --heads origin "$branch" | cut -f1)
+          git push --force-with-lease="refs/heads/${branch}:${remote}" origin "HEAD:refs/heads/${branch}"
+          if gh pr view "$branch" --json state --jq .state 2> /dev/null | grep -qx OPEN; then
+            echo "pull request for $branch is open; its branch was updated"
+            exit 0
+          fi
           gh pr create --base master --head "$branch" \
             --title "chore: record release ${TAG}" \
-            --body "Points \`programs.wye.channel = \"release\"\` at ${TAG} (${REV}). Opened by the release workflow."
+            --body "Points \`programs.wye.channel = \"release\"\` at ${TAG} (${REV}). Opened by the release workflow. Pull requests opened with GITHUB_TOKEN do not start CI; close and reopen this one, or push to it, to run the checks."

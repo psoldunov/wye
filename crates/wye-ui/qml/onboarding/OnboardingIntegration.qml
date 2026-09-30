@@ -16,7 +16,12 @@ OnboardingPage {
         enabled: page.view.writable ?? true
 
         FormCard.FormSwitchDelegate {
-            checked: page.view.launchAtLogin ?? true
+            // GEN-01: the Nix modules start Wye at login themselves.
+            readonly property bool managed: page.view.loginManaged ?? false
+
+            checked: managed || (page.view.launchAtLogin ?? true)
+            description: managed ? qsTr("Your Nix configuration starts Wye at login, so this switch changes nothing. Change it there.") : ""
+            enabled: !managed
             text: qsTr("Launch at login")
 
             onToggled: OnboardingBackend.setLaunchAtLogin(checked)
@@ -33,12 +38,16 @@ OnboardingPage {
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         showCloseButton: true
-        text: OnboardingBackend.error
+        text: errors.describe(OnboardingBackend.errorKind, OnboardingBackend.error)
         type: Kirigami.MessageType.Error
         visible: OnboardingBackend.error !== ""
 
         onVisibleChanged: if (!visible) {
             OnboardingBackend.clearError()
         }
+    }
+
+    WyeErrorText {
+        id: errors
     }
 }

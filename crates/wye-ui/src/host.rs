@@ -10,12 +10,12 @@
 use wye_api::Error;
 use wye_api::actions::Window;
 use wye_api::names::{UI_BUS_NAME, UI_OBJECT_PATH};
-use wye_api::picker::PickerRequest;
 use wye_api::proxy::Windows1Proxy;
 use wye_api::tray::TrayMenu;
 use zbus::fdo::{DBusProxy, RequestNameFlags, RequestNameReply};
 
 use crate::dispatch::Dispatcher;
+use crate::picker::view::PickerView;
 use crate::route::UiCommand;
 
 /// `dev.soldunov.wye.PickerHost1`.
@@ -45,9 +45,13 @@ fn require_id(request_id: &str) -> Result<(), Error> {
 #[zbus::interface(name = "dev.soldunov.wye.PickerHost1")]
 impl PickerHost {
     /// Show the picker, or replace the request it shows (PICK-27).
+    ///
+    /// The request is read here exactly as the picker reads it, so one it
+    /// cannot show is refused now and the service opens the link through its
+    /// stand-in, instead of waiting for an answer that never comes.
     fn show_picker(&self, request_id: &str, request: &str) -> Result<(), Error> {
         require_id(request_id)?;
-        wye_api::json::decode::<PickerRequest>("picker request", request)?;
+        PickerView::parse(request).map_err(|error| Error::invalid_args(error.to_string()))?;
         send(
             self.dispatcher,
             UiCommand::ShowPicker {
@@ -154,53 +158,9 @@ pub async fn claim(
 
 #[cfg(test)]
 mod tests {
-    use std::io::{BufRead as _, BufReader};
-    use std::process::{Child, Command, Stdio};
-
     use super::*;
     use crate::route::Delivery;
-
-    /// A private `dbus-daemon`, killed on drop; `None` (the test skips)
-    /// when the program is not on `PATH`.
-    struct PrivateBus {
-        daemon: Child,
-        address: String,
-    }
-
-    impl PrivateBus {
-        fn start() -> Option<Self> {
-            let spawned = Command::new("dbus-daemon")
-                .args(["--session", "--nofork", "--print-address=1"])
-                .stdin(Stdio::null())
-                .stdout(Stdio::piped())
-                .spawn();
-            let Ok(mut daemon) = spawned else {
-                eprintln!("skipping: dbus-daemon is not on PATH");
-                return None;
-            };
-            let stdout = daemon.stdout.take().expect("stdout is piped");
-            let mut address = String::new();
-            BufReader::new(stdout)
-                .read_line(&mut address)
-                .expect("dbus-daemon prints its address");
-            Some(Self {
-                daemon,
-                address: address.trim().to_owned(),
-            })
-        }
-
-        fn builder(&self) -> zbus::connection::Builder<'_> {
-            zbus::connection::Builder::address(self.address.as_str()).expect("address parses")
-        }
-    }
-
-    impl Drop for PrivateBus {
-        fn drop(&mut self) {
-            // Already gone is fine; a leaked daemon is what this prevents.
-            let _ = self.daemon.kill();
-            let _ = self.daemon.wait();
-        }
-    }
+    use crate::test_bus::PrivateBus;
 
     fn leak() -> &'static Dispatcher {
         Box::leak(Box::default())
@@ -246,6 +206,14 @@ mod tests {
         let error = picker.show_picker("1", "[").await.expect_err("rejected");
         assert!(matches!(error, Error::InvalidArgs(_)), "{error:?}");
         let error = picker.show_picker("", "{}").await.expect_err("rejected");
+        assert!(matches!(error, Error::InvalidArgs(_)), "{error:?}");
+        // A request the picker could not show: refused now, so the service
+        // opens the link through its stand-in (PICK-23).
+        let unreadable = r#"{"keys": {"actions": {"private-modifier": ["Return"]}}}"#;
+        let error = picker
+            .show_picker("1", unreadable)
+            .await
+            .expect_err("rejected");
         assert!(matches!(error, Error::InvalidArgs(_)), "{error:?}");
         let windows = Windows1Proxy::new(&client).await.expect("proxy");
         let error = windows.show_window("nope", "").await.expect_err("rejected");

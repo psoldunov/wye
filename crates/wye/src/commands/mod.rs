@@ -6,9 +6,6 @@ mod config;
 mod debug;
 mod default;
 mod extension;
-// The host manifests (BEXT-04); `wye-native-host` includes the same file.
-#[path = "../native_host/install.rs"]
-mod manifests;
 mod open;
 mod service;
 mod test;

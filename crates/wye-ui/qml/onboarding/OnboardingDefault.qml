@@ -32,7 +32,7 @@ OnboardingPage {
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         showCloseButton: true
-        text: OnboardingBackend.error
+        text: errors.describe(OnboardingBackend.errorKind, OnboardingBackend.error)
         type: Kirigami.MessageType.Error
         visible: OnboardingBackend.error !== ""
 
@@ -47,5 +47,9 @@ OnboardingPage {
         text: qsTr("You can skip this. Wye then only sees links from the clipboard and the browser extension.")
         visible: !page.view.isDefault
         wrapMode: Text.WordWrap
+    }
+
+    WyeErrorText {
+        id: errors
     }
 }

@@ -31,6 +31,14 @@ impl ScriptFiles {
         Self { dir }
     }
 
+    /// The scripts whose `rules/` directory is `rules_dir`.
+    pub(crate) fn in_rules_dir(rules_dir: &Path) -> Self {
+        let dir = rules_dir
+            .parent()
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        Self { dir }
+    }
+
     /// The directory holding `config.toml` and `transform.js`.
     pub(crate) fn dir(&self) -> &Path {
         &self.dir

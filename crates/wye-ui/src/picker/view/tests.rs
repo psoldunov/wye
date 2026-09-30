@@ -81,3 +81,13 @@ fn a_long_link_is_cut_in_the_middle_with_the_host_kept() {
 fn garbage_is_refused() {
     assert!(PickerView::parse("[").is_err());
 }
+
+#[test]
+fn a_request_with_unreadable_keys_is_refused() {
+    // Refused in `ShowPicker` itself, so the service opens the link through
+    // its stand-in rather than waiting for an answer (PICK-23).
+    // An action name that collides with a modifier action, with key names
+    // where modifiers belong.
+    let json = r#"{"keys": {"actions": {"private-modifier": ["Return"]}}}"#;
+    assert!(matches!(PickerView::parse(json), Err(ViewError::Keys(_))));
+}

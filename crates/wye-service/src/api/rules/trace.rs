@@ -20,7 +20,7 @@ pub(crate) fn trace(
     hooks: Hooks<'_>,
 ) -> LinkTrace {
     let pipeline = &snapshot.pipeline;
-    let resolution = match pipeline.resolve_with(request, &snapshot.inventory, hooks) {
+    let resolution = match pipeline.resolve_with(request, &*snapshot.inventory, hooks) {
         Ok(resolution) => resolution,
         Err(rejected) => {
             return LinkTrace {
@@ -119,8 +119,8 @@ mod tests {
 
     fn snapshot(config: Config) -> Snapshot {
         Snapshot {
-            pipeline: Pipeline::with_shipped_data(config),
-            inventory: Inventory::from_apps(Vec::new(), Vec::new()),
+            pipeline: std::sync::Arc::new(Pipeline::with_shipped_data(config)),
+            inventory: std::sync::Arc::new(Inventory::from_apps(Vec::new(), Vec::new())),
             previous_default: None,
         }
     }

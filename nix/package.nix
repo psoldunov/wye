@@ -206,7 +206,7 @@ let
     commonArgs
     // {
       inherit cargoArtifacts;
-      cargoExtraArgs = "--locked --package wye --package wye-ui";
+      cargoExtraArgs = "--locked --package wye --package wye-native-host --package wye-ui";
       nativeBuildInputs = commonArgs.nativeBuildInputs ++ [ qt6.wrapQtAppsHook ];
       # Tests run as their own flake check.
       doCheck = false;
@@ -240,19 +240,22 @@ let
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg
         install -Dm644 ${../data/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg} \
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg
-        # D-Bus activation (DEF-04) and the systemd user unit, with the
-        # absolute path of this package's binaries.
+        # D-Bus activation (DEF-04) and the systemd user units of the service
+        # and the UI host, with the absolute path of this package's binaries.
         for template in \
           ${../data/dbus/dev.soldunov.wye.service.in}:share/dbus-1/services/dev.soldunov.wye.service \
           ${../data/dbus/dev.soldunov.wye.Ui.service.in}:share/dbus-1/services/dev.soldunov.wye.Ui.service \
-          ${../data/systemd/wye.service.in}:share/systemd/user/wye.service; do
+          ${../data/systemd/wye.service.in}:share/systemd/user/wye.service \
+          ${../data/systemd/wye-ui.service.in}:share/systemd/user/wye-ui.service; do
           target=$out/''${template#*:}
           install -Dm644 "''${template%%:*}" "$target"
           substituteInPlace "$target" --replace-fail '@bindir@' "$out/bin"
         done
         # NixOS' `systemd.packages` reads lib/systemd/user, not share/.
         mkdir -p $out/lib/systemd/user
-        ln -s ../../../share/systemd/user/wye.service $out/lib/systemd/user/wye.service
+        for unit in wye.service wye-ui.service; do
+          ln -s ../../../share/systemd/user/$unit $out/lib/systemd/user/$unit
+        done
       '';
       postFixup = ''
         wrapQtApp $out/bin/wye-ui ${lib.escapeShellArgs qt.wrapperArgs}

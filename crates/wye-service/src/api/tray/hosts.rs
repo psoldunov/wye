@@ -7,14 +7,24 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use futures_lite::StreamExt as _;
 use tokio::sync::watch;
-use wye_api::actions::TrayHost;
 use zbus::fdo::DBusProxy;
 use zbus::names::BusName;
 
-/// The registered hosts, by unique bus name.
+/// One bus connection that called `RegisterTray`.
+#[derive(Debug, Clone, Copy)]
+struct Host {
+    /// `RegisterTray` calls not yet matched by `UnregisterTray`. Every
+    /// Plasma applet instance shares plasmashell's one connection, so one
+    /// instance going away must not bring the item back while another
+    /// still shows the tray (decision 8).
+    registrations: u32,
+}
+
+/// The registered hosts, by unique bus name. A connection stays listed
+/// with no registrations until it leaves the bus, so it is watched once.
 #[derive(Debug)]
 pub(crate) struct Hosts {
-    registered: Mutex<BTreeMap<String, TrayHost>>,
+    registered: Mutex<BTreeMap<String, Host>>,
     /// Bumped on every change, for the tray task.
     changes: watch::Sender<u64>,
 }
@@ -29,27 +39,57 @@ impl Default for Hosts {
 }
 
 impl Hosts {
-    /// Remember `name` as a host of `kind`; false when it already was one.
-    pub(crate) fn insert(&self, name: &str, kind: TrayHost) -> bool {
-        let added = self.lock().insert(name.to_owned(), kind).is_none();
-        if added {
+    /// Count one more registration from `name`. True when `name` was not
+    /// known yet, so its connection needs watching.
+    pub(crate) fn insert(&self, name: &str) -> bool {
+        let (new, first) = {
+            let mut registered = self.lock();
+            let new = !registered.contains_key(name);
+            let host = registered
+                .entry(name.to_owned())
+                .or_insert(Host { registrations: 0 });
+            host.registrations = host.registrations.saturating_add(1);
+            (new, host.registrations == 1)
+        };
+        if first {
             self.bump();
         }
-        added
+        new
     }
 
-    /// Forget `name`; false when it was not a host.
+    /// One registration from `name` fewer (`UnregisterTray`). True when it
+    /// was the last one, so `name` no longer hosts the tray.
     pub(crate) fn remove(&self, name: &str) -> bool {
-        let removed = self.lock().remove(name).is_some();
-        if removed {
+        let last = {
+            let mut registered = self.lock();
+            match registered.get_mut(name) {
+                Some(host) if host.registrations > 0 => {
+                    host.registrations -= 1;
+                    host.registrations == 0
+                }
+                _ => false,
+            }
+        };
+        if last {
             self.bump();
         }
-        removed
+        last
+    }
+
+    /// `name` left the bus: forget it and all its registrations.
+    pub(crate) fn forget(&self, name: &str) {
+        let hosted = self
+            .lock()
+            .remove(name)
+            .is_some_and(|host| host.registrations > 0);
+        if hosted {
+            self.bump();
+        }
     }
 
     /// Whether any tray host is registered.
     pub(crate) fn any(&self) -> bool {
-        !self.lock().is_empty()
+        self.lock().values().any(|host| host.registrations > 0)
     }
 
     /// Wakes on every change.
@@ -62,7 +102,7 @@ impl Hosts {
             .send_modify(|count| *count = count.wrapping_add(1));
     }
 
-    fn lock(&self) -> MutexGuard<'_, BTreeMap<String, TrayHost>> {
+    fn lock(&self) -> MutexGuard<'_, BTreeMap<String, Host>> {
         self.registered
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -103,13 +143,31 @@ mod tests {
         let hosts = Hosts::default();
         let mut changes = hosts.subscribe();
         assert!(!hosts.any());
-        assert!(hosts.insert(":1.5", TrayHost::PlasmaApplet));
-        assert!(!hosts.insert(":1.5", TrayHost::PlasmaApplet), "once");
+        assert!(hosts.insert(":1.5"), "new: watch it");
         assert!(hosts.any());
         assert!(changes.has_changed().expect("sender alive"));
         changes.mark_unchanged();
-        hosts.remove(":1.5");
+        assert!(hosts.remove(":1.5"), "the last registration");
         assert!(!hosts.any());
         assert!(changes.has_changed().expect("sender alive"));
+        assert!(!hosts.remove(":1.5"), "nothing left to remove");
+    }
+
+    #[test]
+    fn decision_8_every_registration_of_one_connection_counts() {
+        // Two applet instances on plasmashell's one connection.
+        let hosts = Hosts::default();
+        assert!(hosts.insert(":1.5"));
+        assert!(!hosts.insert(":1.5"), "watched already");
+        assert!(!hosts.remove(":1.5"), "one instance is still there");
+        assert!(hosts.any());
+        assert!(hosts.remove(":1.5"));
+        assert!(!hosts.any());
+        // Registering again later needs no second watch.
+        assert!(!hosts.insert(":1.5"));
+        assert!(hosts.any());
+        hosts.forget(":1.5");
+        assert!(!hosts.any(), "leaving the bus ends every registration");
+        assert!(hosts.insert(":1.5"), "a new connection");
     }
 }

@@ -133,7 +133,8 @@ async fn recent(ctx: &ServiceContext) -> Vec<RecentLink> {
 
 /// `dev.soldunov.wye1.RegisterTray` ([`wye_api::actions::TrayHost`]): the
 /// caller shows the tray itself, so the `StatusNotifierItem` goes away until
-/// the caller's connection does.
+/// the caller unregisters as often as it registered, or its connection goes
+/// away.
 ///
 /// # Errors
 ///
@@ -153,23 +154,24 @@ pub async fn register_tray(ctx: &ServiceContext, caller: &Caller, kind: &str) ->
         .connection()
         .cloned()
         .ok_or_else(|| Error::failed("the service is not on a bus"))?;
-    if !ctx.tray().hosts.insert(&sender, kind) {
+    tracing::info!(host = sender, kind = kind.as_str(), "tray host registered");
+    if !ctx.tray().hosts.insert(&sender) {
+        // Watched already: another applet instance on the same connection.
         return Ok(());
     }
-    tracing::info!(host = sender, kind = kind.as_str(), "tray host registered");
     let ctx = ctx.clone();
     tokio::spawn(async move {
         hosts::until_gone(&connection, &sender).await;
         tracing::info!(host = sender, "tray host left");
-        ctx.tray().hosts.remove(&sender);
+        ctx.tray().hosts.forget(&sender);
     });
     Ok(())
 }
 
-/// `dev.soldunov.wye1.UnregisterTray`: the caller no longer shows the tray
-/// (the applet was removed or disabled), so the `StatusNotifierItem` comes
-/// back after the start-up grace. Unregistering a caller that never
-/// registered changes nothing.
+/// `dev.soldunov.wye1.UnregisterTray`: one of the caller's registrations
+/// ends (an applet instance was removed or disabled). When it was the last,
+/// the `StatusNotifierItem` comes back after the start-up grace.
+/// Unregistering a caller that never registered changes nothing.
 ///
 /// # Errors
 ///
@@ -185,6 +187,11 @@ pub async fn unregister_tray(ctx: &ServiceContext, caller: &Caller) -> Result<()
         .ok_or_else(|| Error::invalid_args("UnregisterTray needs a bus connection"))?;
     if ctx.tray().hosts.remove(sender) {
         tracing::info!(host = sender, "tray host unregistered");
+    } else {
+        tracing::debug!(
+            host = sender,
+            "a registration ended; the host still shows the tray"
+        );
     }
     Ok(())
 }

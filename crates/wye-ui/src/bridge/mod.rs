@@ -33,7 +33,7 @@ pub mod shim;
     unsafe_code,
     clippy::unnecessary_box_returns,
     dead_code,
-    reason = "cxx-qt bridge: the generated FFI code is unsafe and boxes sized types; the shim takes raw window pointers from QML and emits activationTokenReady from C++ by name, so Rust never calls it"
+    reason = "cxx-qt bridge: the generated FFI code is unsafe and boxes sized types; the shim emits activationTokenReady from C++ by name, so Rust never calls its generated emitter"
 )]
 pub mod window_effects;
 

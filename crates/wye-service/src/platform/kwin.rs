@@ -228,8 +228,17 @@ impl KWinHelper {
     /// `None` when `KWin` is not on the bus or there is no runtime
     /// directory.
     pub async fn detect(connection: &zbus::Connection, reports: Reports) -> Option<Self> {
+        KWinScripting::new(connection.clone()).owner().await?;
+        Self::for_session(connection, reports)
+    }
+
+    /// [`KWinHelper::detect`] without asking whether `KWin` is on the bus
+    /// yet: for a Plasma session whose compositor has not registered when
+    /// the service starts. Each query asks for `KWin` itself, so the helper
+    /// works once it is there (source-app step 4, PICK-02).
+    #[must_use]
+    pub fn for_session(connection: &zbus::Connection, reports: Reports) -> Option<Self> {
         let host = KWinScripting::new(connection.clone());
-        host.owner().await?;
         let service = connection.unique_name()?.to_string();
         let dir = std::env::var_os("XDG_RUNTIME_DIR")
             .map(PathBuf::from)

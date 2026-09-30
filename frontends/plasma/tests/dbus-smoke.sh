@@ -18,12 +18,23 @@ if [[ -z "${wye}" || ! -x "${wye}" ]]; then
 fi
 
 scratch=$(mktemp -d)
+# Remove the scratch directory. The private bus may have started the
+# document portal, which mounts a FUSE file system at
+# $XDG_RUNTIME_DIR/doc and lets go of it only once it sees the bus is gone.
+remove_scratch() {
+    for _ in $(seq 30); do
+        fusermount3 -uz "${scratch}/runtime/doc" 2>/dev/null || fusermount -uz "${scratch}/runtime/doc" 2>/dev/null || true
+        rm -r "${scratch}" 2>/dev/null && return 0
+        sleep 0.1
+    done
+    echo "warning: cannot remove ${scratch}" >&2
+}
 bus_pid=""
 service_pid=""
 cleanup() {
     [[ -n "${service_pid}" ]] && kill "${service_pid}" 2>/dev/null || true
     [[ -n "${bus_pid}" ]] && kill "${bus_pid}" 2>/dev/null || true
-    rm -r "${scratch}"
+    remove_scratch
 }
 trap cleanup EXIT
 

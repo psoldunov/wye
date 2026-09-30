@@ -58,6 +58,10 @@ Kirigami.ApplicationWindow {
         id: backend
     }
 
+    WyeErrorText {
+        id: errors
+    }
+
     CopyHelper {
         id: clipboard
     }
@@ -82,7 +86,7 @@ Kirigami.ApplicationWindow {
 
     pageStack.initialPage: AboutContent {
         aboutData: backend.aboutJson === "" ? ({}) : JSON.parse(backend.aboutJson)
-        error: backend.error
+        error: errors.describe(backend.errorKind, backend.error)
         troubleshooting: backend.troubleshooting
 
         onCopyRequested: text => {

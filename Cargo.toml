@@ -22,6 +22,7 @@ pedantic = { level = "warn", priority = -1 }
 wye-api = { path = "crates/wye-api" }
 wye-core = { path = "crates/wye-core" }
 wye-desktop = { path = "crates/wye-desktop" }
+wye-native-host = { path = "crates/wye-native-host" }
 # Declared ahead of the crate (U12) so no unit edits this file for it; an
 # unused path entry is ignored until a crate depends on it.
 wye-script = { path = "crates/wye-script" }

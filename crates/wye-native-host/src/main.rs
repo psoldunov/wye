@@ -1,23 +1,20 @@
 //! `wye-native-host`: the browser extension's native-messaging host
-//! (BEXT-04 to BEXT-06). See `crates/wye/src/native_host/`.
+//! (BEXT-04 to BEXT-06). The work is in the library, [`wye_native_host`].
 //!
 //! The browser starts it with its own arguments and talks to it over stdin
 //! and stdout; anything written to stderr ends up in the browser's log.
 //! `wye-native-host --install` writes the host manifests of every detected
 //! browser, `--remove` deletes them (as `wye extension install|remove` do).
 
-#[path = "../native_host/mod.rs"]
-mod native_host;
-
 use std::ffi::OsString;
 use std::io::Write as _;
 use std::path::Path;
 use std::process::ExitCode;
 
-use native_host::install;
-use native_host::message::Link;
-use native_host::{Service, context, serve};
 use wye_desktop::xdg::XdgDirs;
+use wye_native_host::install;
+use wye_native_host::message::Link;
+use wye_native_host::{Service, context, serve};
 
 /// What the command line asks for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

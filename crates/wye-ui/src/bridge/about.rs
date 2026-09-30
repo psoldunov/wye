@@ -22,6 +22,7 @@ pub mod qobject {
         #[qproperty(QString, about_json, cxx_name = "aboutJson")]
         #[qproperty(QString, troubleshooting)]
         #[qproperty(QString, error)]
+        #[qproperty(QString, error_kind, cxx_name = "errorKind")]
         #[qproperty(bool, offline)]
         type AboutBackend = super::AboutBackendRust;
 
@@ -54,8 +55,8 @@ use wye_api::Error;
 
 use crate::about::fixture::Fixture;
 use crate::about::{info, link};
+use crate::error_text::{self, ErrorText};
 use crate::service;
-use crate::settings::sync::describe;
 
 /// The properties' values.
 #[derive(Default)]
@@ -64,6 +65,7 @@ pub struct AboutBackendRust {
     about_json: QString,
     troubleshooting: QString,
     error: QString,
+    error_kind: QString,
     offline: bool,
 }
 
@@ -72,6 +74,12 @@ fn q(text: &str) -> QString {
 }
 
 impl qobject::AboutBackend {
+    /// Show `text` in the message bar; empty clears it.
+    fn show_error(mut self: Pin<&mut Self>, text: &ErrorText) {
+        self.as_mut().set_error_kind(QString::from(text.kind));
+        self.set_error(QString::from(text.detail.as_str()));
+    }
+
     /// Publish the version, and the page's `aboutData` for it.
     fn show_version(mut self: Pin<&mut Self>, version: &str) {
         let data = info::about_data(version).to_string();
@@ -81,7 +89,7 @@ impl qobject::AboutBackend {
 
     fn fail(mut self: Pin<&mut Self>, error: &Error) {
         tracing::warn!(%error, "about request failed");
-        self.as_mut().set_error(q(&describe(error)));
+        self.as_mut().show_error(&error_text::describe(error));
     }
 
     /// See the bridge declaration.
@@ -99,7 +107,7 @@ impl qobject::AboutBackend {
             |proxy| async move { proxy.version().await.map_err(Error::from) },
             |mut backend, result| match result {
                 Ok(version) => {
-                    backend.as_mut().set_error(QString::default());
+                    backend.as_mut().show_error(&ErrorText::default());
                     backend.show_version(&version);
                 }
                 Err(error) => backend.fail(&error),
@@ -111,9 +119,7 @@ impl qobject::AboutBackend {
             |mut backend, result| match result {
                 Ok(text) => backend.as_mut().set_troubleshooting(q(&text)),
                 Err(error) => {
-                    backend
-                        .as_mut()
-                        .set_troubleshooting(q(&format!("Not available: {}", describe(&error))));
+                    backend.as_mut().set_troubleshooting(QString::default());
                     backend.fail(&error);
                 }
             },
@@ -137,7 +143,7 @@ impl qobject::AboutBackend {
             },
             |fixture| {
                 self.as_mut().set_offline(true);
-                self.as_mut().set_error(QString::default());
+                self.as_mut().show_error(&ErrorText::default());
                 self.as_mut()
                     .set_troubleshooting(q(&fixture.troubleshooting));
                 self.show_version(&fixture.version);

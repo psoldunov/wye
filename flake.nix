@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     crane.url = "github:ipetkov/crane";
-    # Only the module evaluation check and the VM test import it.
+    # Only the module evaluation check (nix/tests/modules.nix) imports it.
     home-manager = {
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -193,11 +193,21 @@
             grep -qxF 'SystemdService=wye.service' $services/dev.soldunov.wye.service
             grep -qxF 'Name=dev.soldunov.wye.Ui' $services/dev.soldunov.wye.Ui.service
             grep -qxF 'Exec=${wye.package}/bin/wye-ui' $services/dev.soldunov.wye.Ui.service
+            grep -qxF 'SystemdService=wye-ui.service' $services/dev.soldunov.wye.Ui.service
             unit=${wye.package}/share/systemd/user/wye.service
             grep -qxF 'Type=dbus' $unit
             grep -qxF 'BusName=dev.soldunov.wye' $unit
             grep -qxF 'ExecStart=${wye.package}/bin/wye service' $unit
             grep -qxF 'KillMode=process' $unit
+            # The UI host: bus-activated through systemd, never at login.
+            ui=${wye.package}/share/systemd/user/wye-ui.service
+            grep -qxF 'Type=dbus' $ui
+            grep -qxF 'BusName=dev.soldunov.wye.Ui' $ui
+            grep -qxF 'ExecStart=${wye.package}/bin/wye-ui' $ui
+            if grep -q '^\[Install\]' $ui; then exit 1; fi
+            # NixOS' `systemd.packages` finds both units under lib/.
+            test -f ${wye.package}/lib/systemd/user/wye.service
+            test -f ${wye.package}/lib/systemd/user/wye-ui.service
             # No template placeholder left anywhere.
             if grep -rF '@bindir@' ${wye.package}/share; then exit 1; fi
             test -x ${wye.package}/bin/wye
@@ -261,6 +271,7 @@
                 jq -e '.manifest_version == 3 and .background.scripts != null and .browser_specific_settings.gecko.id == "wye@soldunov.dev"' $dir/firefox/manifest.json > /dev/null
                 jq -e '.manifest_version == 3 and .background.service_worker != null and .key != null' $dir/chromium/manifest.json > /dev/null
                 for family in firefox chromium; do
+                  jq -e '.version == "${wye.package.version}"' $dir/$family/manifest.json > /dev/null
                   test -f $dir/$family/background.js
                   test -f $dir/$family/icons/wye-128.png
                   unzip -Z1 $dir/wye-extension-$family.zip | grep -qx manifest.json

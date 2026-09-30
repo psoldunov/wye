@@ -88,8 +88,9 @@ pub(crate) async fn status(ctx: &ServiceContext) -> Status {
     Status {
         default_browser: super::default_browser::status(ctx, &state).await,
         config: config_status(ctx).await,
-        capabilities: capabilities(platform),
+        capabilities: capabilities(&platform),
         locked: *platform.lock.locked().borrow(),
+        login_managed: ctx.login_managed(),
         ui_state: ui::from_state(&state),
     }
 }

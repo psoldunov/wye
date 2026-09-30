@@ -4,6 +4,8 @@
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+use wye_core::Target;
+
 use crate::api::link::{Activation, PickerNeeded};
 
 /// A link waiting for the picker's choice.
@@ -21,6 +23,20 @@ pub(crate) struct Pending {
     pub id: String,
     /// `None` for Preview Picker (PKS-06): choosing opens nothing.
     pub link: Option<PendingLink>,
+    /// Every target the request shows, tiles and **Open In** alike: the
+    /// only ones `PickerChose` accepts.
+    pub offered: Vec<Target>,
+}
+
+/// Whether the pending request offers a target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Offer {
+    /// The request is pending and shows the target.
+    Offered,
+    /// The request is pending, but does not show the target.
+    NotOffered,
+    /// No such request is pending.
+    NotPending,
 }
 
 #[derive(Debug, Default)]
@@ -43,15 +59,35 @@ impl Registry {
 
     /// Make `link` the current request under a new ID, superseding the
     /// previous one (PICK-27), which is returned.
-    pub fn open(&self, link: Option<PendingLink>) -> (String, Option<Pending>) {
+    pub fn open(
+        &self,
+        link: Option<PendingLink>,
+        offered: Vec<Target>,
+    ) -> (String, Option<Pending>) {
         let mut slot = self.slot();
         slot.last += 1;
         let id = slot.last.to_string();
         let superseded = slot.current.replace(Pending {
             id: id.clone(),
             link,
+            offered,
         });
         (id, superseded)
+    }
+
+    /// Whether request `id` is pending and shows `target`; nothing is
+    /// taken.
+    pub fn offers(&self, id: &str, target: &Target) -> Offer {
+        match self
+            .slot()
+            .current
+            .as_ref()
+            .filter(|pending| pending.id == id)
+        {
+            Some(pending) if pending.offered.contains(target) => Offer::Offered,
+            Some(_) => Offer::NotOffered,
+            None => Offer::NotPending,
+        }
     }
 
     /// Remove and return the request `id`, when it is still the current one.
@@ -82,9 +118,9 @@ mod tests {
     fn a_new_request_supersedes_the_pending_one() {
         // PICK-27: the old request's answer then finds nothing.
         let registry = Registry::default();
-        let (first, none) = registry.open(None);
+        let (first, none) = registry.open(None, Vec::new());
         assert!(none.is_none());
-        let (second, superseded) = registry.open(None);
+        let (second, superseded) = registry.open(None, Vec::new());
         assert_ne!(first, second);
         assert_eq!(superseded.map(|pending| pending.id), Some(first.clone()));
         assert!(registry.take(&first).is_none());
@@ -93,9 +129,21 @@ mod tests {
     }
 
     #[test]
+    fn only_the_pending_request_offers_its_targets() {
+        let registry = Registry::default();
+        let offered = Target::App(wye_core::DesktopId::new("a.desktop").expect("id"));
+        let other = Target::App(wye_core::DesktopId::new("b.desktop").expect("id"));
+        let (id, _) = registry.open(None, vec![offered.clone()]);
+        assert_eq!(registry.offers(&id, &offered), Offer::Offered);
+        assert_eq!(registry.offers(&id, &other), Offer::NotOffered);
+        assert_eq!(registry.offers("0", &offered), Offer::NotPending);
+        assert!(registry.take(&id).is_some(), "checking takes nothing");
+    }
+
+    #[test]
     fn take_current_empties_the_slot() {
         let registry = Registry::default();
-        registry.open(None);
+        registry.open(None, Vec::new());
         assert!(registry.take_current().is_some());
         assert!(registry.take_current().is_none());
     }

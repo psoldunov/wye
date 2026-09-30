@@ -11,6 +11,7 @@ mod activation;
 mod choice;
 mod host;
 mod pending;
+pub(crate) mod ready;
 mod request;
 
 use tokio::task::JoinHandle;
@@ -18,10 +19,10 @@ use url::Url;
 use wye_api::Error;
 use wye_api::actions::{PickerAction, Window};
 use wye_core::picker::SourceLabel;
-use wye_core::{Modifiers, SourceApp};
+use wye_core::{Modifiers, SourceApp, Target};
 use wye_desktop::Locale;
 
-use self::pending::{Pending, PendingLink, Registry};
+use self::pending::{Offer, Pending, PendingLink, Registry};
 use super::link::{self, Activation, PickerNeeded, Snapshot};
 use super::{Caller, Dict, Result};
 use crate::context::ServiceContext;
@@ -62,13 +63,14 @@ pub(crate) async fn show_link(
             placement,
             preview: false,
         };
-        wye_api::json::encode(&request::build(&input))
+        encode(&request::build(&input))
     })
     .await??;
+    let (text, offered) = text;
     let (id, superseded) = ctx
         .picker()
         .pending
-        .open(Some(PendingLink { needed, activation }));
+        .open(Some(PendingLink { needed, activation }), offered);
     if let Some(old) = superseded {
         tracing::info!(
             old = old.id,
@@ -80,6 +82,16 @@ pub(crate) async fn show_link(
         return Ok(());
     };
     tracing::warn!(%error, "cannot show the picker");
+    // A UI that answers late must not show a picker for a link the
+    // stand-in already opened (PIPE-13). In the background: an unreachable
+    // UI would hold the link for another deadline.
+    let closing = ctx.clone();
+    let closing_id = id.clone();
+    tokio::spawn(async move {
+        if let Err(error) = host::close_picker(&closing, &closing_id).await {
+            tracing::debug!(%error, "cannot close the picker that did not show");
+        }
+    });
     // Only this request falls back; a newer one already replaced it.
     match ctx
         .picker()
@@ -124,10 +136,11 @@ pub async fn preview_picker(ctx: &ServiceContext) -> Result<()> {
             placement,
             preview: true,
         };
-        wye_api::json::encode(&request::build(&input))
+        encode(&request::build(&input))
     })
     .await??;
-    let (id, _) = ctx.picker().pending.open(None);
+    let (text, offered) = text;
+    let (id, _) = ctx.picker().pending.open(None, offered);
     let shown = host::show_picker(ctx, &id, &text).await;
     if shown.is_err() {
         ctx.picker().pending.take(&id);
@@ -146,6 +159,16 @@ pub async fn picker_chose(
 ) -> Result<()> {
     // Validated before the request is taken, so bad input loses nothing.
     let choice = choice::parse(target, options)?;
+    match ctx.picker().pending.offers(request_id, &choice.target) {
+        Offer::Offered => {}
+        Offer::NotOffered => {
+            return Err(Error::invalid_args(format!(
+                "target: {} is not one the picker showed",
+                choice.target
+            )));
+        }
+        Offer::NotPending => return Err(not_pending(request_id)),
+    }
     let Some(link) = take(ctx, request_id)?.link else {
         // PKS-06: a preview opens nothing.
         return Ok(());
@@ -234,33 +257,33 @@ fn take(ctx: &ServiceContext, request_id: &str) -> Result<Pending> {
     ctx.picker()
         .pending
         .take(request_id)
-        .ok_or_else(|| Error::NotFound(format!("no picker request {request_id:?} is pending")))
+        .ok_or_else(|| not_pending(request_id))
 }
 
-/// Background work of this topic, started with the service: start the UI
-/// host when a route can end on the picker (decision 2), and close the
-/// picker when the screen locks.
+fn not_pending(request_id: &str) -> Error {
+    Error::NotFound(format!("no picker request {request_id:?} is pending"))
+}
+
+/// The request's JSON, and every target it shows (tiles and **Open In**),
+/// which are the only ones `PickerChose` accepts.
+fn encode(request: &wye_api::picker::PickerRequest) -> Result<(String, Vec<Target>)> {
+    let offered = request
+        .tiles
+        .iter()
+        .chain(request.overflow.iter().flat_map(|group| group.tiles.iter()))
+        .filter_map(|tile| serde_json::from_value(tile.target.clone()).ok())
+        .collect();
+    Ok((wye_api::json::encode(request)?, offered))
+}
+
+/// Background work of this topic, started with the service: keep the UI
+/// host started while a route can end on the picker (decision 2), and
+/// close the picker when the screen locks.
 pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
     vec![
-        tokio::spawn(activate_ahead(ctx.clone())),
+        tokio::spawn(ready::keep_ready(ctx.clone())),
         tokio::spawn(close_on_lock(ctx.clone())),
     ]
-}
-
-async fn activate_ahead(ctx: ServiceContext) {
-    let needed = link::with_snapshot(&ctx, |snapshot| {
-        activation::can_end_on_picker(snapshot.pipeline.config())
-    })
-    .await;
-    match needed {
-        Ok(true) => {
-            if let Err(error) = host::activate(&ctx).await {
-                tracing::info!(%error, "cannot start the UI host ahead of time");
-            }
-        }
-        Ok(false) => {}
-        Err(error) => tracing::warn!(%error, "cannot read the configuration"),
-    }
 }
 
 /// PKS-07: a picker showing when the screen locks closes, and its link
@@ -286,7 +309,7 @@ async fn close_on_lock(ctx: ServiceContext) {
 
 /// The session's message locale, for app names (DISC-03).
 fn locale(ctx: &ServiceContext) -> Result<Locale> {
-    Ok(ctx.link().environment()?.xdg.locale.clone())
+    Ok(ctx.environment()?.xdg.locale.clone())
 }
 
 fn catalog(snapshot: &Snapshot, locale: &Locale) -> wye_core::target_menu::TargetCatalog {

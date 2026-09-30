@@ -92,4 +92,4 @@ Change the shortcut on `about:addons` → gear → **Manage Extension Shortcuts*
 | `manifest.firefox.json` | Firefox: event-page background, gecko ID `wye@soldunov.dev`. |
 | `manifest.chromium.json` | Chromium: service-worker background, fixed `key`. |
 | `icons/` | Wye's icon, rendered from `data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg`. |
-| `build.sh` | Assembles one family's unpacked extension. |
+| `build.sh` | Assembles one family's unpacked extension. The Nix build (`nix/frontends.nix`) then stamps the workspace version from `Cargo.toml` into its `manifest.json`; the checked-in manifests' `version` is only what `build.sh` alone produces. |

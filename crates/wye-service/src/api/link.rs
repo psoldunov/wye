@@ -15,8 +15,8 @@ mod launch;
 mod route;
 mod source;
 
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
+use std::collections::VecDeque;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use tokio::task::JoinHandle;
 use wye_api::Error;
@@ -30,18 +30,23 @@ pub(crate) use route::{PickerNeeded, Plan, plan_for, plan_with};
 use self::incoming::Incoming;
 use self::route::Routed;
 use super::{Caller, Dict, Result};
-use crate::context::ServiceContext;
+use crate::context::{ServiceContext, blocking};
 use crate::platform::Platform;
 
+/// How many launch-failure notifications keep their buttons working
+/// (LAUNCH-07). The server does not say when one closes, so the oldest is
+/// forgotten instead.
+const MAX_FAILED: usize = 8;
+
 /// What this topic keeps between calls.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct State {
-    environment: RwLock<Option<Arc<Environment>>>,
     /// The link waiting for the screen to unlock (PKS-07); a newer one
     /// replaces it.
     held: Mutex<Option<Held>>,
-    /// What each launch-failure notification's buttons open (LAUNCH-07).
-    failed: Mutex<HashMap<u32, FailedLaunch>>,
+    /// What each launch-failure notification's buttons open (LAUNCH-07),
+    /// oldest first, at most [`MAX_FAILED`].
+    failed: Mutex<VecDeque<(u32, FailedLaunch)>>,
 }
 
 /// A link held until the screen unlocks.
@@ -65,39 +70,22 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 impl State {
     pub(crate) fn new(_platform: &Platform) -> Self {
-        let environment = Environment::from_env()
-            .inspect_err(|error| tracing::warn!(%error, "no session environment"))
-            .ok()
-            .map(Arc::new);
-        Self {
-            environment: RwLock::new(environment),
-            held: Mutex::default(),
-            failed: Mutex::default(),
-        }
-    }
-
-    /// Route with `environment` from now on.
-    pub(crate) fn set_environment(&self, environment: Environment) {
-        *self
-            .environment
-            .write()
-            .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(environment));
-    }
-
-    pub(crate) fn environment(&self) -> Result<Arc<Environment>> {
-        self.environment
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-            .ok_or_else(|| Error::failed("the service cannot find your home directory"))
+        Self::default()
     }
 
     pub(crate) fn remember_failure(&self, notification: u32, failure: FailedLaunch) {
-        lock(&self.failed).insert(notification, failure);
+        let mut failed = lock(&self.failed);
+        failed.retain(|(id, _)| *id != notification);
+        if failed.len() == MAX_FAILED {
+            failed.pop_front();
+        }
+        failed.push_back((notification, failure));
     }
 
     fn take_failure(&self, notification: u32) -> Option<FailedLaunch> {
-        lock(&self.failed).remove(&notification)
+        let mut failed = lock(&self.failed);
+        let index = failed.iter().position(|(id, _)| *id == notification)?;
+        failed.remove(index).map(|(_, failure)| failure)
     }
 
     fn hold(&self, held: Held) {
@@ -179,7 +167,7 @@ async fn open_one(
     incoming: &Incoming,
     hint: SourceHint,
 ) -> Result<()> {
-    let environment = ctx.link().environment()?;
+    let environment = ctx.environment()?;
     let snapshot = super::config::snapshot(ctx).await?;
     // BRW-03, RUL-27, ADV-11: probe only when a binding reads held keys,
     // and start the probe first, alongside source detection (which may ask
@@ -192,7 +180,7 @@ async fn open_one(
     let held = async {
         match incoming.held {
             Some(held) => held,
-            None if probe => probe_modifiers(ctx.platform()).await,
+            None if probe => probe_modifiers(&ctx.platform()).await,
             None => Modifiers::NONE,
         }
     };
@@ -296,12 +284,6 @@ pub(crate) async fn with_snapshot<T: Send + 'static>(
 ) -> Result<T> {
     let snapshot = super::config::snapshot(ctx).await?;
     blocking(move || work(&snapshot)).await
-}
-
-async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Result<T> {
-    tokio::task::spawn_blocking(work)
-        .await
-        .map_err(|error| Error::failed(format!("routing stopped: {error}")))
 }
 
 /// The modifiers held now, when the session can tell (KEY-06); none

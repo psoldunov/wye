@@ -6,6 +6,7 @@
 use std::sync::Mutex;
 
 use super::*;
+use crate::settings::save::ConfigApi;
 
 /// A service in memory: one revision, calls recorded.
 #[derive(Default)]
@@ -17,9 +18,6 @@ struct Fake {
 struct State {
     revision: u64,
     inventory: u64,
-    /// Answer the first `update_config` with `Conflict` (someone else wrote).
-    conflict_once: bool,
-    read_only: bool,
     calls: Vec<String>,
 }
 
@@ -43,18 +41,10 @@ impl Fake {
     }
 }
 
-impl Api for Fake {
+impl ConfigApi for Fake {
     async fn update_config(&self, patch: &str, base: u64) -> Result<u64, Error> {
         let mut state = self.state.lock().expect("lock");
         state.calls.push(format!("update {patch} @{base}"));
-        if state.read_only {
-            return Err(Error::ReadOnly("home-manager".into()));
-        }
-        if state.conflict_once {
-            state.conflict_once = false;
-            state.revision += 1;
-            return Err(Error::Conflict("stale".into()));
-        }
         if base != 0 && base != state.revision {
             return Err(Error::Conflict("stale".into()));
         }
@@ -66,7 +56,9 @@ impl Api for Fake {
         self.record("get-config");
         Ok(("{}".to_owned(), self.state.lock().expect("lock").revision))
     }
+}
 
+impl Api for Fake {
     async fn status(&self) -> Result<String, Error> {
         self.record("status");
         Ok("{}".to_owned())
@@ -117,50 +109,6 @@ fn block_on<T>(future: impl Future<Output = T>) -> T {
         .build()
         .expect("runtime")
         .block_on(future)
-}
-
-#[test]
-fn a_patch_is_saved_on_the_revision_the_window_knows() {
-    // SET-06
-    let api = Fake::with(3, 1);
-    let (_, revision) = block_on(save(&api, r#"{"a":1}"#, 3)).expect("saved");
-    assert_eq!(revision, 4);
-    assert_eq!(api.calls(), [r#"update {"a":1} @3"#, "get-config"]);
-}
-
-/// Save `{"a":1}` on revision 3 against a fake that misbehaves as `change`
-/// says, and what the fake saw.
-fn save_where(change: impl FnOnce(&mut State)) -> (Result<(String, u64), Error>, Vec<String>) {
-    let api = Fake::with(3, 1);
-    change(&mut api.state.lock().expect("lock"));
-    let result = block_on(save(&api, r#"{"a":1}"#, 3));
-    (result, api.calls())
-}
-
-#[test]
-fn a_conflict_reloads_and_applies_the_patch_again() {
-    // the brief: on Conflict reload and re-apply
-    let (result, calls) = save_where(|state| state.conflict_once = true);
-    assert_eq!(result.expect("saved").1, 5);
-    assert_eq!(
-        calls,
-        [
-            r#"update {"a":1} @3"#,
-            "get-config",
-            r#"update {"a":1} @4"#,
-            "get-config",
-        ]
-    );
-}
-
-#[test]
-fn a_read_only_file_is_reported_not_retried() {
-    // Status `writable: false`, home-manager
-    let (result, calls) = save_where(|state| state.read_only = true);
-    let error = result.expect_err("refused");
-    assert!(matches!(error, Error::ReadOnly(_)), "{error:?}");
-    assert_eq!(calls.len(), 1);
-    assert!(describe(&error).contains("read-only"));
 }
 
 #[test]
@@ -238,7 +186,10 @@ fn restoring_with_nothing_remembered_is_an_error_the_window_can_show() {
     let api = Fake::with(3, 7);
     let error =
         block_on(run(&api, Action::StopBeingDefault, Known::default())).expect_err("refused");
-    assert_eq!(describe(&error), "no previous browser");
+    assert!(
+        matches!(&error, Error::NotFound(reason) if reason == "no previous browser"),
+        "{error:?}"
+    );
 }
 
 #[test]

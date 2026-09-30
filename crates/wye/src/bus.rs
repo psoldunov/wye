@@ -2,9 +2,11 @@
 //!
 //! Each call runs on a small single-threaded runtime and is bounded by
 //! [`TIMEOUT`], which includes starting the service through D-Bus
-//! activation. A caller tells an unreachable service ([`CallError::Unreachable`],
-//! where the command does the work itself) from a refusal
-//! ([`CallError::Refused`], where the service already told the user).
+//! activation. A caller tells an absent service ([`CallError::Unreachable`],
+//! where the command may do the work itself) from a refusal
+//! ([`CallError::Refused`], where the service already told the user) and
+//! from a call that was sent but not answered ([`CallError::NoAnswer`]: the
+//! service may still do it, so the work is never repeated here).
 
 use std::future::Future;
 use std::time::Duration;
@@ -15,12 +17,30 @@ use wye_api::proxy::{ApplicationProxy, Wye1Proxy};
 /// How long one call may take, bus activation included.
 pub const TIMEOUT: Duration = Duration::from_secs(3);
 
+/// D-Bus errors that mean the call reached no service: nothing owns the
+/// name and nothing could be started for it, or the service lacks the
+/// member (an older one).
+const ABSENT: [&str; 5] = [
+    "org.freedesktop.DBus.Error.ServiceUnknown",
+    "org.freedesktop.DBus.Error.NameHasNoOwner",
+    "org.freedesktop.DBus.Error.UnknownMethod",
+    "org.freedesktop.DBus.Error.UnknownObject",
+    "org.freedesktop.DBus.Error.UnknownInterface",
+];
+
+/// Bus-activation failures (`Spawn.ChildExited`, `Spawn.ExecFailed`, …):
+/// the service could not be started, so it never saw the call.
+const SPAWN_ERRORS: &str = "org.freedesktop.DBus.Error.Spawn.";
+
 /// Why a call to the service did not succeed.
 #[derive(Debug)]
 pub enum CallError {
-    /// No service answered: no session bus, no service installed, a
-    /// timeout, or a member it does not implement yet.
+    /// No service took the call: no session bus, no service installed or
+    /// startable, or a member it does not implement.
     Unreachable(String),
+    /// The call was sent, but no answer came in time, or the connection
+    /// broke: the service may still act on it, so it must not be repeated.
+    NoAnswer(String),
     /// The service answered with an error it stands by.
     Refused(Error),
 }
@@ -31,6 +51,10 @@ impl std::fmt::Display for CallError {
             Self::Unreachable(reason) => {
                 write!(formatter, "the Wye service is not reachable: {reason}")
             }
+            Self::NoAnswer(reason) => write!(
+                formatter,
+                "the Wye service did not answer ({reason}); it may still do it"
+            ),
             Self::Refused(error) => write!(formatter, "{}", message(error)),
         }
     }
@@ -77,7 +101,10 @@ impl Client {
         F: FnOnce(Wye1Proxy<'static>) -> Fut,
         Fut: Future<Output = Result<T, Error>>,
     {
-        let reply = self.runtime.block_on(bounded(call(self.wye.clone())))?;
+        let reply = self
+            .runtime
+            .block_on(async { tokio::time::timeout(TIMEOUT, call(self.wye.clone())).await })
+            .map_err(|_| CallError::NoAnswer(format!("no answer within {TIMEOUT:?}")))?;
         reply.map_err(classify)
     }
 
@@ -111,14 +138,27 @@ impl From<zbus::Error> for CallError {
 }
 
 /// Errors that mean "nobody here to do it" become [`CallError::Unreachable`];
-/// the rest are the service's answer.
+/// other bus errors leave the outcome unknown ([`CallError::NoAnswer`]); the
+/// rest are the service's answer.
 fn classify(error: Error) -> CallError {
     match error {
         Error::NotImplemented(reason) | Error::Unavailable(reason) => {
             CallError::Unreachable(reason)
         }
-        Error::Bus(error) => CallError::Unreachable(error.to_string()),
+        Error::Bus(error) if is_absent(&error) => CallError::Unreachable(error.to_string()),
+        Error::Bus(error) => CallError::NoAnswer(error.to_string()),
         other => CallError::Refused(other),
+    }
+}
+
+/// Whether `error` says the call reached no service.
+fn is_absent(error: &zbus::Error) -> bool {
+    use zbus::DBusError as _;
+    let absent = |name: &str| ABSENT.contains(&name) || name.starts_with(SPAWN_ERRORS);
+    match error {
+        zbus::Error::MethodError(name, _, _) => absent(name.as_str()),
+        zbus::Error::FDO(fdo) => absent(fdo.name().as_str()),
+        _ => false,
     }
 }
 
@@ -134,16 +174,47 @@ pub fn message(error: &Error) -> String {
 mod tests {
     use super::*;
 
+    fn method_error(name: &str) -> Error {
+        Error::from(zbus::Error::MethodError(
+            zbus::names::OwnedErrorName::try_from(name).expect("error name"),
+            Some("x".to_owned()),
+            zbus::message::Message::method_call("/", "Ping")
+                .expect("builder")
+                .build(&())
+                .expect("message"),
+        ))
+    }
+
     #[test]
     fn a_missing_member_or_service_is_unreachable() {
         assert!(matches!(
             classify(Error::not_implemented("OpenLink")),
             CallError::Unreachable(_)
         ));
-        assert!(matches!(
-            classify(Error::from(zbus::Error::InvalidReply)),
-            CallError::Unreachable(_)
-        ));
+        for name in [
+            "org.freedesktop.DBus.Error.ServiceUnknown",
+            "org.freedesktop.DBus.Error.NameHasNoOwner",
+            "org.freedesktop.DBus.Error.UnknownMethod",
+            "org.freedesktop.DBus.Error.Spawn.ChildExited",
+        ] {
+            assert!(
+                matches!(classify(method_error(name)), CallError::Unreachable(_)),
+                "{name}"
+            );
+        }
+    }
+
+    /// Finding #1: a call the service may have acted on is never repeated
+    /// here, so a link cannot open twice (DEF-04, IN-01).
+    #[test]
+    fn a_call_sent_but_unanswered_is_not_unreachable() {
+        for error in [
+            Error::from(zbus::Error::InvalidReply),
+            method_error("org.freedesktop.DBus.Error.NoReply"),
+            method_error("org.freedesktop.DBus.Error.TimedOut"),
+        ] {
+            assert!(matches!(classify(error), CallError::NoAnswer(_)), "retried");
+        }
     }
 
     #[test]

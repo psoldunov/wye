@@ -6,18 +6,18 @@
 //! ID so its script has a file of its own.
 
 use std::collections::BTreeSet;
-use std::io;
 use std::path::{Path, PathBuf};
 
 use wye_api::Error;
+use wye_api::actions::ScriptScope;
 use wye_core::Rule;
 use wye_core::rules_file::{self, BundledRule, Imported, Problem};
 
+use crate::api::scripts::ScriptFiles;
+
 /// The directory of the rules' scripts, next to `config`.
 pub(crate) fn scripts_dir(config: &Path) -> PathBuf {
-    config
-        .parent()
-        .map_or_else(|| PathBuf::from("rules"), |dir| dir.join("rules"))
+    ScriptFiles::beside(config).rules_dir()
 }
 
 /// RUL-02: the rules and their scripts as a rules file.
@@ -39,18 +39,19 @@ pub(crate) fn export(rules: &[Rule], scripts: &Path) -> Result<String, Error> {
         .map_err(|error| Error::failed(format!("cannot write the rules file: {error}")))
 }
 
+/// The script of `rule`, read the way the pipeline reads it: a rule ID
+/// that cannot name a file (`../transform`, say) has no script.
 fn read_script(scripts: &Path, rule: &Rule) -> Result<Option<String>, Error> {
     let Some(id) = &rule.id else {
         return Ok(None);
     };
-    let path = scripts.join(format!("{id}.js"));
-    match std::fs::read_to_string(&path) {
-        Ok(text) => Ok(Some(text)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(Error::failed(format!(
-            "cannot read {}: {error}",
-            path.display()
-        ))),
+    let files = ScriptFiles::in_rules_dir(scripts);
+    match files.read(&ScriptScope::Rule(id.clone())) {
+        Err(Error::InvalidArgs(reason)) => {
+            tracing::warn!(%reason, "exporting a rule without its script");
+            Ok(None)
+        }
+        other => other,
     }
 }
 
@@ -176,6 +177,21 @@ script = "export default (url) => url;"
             Some("export default (url) => url;")
         );
         assert_eq!(again.rules[0].rule.name, "GitHub");
+    }
+
+    /// RUL-02: an ID that is not a file name never reads another file.
+    #[test]
+    fn a_rule_id_cannot_reach_outside_the_rules_directory() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let scripts = dir.path().join("rules");
+        std::fs::create_dir_all(&scripts).expect("dir");
+        std::fs::write(dir.path().join("transform.js"), "secret").expect("written");
+        let imported = read(FILE).expect("a rules file");
+        let rule = Rule {
+            id: Some("../transform".to_owned()),
+            ..imported.rules[0].rule.clone()
+        };
+        assert!(matches!(read_script(&scripts, &rule), Ok(None)));
     }
 
     #[test]

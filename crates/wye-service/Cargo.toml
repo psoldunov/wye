@@ -44,6 +44,8 @@ ashpd.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Paused time for deadline tests.
+tokio = { workspace = true, features = ["test-util"] }
 # Syntax-checks and runs the KWin query script against a stub `workspace`.
 rquickjs.workspace = true
 

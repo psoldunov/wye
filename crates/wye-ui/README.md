@@ -16,7 +16,7 @@ no routing decisions; it asks the service over D-Bus.
 | `src/service.rs` | The tokio runtime and `service::request`, the one way a backend calls the service. |
 | `src/surface.rs` | The surfaces and their QML root files. |
 | `src/bridge/` | One `#[cxx_qt::bridge]` per surface or sheet, plus `app.rs`, `window_effects.rs` and the C++ `shim.rs`. |
-| `cpp/wye_shim.{h,cpp}` | The only C++: `QApplication`, blur behind a window, xdg-activation tokens (KF6 WindowSystem). |
+| `cpp/wye_shim.{h,cpp}` | The only C++: `QApplication`, blur behind the picker's panel, xdg-activation tokens (KF6 WindowSystem). |
 | `qml/Main.qml` | The engine's root: creates each surface on first use and calls its `handle()`. |
 | `qml/<surface>/` | One directory per surface; `qml/components/` for shared pieces. |
 | `fixtures/<surface>.json` | What `--self-test` feeds each surface. |
@@ -72,11 +72,18 @@ modules next to it and test it there; a bridge file only converts types and call
 `crate::service::request(self.qt_thread(), |proxy| async move { … }, |object, result| …)`:
 the call runs on the D-Bus thread with a `Wye1Proxy`, and the result comes back on the Qt
 thread. `bridge/about.rs` is the example. Never block the Qt thread on D-Bus.
+A window that shows what the service holds does not poll: it calls
+`crate::service::watch(self.qt_thread(), &["ConfigRevision", …], |object| …)` once, and the
+callback runs on the Qt thread whenever one of those properties changes (the service emits
+`PropertiesChanged` for every property), when the service restarts, and once as soon as the
+subscription stands. `crate::service::follow` carries any other signal stream the same way
+(`ScriptFileChanged` in `bridge/script_editor.rs`).
 
-**C++ shim.** `WindowEffects` (QML) wraps `cpp/wye_shim.cpp`: `blurBehind(window, on)`
-returns false when the compositor has no blur (draw the background opaque then);
+**C++ shim.** `WindowEffects` (QML) wraps `cpp/wye_shim.cpp`:
 `requestActivationToken(window, appId)` returns false off Wayland, otherwise the signal
-`activationTokenReady(token)` follows (empty when refused).
+`activationTokenReady(token)` follows (empty when refused). Blur is the picker's own:
+`PickerBackend.blurBehind(window, x, y, width, height, radius)` blurs the panel's rounded
+rectangle and returns false when the compositor has no blur (draw the panel opaque then).
 
 **Self-test.** Each surface has `fixtures/<surface>.json`:
 `{"cases": [{"action": "show", "key": "…", "argument": <string or JSON>}]}`. A JSON
@@ -141,7 +148,7 @@ editor. `fixtures/rules.json` and `fixtures/tester.json` feed the `settings` sur
 **History** (`qml/history/`, `src/history/`, `HistoryBackend`), **About** (`qml/about/`,
 `src/about/`, `AboutBackend`) and **first run** (`qml/onboarding/`, `src/onboarding/`,
 `OnboardingBackend`, shown with `ShowWindow("first-run", …)`) each have their own window and
-fixture file. History reloads when `HistoryRevision` moves (a 2 s poll while it is visible). The
+fixture file. History reloads when `HistoryRevision` moves. The
 first-run pages are created up front in a hidden item and pushed on the page stack as items:
 pushing a Component or URL makes Kirigami create them without a parent, which Qt warns about.
 The About page is built from `WyeGroupCard`: FormCards placed straight into a `ScrollablePage`

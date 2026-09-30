@@ -24,18 +24,8 @@ use wye_core::keybinding::KeyBinding;
 pub use self::menu::toggle_menu;
 use super::{Caller, Result};
 use crate::context::ServiceContext;
+use crate::platform::BoundShortcut;
 use crate::platform::shortcuts::{ACTIONS, ShortcutAction, action};
-use crate::platform::{BoundShortcut, Platform};
-
-/// State this topic keeps: none; the provider keeps the bindings.
-#[derive(Debug, Default)]
-pub struct State;
-
-impl State {
-    pub(crate) fn new(_platform: &Platform) -> Self {
-        Self
-    }
-}
 
 /// `dev.soldunov.wye1.GetShortcuts`: JSON [`wye_api::shortcuts::Shortcuts`],
 /// one entry per action with the trigger the mechanism reports (KEY-40) and

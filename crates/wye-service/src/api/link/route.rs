@@ -67,7 +67,7 @@ pub(crate) fn route(
 ) -> Result<(Routed, Vec<Step>), Rejected> {
     let resolution = snapshot
         .pipeline
-        .resolve_with(request, &snapshot.inventory, hooks)?;
+        .resolve_with(request, &*snapshot.inventory, hooks)?;
     let steps = resolution.steps.clone();
     Ok((routed(snapshot, request, &resolution, hooks), steps))
 }

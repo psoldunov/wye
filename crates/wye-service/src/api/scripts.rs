@@ -19,7 +19,7 @@ use wye_api::actions::ScriptScope;
 use wye_api::{Error, json};
 use wye_script::ScriptTransformer;
 
-use self::files::ScriptFiles;
+pub(crate) use self::files::ScriptFiles;
 use self::source::FileScripts;
 use super::{Dict, Result};
 use crate::context::{ServiceContext, blocking};
@@ -74,6 +74,13 @@ fn start_watching(ctx: &ServiceContext) -> Option<JoinHandle<()>> {
 pub(crate) fn transformer(ctx: &ServiceContext) -> Option<Scripts> {
     let files = script_files(ctx).ok()?;
     Some(ScriptTransformer::new(FileScripts::new(ctx, files)))
+}
+
+/// The transformer for routing without the service (`wye open` when no
+/// service answers): the scripts next to `config_file`; failures are only
+/// logged, since notifying them once (SCR-22) needs the service.
+pub(crate) fn offline_transformer(config_file: &std::path::Path) -> Scripts {
+    ScriptTransformer::new(FileScripts::offline(ScriptFiles::beside(config_file)))
 }
 
 /// [`transformer`] for `TestLink` (IN-08): nothing is notified.

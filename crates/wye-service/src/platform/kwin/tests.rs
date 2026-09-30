@@ -72,17 +72,18 @@ async fn an_answered_query_gives_pointer_and_focus_then_cleans_up() {
     assert_eq!(left, 0, "the script file is removed");
 }
 
-#[tokio::test]
+/// On a paused clock, so the deadline is exact however busy the machine
+/// is: the query gives up at [`QUICK`], and cleaning up takes no time.
+#[tokio::test(start_paused = true)]
 async fn a_silent_compositor_times_out_to_unknown_and_still_unloads() {
     let dir = tempfile::tempdir().expect("temp dir");
     let reports = Reports::new();
     let host = Arc::new(FakeScriptHost::silent(KWIN));
     let helper = helper(&host, &reports, dir.path());
 
-    let started = Instant::now();
+    let started = tokio::time::Instant::now();
     assert_eq!(helper.pointer().await, None);
-    assert!(started.elapsed() >= QUICK);
-    assert!(started.elapsed() < QUICK + CLEANUP_TIMEOUT);
+    assert_eq!(started.elapsed(), QUICK);
 
     let calls = host.calls();
     assert_eq!(calls.started, 1);

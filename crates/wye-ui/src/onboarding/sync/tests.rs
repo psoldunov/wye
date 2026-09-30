@@ -66,16 +66,7 @@ impl Fake {
     clippy::unused_async_trait_impl,
     reason = "the fake service answers at once; the trait's methods are async"
 )]
-impl Api for Fake {
-    async fn status(&self) -> Result<String, Error> {
-        let state = self.state.lock().expect("lock");
-        Ok(json!({
-            "defaultBrowser": {"isDefault": state.is_default, "keptCurrent": state.kept},
-            "uiState": {"onboardingDone": false}
-        })
-        .to_string())
-    }
-
+impl ConfigApi for Fake {
     async fn get_config(&self) -> Result<(String, u64), Error> {
         Ok(("{}".to_owned(), self.state.lock().expect("lock").revision))
     }
@@ -84,6 +75,21 @@ impl Api for Fake {
         let mut state = self.state.lock().expect("lock");
         state.calls.push(format!("update {patch} @{base}"));
         state.write(base)
+    }
+}
+
+#[allow(
+    clippy::unused_async_trait_impl,
+    reason = "the fake service answers at once; the trait's methods are async"
+)]
+impl Api for Fake {
+    async fn status(&self) -> Result<String, Error> {
+        let state = self.state.lock().expect("lock");
+        Ok(json!({
+            "defaultBrowser": {"isDefault": state.is_default, "keptCurrent": state.kept},
+            "uiState": {"onboardingDone": false}
+        })
+        .to_string())
     }
 
     async fn get_targets(&self) -> Result<String, Error> {

@@ -39,6 +39,15 @@ impl FileScripts {
         Self { files, reporter }
     }
 
+    /// Scripts that only log their failures, for routing without the
+    /// service.
+    pub(crate) fn offline(files: ScriptFiles) -> Self {
+        Self {
+            files,
+            reporter: None,
+        }
+    }
+
     /// The same scripts, without notifications.
     pub(crate) fn quiet(self) -> Self {
         Self {

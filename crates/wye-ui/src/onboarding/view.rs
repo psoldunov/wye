@@ -41,6 +41,9 @@ pub struct View {
     pub checklist: Vec<ListRow>,
     /// The **Launch at login** switch (ONB-04).
     pub launch_at_login: bool,
+    /// The Nix modules start Wye at login (`Status.loginManaged`): the
+    /// switch shows on, is disabled and saves nothing (GEN-01, ONB-04).
+    pub login_managed: bool,
     /// The desktop's note under the switch, if it needs one (ONB-04).
     pub desktop_note: Option<&'static str>,
     /// The configuration can be changed; false for a read-only file.
@@ -83,7 +86,8 @@ impl View {
                 .unwrap_or_default(),
             primary,
             checklist: choices::checklist(&snapshot.targets, &foreign, &shown),
-            launch_at_login: launch_at_login(&snapshot.config),
+            launch_at_login: snapshot.status.login_managed || launch_at_login(&snapshot.config),
+            login_managed: snapshot.status.login_managed,
             desktop_note: desktop.note(),
             writable: snapshot.writable(),
         }
@@ -157,6 +161,19 @@ mod tests {
             json!({"general": {"launch-at-login": false}}),
         );
         assert!(!View::build(Flow::new(), &off, Desktop::Kde).launch_at_login);
+    }
+
+    #[test]
+    fn onb_04_a_managed_login_start_shows_on_whatever_the_file_says() {
+        let managed = snapshot(
+            Status {
+                login_managed: true,
+                ..Status::default()
+            },
+            json!({"general": {"launch-at-login": false}}),
+        );
+        let view = View::build(Flow::new(), &managed, Desktop::Kde);
+        assert!(view.login_managed && view.launch_at_login);
     }
 
     #[test]

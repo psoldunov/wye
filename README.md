@@ -78,7 +78,9 @@ nix run github:psoldunov/wye -- browsers
 ```
 
 The module installs the package and the Plasma applet, links the D-Bus activation files,
-and runs `wye service` as a systemd user unit.
+and runs `wye service` as the systemd user unit `wye.service`. The UI host `wye-ui` (picker,
+windows, tray-menu popup) runs as `wye-ui.service`, started by D-Bus activation when the
+service first needs it.
 
 | Option | Meaning |
 |--------|---------|
@@ -87,11 +89,17 @@ and runs `wye service` as a systemd user unit.
 | `programs.wye.package` | The package to install. Defaults to the channel's package; set it to override. |
 | `programs.wye.settings` | The contents of `$XDG_CONFIG_HOME/wye/config.toml`. When set, the file is a read-only link into the Nix store and Wye's Settings window cannot save. Leave it empty to keep the file writable. |
 | `programs.wye.defaultBrowser` | Make Wye the handler of `http` and `https` in `mimeapps.list` (through `xdg.mimeApps`), and of HTML files when `settings.general.open-local-html` is on. On Plasma it also sets `BrowserApplication` in `kdeglobals`. |
-| `programs.wye.launchAtLogin` | Start the service with the graphical session (default on). Off, it still starts on the first link. |
+| `programs.wye.launchAtLogin` | Start the service with the graphical session (default on). Off, it still starts on the first link. The unit owns login start: Wye writes no XDG autostart entry, and its "Launch at login" setting shows as managed by Nix. The config file stays writable. |
 
 The `release` channel builds with the packaging of the tagged release, so it brings its own
 nixpkgs revision into the closure; the `nixpkgs.follows` line above applies to the `git`
-channel. To move to a newer release run `nix flake update wye`.
+channel. The module itself always comes from the flake revision you lock, so it installs a
+release's package through the file layout every release keeps (listed in
+`nix/channel.nix`). To move to a newer release run `nix flake update wye`.
+
+The service's unit sets its own `PATH`, which desktop entries with a bare `Exec=firefox`
+are resolved against: the Nix profile directories first, then `/usr/local/bin`,
+`/usr/bin` and `/bin`.
 
 ### NixOS
 
@@ -116,18 +124,21 @@ channel. To move to a newer release run `nix flake update wye`.
 ```
 
 `programs.wye.{enable, channel, package}` install the package system-wide, register its
-D-Bus files (`services.dbus.packages`) and its systemd user unit (`systemd.packages`).
-`programs.wye.defaultBrowser` sets the system-wide default handler, and
-`programs.wye.launchAtLogin` starts the service with every graphical session.
+D-Bus files (`services.dbus.packages`) and its systemd user units `wye.service` and
+`wye-ui.service` (`systemd.packages`). `programs.wye.defaultBrowser` sets the system-wide
+default handler, and `programs.wye.launchAtLogin` starts the service with every graphical
+session (Wye then leaves the XDG autostart entry alone, as with home-manager). The NixOS
+module has no `settings` and does not register local HTML files (DEF-07): the
+configuration is per user, so set those in Wye's Settings window or with home-manager.
 
-### Without Nix
+### Other distributions
 
-There is no other package yet. Build from source with the dev shell:
-
-```sh
-nix build
-nix develop -c cargo build --release
-```
+There is no other package yet (an AppImage is planned). With Nix installed, use the
+home-manager module above; it works on any distribution. `nix profile install
+github:psoldunov/wye` installs the binaries too, but systemd never looks for user units in
+a Nix profile, and the session bus finds the D-Bus files only when the profile's `share` is
+on `XDG_DATA_DIRS`. The D-Bus files name `SystemdService=`, so link the units yourself
+(`systemctl --user link ~/.nix-profile/share/systemd/user/wye{,-ui}.service`).
 
 ## Set up on KDE Plasma
 
@@ -139,8 +150,9 @@ nix develop -c cargo build --release
    registers, and hides it once the applet does.
 3. Optional: start the browser extension's helper (see [Browser extension](#browser-extension)).
 
-After a home-manager or NixOS switch, a running Plasma session picks the applet up
-immediately (the module announces it over D-Bus); if it does not, log out and in.
+After a home-manager switch, a running Plasma session picks the applet up immediately (the
+module announces it over D-Bus). After a NixOS switch, or if the applet still does not
+appear, log out and in.
 
 ## Command line
 

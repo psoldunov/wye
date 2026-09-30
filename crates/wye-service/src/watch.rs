@@ -9,10 +9,10 @@
 
 mod plan;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher as _};
 use tokio::sync::mpsc;
@@ -22,12 +22,14 @@ use tokio::time::Instant;
 use self::plan::{Kind, Plan};
 use crate::api;
 use crate::api::link::Environment;
-use crate::context::ServiceContext;
+use crate::context::{ServiceContext, blocking};
 
 /// Quiet time before the configuration is reloaded.
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(100);
 /// Quiet time before apps are rescanned or the registration is checked.
 const INVENTORY_DEBOUNCE: Duration = Duration::from_millis(500);
+/// How often the files are checked when no watcher can be started.
+const POLL_EVERY: Duration = Duration::from_secs(2);
 
 /// Start every watcher and the tasks that answer their notifications; the
 /// service aborts the handles on shutdown.
@@ -61,15 +63,23 @@ async fn run(ctx: ServiceContext) {
     }
 }
 
-/// Watch `environment` for good, re-arming as needed.
+/// Watch `environment` for good, re-arming as needed. Without a watcher
+/// (no inotify, or out of watches) the files are checked every
+/// [`POLL_EVERY`] instead, so a change is still seen.
 async fn watch(ctx: &ServiceContext, environment: Arc<Environment>) {
+    let mut polling = false;
     loop {
         // Scanning here also warms the inventory before the first link.
         let plan = Plan::new(&environment, &browser_dirs(ctx, &environment).await);
         let (sender, mut events) = mpsc::unbounded_channel();
         let Some(_watcher) = start(&plan, sender) else {
-            // Nothing can be watched; Rescan and the next start still work.
-            return std::future::pending().await;
+            if !polling {
+                tracing::warn!(every = ?POLL_EVERY, "cannot watch files; checking them every few seconds instead");
+                polling = true;
+            }
+            catch_up(ctx).await;
+            poll(ctx, &plan).await;
+            continue;
         };
         catch_up(ctx).await;
         let mut pending: BTreeMap<Kind, Instant> = BTreeMap::new();
@@ -103,6 +113,43 @@ async fn watch(ctx: &ServiceContext, environment: Arc<Environment>) {
             }
         }
     }
+}
+
+/// Check `plan`'s files every [`POLL_EVERY`] and act on what changed;
+/// returns when the watchers must be rebuilt.
+async fn poll(ctx: &ServiceContext, plan: &Plan) {
+    let paths = plan.polled();
+    let mut seen = stamps(paths.clone()).await;
+    loop {
+        tokio::time::sleep(POLL_EVERY).await;
+        let now = stamps(paths.clone()).await;
+        let kinds: BTreeSet<Kind> = now
+            .iter()
+            .filter(|(path, stamp)| seen.get(*path) != Some(*stamp))
+            .flat_map(|(path, _)| plan.classify(path))
+            .collect();
+        seen = now;
+        if !kinds.is_empty() && handle(ctx, &kinds.into_iter().collect::<Vec<_>>()).await {
+            return;
+        }
+    }
+}
+
+/// The modification time of each of `paths`; `None` when it is missing.
+async fn stamps(paths: Vec<PathBuf>) -> BTreeMap<PathBuf, Option<SystemTime>> {
+    blocking(move || {
+        paths
+            .into_iter()
+            .map(|path| {
+                let stamp = std::fs::metadata(&path)
+                    .and_then(|meta| meta.modified())
+                    .ok();
+                (path, stamp)
+            })
+            .collect()
+    })
+    .await
+    .unwrap_or_default()
 }
 
 const fn debounce(kind: Kind) -> Duration {

@@ -1,10 +1,12 @@
 //! `wye extension install|remove`: write or delete the native-messaging
-//! host manifests the browser extension needs (BEXT-04). The same code as
-//! `wye-native-host --install|--remove`.
+//! host manifests the browser extension needs (BEXT-04), with the same
+//! code as `wye-native-host --install|--remove`.
 
 use std::process::ExitCode;
 
-use super::{Console, Context, manifests};
+use wye_native_host::install as manifests;
+
+use super::{Console, Context};
 use crate::cli::ExtensionAction;
 use crate::notice;
 

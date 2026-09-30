@@ -5,8 +5,8 @@
 //! this file.
 
 use std::future::Future;
-use std::ops::Deref;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 
 use tokio::sync::watch;
@@ -14,6 +14,11 @@ use tokio::sync::watch;
 use crate::api;
 use crate::api::link::Environment;
 use crate::platform::Platform;
+
+/// Set to `1` when something else starts Wye at login (the Nix modules'
+/// systemd unit): the service then leaves the autostart entry alone
+/// (GEN-01).
+pub const LOGIN_MANAGED_ENV: &str = "WYE_LOGIN_MANAGED";
 
 /// The session's files, or `None` when there is no home directory.
 pub(crate) type SharedEnvironment = Option<Arc<Environment>>;
@@ -25,12 +30,10 @@ pub struct ServiceContext {
 }
 
 #[derive(Debug)]
-#[allow(
-    dead_code,
-    reason = "the topic states are read through accessors no stub calls yet"
-)]
 struct Inner {
-    platform: Platform,
+    /// Replaced once, when the session's integrations are detected after
+    /// the bus name is claimed (`run`).
+    platform: RwLock<Arc<Platform>>,
     connection: OnceLock<zbus::Connection>,
     shutdown: watch::Sender<bool>,
     /// Where the configuration, state, history and apps are; topics that
@@ -39,6 +42,8 @@ struct Inner {
     /// The `wye` executable the autostart entry runs (GEN-01), when set
     /// explicitly; otherwise it is looked up.
     wye_executable: RwLock<Option<PathBuf>>,
+    /// Starting at login is managed outside Wye ([`LOGIN_MANAGED_ENV`]).
+    login_managed: AtomicBool,
     clipboard: api::clipboard::State,
     config: api::config::State,
     default_browser: api::default_browser::State,
@@ -46,12 +51,9 @@ struct Inner {
     inventory: api::inventory::State,
     link: api::link::State,
     picker: api::picker::State,
-    rules: api::rules::State,
     scripts: api::scripts::State,
-    shortcuts: api::shortcuts::State,
     state: api::state::State,
     tray: api::tray::State,
-    windows: api::windows::State,
 }
 
 impl ServiceContext {
@@ -66,17 +68,15 @@ impl ServiceContext {
             inventory: api::inventory::State::new(&platform),
             link: api::link::State::new(&platform),
             picker: api::picker::State::new(&platform),
-            rules: api::rules::State::new(&platform),
             scripts: api::scripts::State::new(&platform),
-            shortcuts: api::shortcuts::State::new(&platform),
             state: api::state::State::new(&platform),
             tray: api::tray::State::new(&platform),
-            windows: api::windows::State::new(&platform),
-            platform,
+            platform: RwLock::new(Arc::new(platform)),
             connection: OnceLock::new(),
             shutdown: watch::Sender::new(false),
             environment: watch::Sender::new(session_environment()),
             wye_executable: RwLock::new(None),
+            login_managed: AtomicBool::new(login_managed_from_env()),
         };
         Self {
             inner: Arc::new(inner),
@@ -85,8 +85,24 @@ impl ServiceContext {
 
     /// The session integrations.
     #[must_use]
-    pub fn platform(&self) -> &Platform {
-        &self.inner.platform
+    pub fn platform(&self) -> Arc<Platform> {
+        self.inner
+            .platform
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Replace the integrations with what `update` makes of them, in one
+    /// step: the session's, once detected. Tasks that subscribe to an
+    /// integration start after it is in place.
+    pub fn update_platform(&self, update: impl FnOnce(&Platform) -> Platform) {
+        let mut platform = self
+            .inner
+            .platform
+            .write()
+            .unwrap_or_else(PoisonError::into_inner);
+        *platform = Arc::new(update(&platform));
     }
 
     /// The bus connection the service is served on, once it is.
@@ -105,7 +121,6 @@ impl ServiceContext {
     /// (tests point this at temporary directories). Every topic follows:
     /// caches reload and the watchers move.
     pub fn set_environment(&self, environment: Environment) {
-        self.inner.link.set_environment(environment.clone());
         self.inner
             .environment
             .send_replace(Some(Arc::new(environment)));
@@ -127,6 +142,18 @@ impl ServiceContext {
     /// The environment now and every later change.
     pub(crate) fn environment_changes(&self) -> watch::Receiver<SharedEnvironment> {
         self.inner.environment.subscribe()
+    }
+
+    /// Whether starting at login is managed outside Wye (GEN-01).
+    #[must_use]
+    pub fn login_managed(&self) -> bool {
+        self.inner.login_managed.load(Ordering::Relaxed)
+    }
+
+    /// Treat starting at login as managed outside Wye, or not (tests; the
+    /// service reads [`LOGIN_MANAGED_ENV`]).
+    pub fn set_login_managed(&self, managed: bool) {
+        self.inner.login_managed.store(managed, Ordering::Relaxed);
     }
 
     /// Name the `wye` executable the autostart entry runs (GEN-01) instead
@@ -170,33 +197,6 @@ impl ServiceContext {
     }
 }
 
-/// The link topic's state, as [`ServiceContext::link`] hands it out.
-///
-/// Derefs to [`api::link::State`]; its own `set_environment` moves every
-/// topic ([`ServiceContext::set_environment`]), so a caller that points the
-/// link path at other files never leaves the configuration, state, history
-/// and inventory reading the session's.
-#[derive(Clone, Copy)]
-pub(crate) struct LinkState<'a> {
-    ctx: &'a ServiceContext,
-}
-
-impl LinkState<'_> {
-    /// Work with the files `environment` names: every topic, not only the
-    /// link path.
-    pub(crate) fn set_environment(self, environment: Environment) {
-        self.ctx.set_environment(environment);
-    }
-}
-
-impl Deref for LinkState<'_> {
-    type Target = api::link::State;
-
-    fn deref(&self) -> &Self::Target {
-        &self.ctx.inner.link
-    }
-}
-
 /// Run blocking file work on a blocking thread.
 ///
 /// # Errors
@@ -210,6 +210,11 @@ pub(crate) async fn blocking<T: Send + 'static>(
         .map_err(|error| wye_api::Error::failed(format!("file work stopped: {error}")))
 }
 
+/// Whether [`LOGIN_MANAGED_ENV`] says login start is managed elsewhere.
+fn login_managed_from_env() -> bool {
+    std::env::var_os(LOGIN_MANAGED_ENV).is_some_and(|value| value == "1")
+}
+
 /// The session's directories, from the process environment.
 fn session_environment() -> SharedEnvironment {
     Environment::from_env()
@@ -219,10 +224,6 @@ fn session_environment() -> SharedEnvironment {
 }
 
 /// Each topic's state, for that topic's functions.
-#[allow(
-    dead_code,
-    reason = "a topic reads its state once it has any; the stubs have none yet"
-)]
 impl ServiceContext {
     /// Clipboard topic state.
     #[must_use]
@@ -256,8 +257,8 @@ impl ServiceContext {
 
     /// Link-routing topic state.
     #[must_use]
-    pub(crate) fn link(&self) -> LinkState<'_> {
-        LinkState { ctx: self }
+    pub(crate) fn link(&self) -> &api::link::State {
+        &self.inner.link
     }
 
     /// Picker topic state.
@@ -266,22 +267,10 @@ impl ServiceContext {
         &self.inner.picker
     }
 
-    /// Rules topic state.
-    #[must_use]
-    pub(crate) fn rules(&self) -> &api::rules::State {
-        &self.inner.rules
-    }
-
     /// Scripts topic state.
     #[must_use]
     pub(crate) fn scripts(&self) -> &api::scripts::State {
         &self.inner.scripts
-    }
-
-    /// Shortcuts topic state.
-    #[must_use]
-    pub(crate) fn shortcuts(&self) -> &api::shortcuts::State {
-        &self.inner.shortcuts
     }
 
     /// Internal-state topic state (onboarding, UI state).
@@ -294,12 +283,6 @@ impl ServiceContext {
     #[must_use]
     pub(crate) fn tray(&self) -> &api::tray::State {
         &self.inner.tray
-    }
-
-    /// Windows topic state.
-    #[must_use]
-    pub(crate) fn windows(&self) -> &api::windows::State {
-        &self.inner.windows
     }
 }
 

@@ -20,6 +20,7 @@
 pub(crate) mod api;
 pub mod bus;
 pub mod context;
+pub mod offline;
 pub mod platform;
 pub mod run;
 pub mod watch;

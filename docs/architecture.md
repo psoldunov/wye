@@ -8,12 +8,13 @@
 | `crates/wye-desktop` | Linux integration: desktop entry parsing, browser discovery, browser profiles, Exec expansion and launching, `mimeapps.list` default browser, source-app detection. |
 | `crates/wye-api` | The D-Bus contract ([dbus-api.md](dbus-api.md)): bus names, object paths, error names, the serde types of every JSON payload, and zbus proxies. Shared by the service and every client. |
 | `crates/wye-service` | The session service behind `wye service` (library): owns `dev.soldunov.wye`, serves `dev.soldunov.wye1`, `org.freedesktop.Application` and `dev.soldunov.wye.KWin1`. `bus/` holds the interface impls, which only delegate to one `api/<topic>.rs` per topic; `platform/` puts every session integration behind a trait with a no-op and a fake. tokio + zbus, no Qt. |
-| `crates/wye` | The `wye` binary: `service` (runs `wye-service`), `open` (hands links to the service, or routes them itself when it cannot be reached), `test`, `browsers`, `default`, `config`, and the service clients `clipboard`, `menu`, `settings`, `debug`. Also `wye-native-host`, the browser extension's native-messaging host (`src/native_host/`). |
+| `crates/wye` | The `wye` binary: `service` (runs `wye-service`), `open` (hands links to the service, or routes them itself when it cannot be reached), `test`, `browsers`, `default`, `config`, and the service clients `clipboard`, `menu`, `settings`, `debug`, `extension`. |
+| `crates/wye-native-host` | The browser extension's native-messaging host `wye-native-host` (library and binary); `wye extension install\|remove` uses its `install` module. |
 | `crates/wye-script` | The transform-script engine (QuickJS through `rquickjs`) for the global and per-rule scripts, with its limits, the `URL` prelude and the result diff. Used by the service. |
 | `crates/wye-ui` | The Qt/Kirigami UI host (cxx-qt) that owns `dev.soldunov.wye.Ui` and shows the picker, the tray-menu popup, Settings, the script editor and the onboarding, about and history windows. A D-Bus client of the service; holds no routing logic. |
 | `frontends/plasma/` | The Plasma 6 tray applet `dev.soldunov.wye` (pure QML) and its offscreen tests. |
 | `frontends/extension/` | The Firefox and Chromium browser extension: one set of files, a manifest per family. |
-| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user unit (`data/systemd/wye.service.in`). |
+| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user units (`data/systemd/wye.service.in`, `data/systemd/wye-ui.service.in`). |
 | `nix/`, `flake.nix` | Package (crane; `frontends.nix` adds the applet and the extension zips), the `programs.wye` modules for home-manager and NixOS (`hm-module.nix`, `nixos-module.nix`, shared `channel.nix`), the release record `release.json` and the checks: clippy, tests (including `crates/wye/tests/e2e.rs`), fmt, deny, machete, source and installed desktop entry, installed D-Bus files, qmllint, the UI self-test, the applet lint, load and D-Bus smoke tests, the extension manifests, module evaluation for both channels and nixfmt. Also the dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
 
 ## Design decisions
@@ -31,8 +32,8 @@ API in [dbus-api.md](dbus-api.md). KDE Plasma comes first.
 
 | Process | Binary | Bus name | Started by |
 |---------|--------|----------|------------|
-| Service | `wye service` (crate `wye` over the `wye-service` library) | `dev.soldunov.wye` | D-Bus activation (`SystemdService=wye.service`), the XDG autostart entry when "Launch at login" is on, or the tray applet |
-| UI host | `wye-ui` (cxx-qt, Kirigami) | `dev.soldunov.wye.Ui` | D-Bus activation by the service; stays resident once started |
+| Service | `wye service` (crate `wye` over the `wye-service` library) | `dev.soldunov.wye` | D-Bus activation (`SystemdService=wye.service`); at login, the unit's `WantedBy=graphical-session.target` when a Nix module installs it (`WYE_LOGIN_MANAGED=1`), else the XDG autostart entry when "Launch at login" is on; or the tray applet |
+| UI host | `wye-ui` (cxx-qt, Kirigami) | `dev.soldunov.wye.Ui` | D-Bus activation by the service (`SystemdService=wye-ui.service`, never at login); stays resident once started |
 | Plasma tray | plasmoid `dev.soldunov.wye` (pure QML) | none | plasmashell |
 | SNI tray | inside the service | ksni's own | the service, unless a tray host called `RegisterTray` (5 s grace on KDE) |
 | Link handler fallback | `wye open %U` | none | launchers that do not honour `DBusActivatable` |
@@ -41,7 +42,9 @@ Single instance: the service requests its name with `DoNotQueue` and exits with 
 when the name is taken; `wye.service` lists 75 in `RestartPreventExitStatus=` and uses
 `KillMode=process`, so launched browsers survive a restart (LAUNCH-06). The service serves
 its objects before requesting the name, so the very first call of a bus activation is
-answered.
+answered. It claims `dev.soldunov.wye` before asking the session anything slow; lock, clipboard, held-key, pointer and focus detection then run within 3 s
+each, the shortcuts portal within 20 s in the background
+(`crates/wye-service/src/platform/session.rs`).
 
 Structured data travels as JSON in `s` values (camelCase), described by the serde types in
 `wye-api`, because the QML applet parses JSON far more easily than nested D-Bus structs.
@@ -54,10 +57,10 @@ clipboard, global shortcuts, HTTP) sits behind a trait in
 `crates/wye-service/src/platform/mod.rs`, with a no-op implementation and a fake, so the
 service is tested on a private `dbus-daemon` without a desktop.
 
-The link path, `Activate`, `ActivateAction`, `ShowWindow` and `Quit` are implemented;
-the other members still answer `dev.soldunov.wye.Error.NotImplemented` (a temporary error
-name) until their topics land. `wye service` runs the service and stops when it loses its
-bus name or its bus connection; `wye service --activate` only asks the bus to start it.
+Every member of [dbus-api.md](dbus-api.md) is implemented.
+`dev.soldunov.wye.Error.NotImplemented` stays in the contract for a client that talks to an
+older service. `wye service` runs the service and stops when it loses its bus name or its
+bus connection; `wye service --activate` only asks the bus to start it.
 
 ### How a link reaches the service
 
@@ -71,28 +74,36 @@ bus name or its bus connection; `wye service --activate` only asks the bus to st
    `XDG_ACTIVATION_TOKEN`/`DESKTOP_STARTUP_ID`, and calls `OpenLink` for each link, bounded
    by 3 s including bus activation. Without a desktop ID it also sends its parent's PID, so
    the service can match the executable against the installed apps. When no service
-   answers (no session bus, no service installed, a timeout, `NotImplemented`), `wye open`
-   routes the link itself with the picker stand-in, so a link is never lost. A link the
-   service refused (exit 2) or failed to launch (exit 1) is not retried: the service has
-   already told the user.
+   exists or can be started (no session bus, `ServiceUnknown`/`NameHasNoOwner`, a failed
+   activation, `NotImplemented` from an older service), `wye open` routes the link itself
+   with the service's own hooks (short-link expansion, transform scripts;
+   `wye_service::offline::OfflineHooks`) and `finish`, with the picker stand-in; held keys
+   and the lock state are unknown there. A call that was sent but not answered within 3 s
+   is never repeated: the service may still open the link. A link the service refused
+   (exit 2) or failed to launch (exit 1) is not retried either: the service has already
+   told the user.
 
-In the service a link goes through `crates/wye-service/src/api/link.rs`: the
-configuration, the state and the installed apps are read for each link (one function,
-`Snapshot::load`, until a cached and watched copy replaces it), the pipeline runs on a
-blocking thread (`resolve_with` and `finish` with no hooks yet), and the command line is
-built by `wye_desktop::build_command`. The `Launcher` starts it with the activation token
+In the service a link goes through `crates/wye-service/src/api/link.rs`: it takes a
+`Snapshot` of the cached configuration, the installed apps and the remembered default
+browser (`api/config.rs`, `snapshot`), runs the pipeline on a blocking thread
+(`resolve_with` and `finish`, with the expansion and transform-script hooks of
+`api/link/hooks.rs`), and builds the command line with `wye_desktop::build_command`. The `Launcher` starts it with the activation token
 set (or removed for a background launch, LAUNCH-03/04), and the `ScopeManager` moves the
 child into a transient scope `app-wye-<escaped desktop ID>-<random>.scope` through the
 user manager's `StartTransientUnit` (LAUNCH-06; failure is logged, and `KillMode=process`
 is the backstop). A launch that fails notifies with buttons for up to three other
-available targets (LAUNCH-07); a rejected link notifies with the reason (PIPE-02).
+available targets (LAUNCH-07); the service remembers the last 8 such notifications for
+their buttons and forgets older ones. A rejected link notifies with the reason (PIPE-02).
 Notifications use a small `org.freedesktop.Notifications` client with the `desktop-entry`
 hint. Lock state combines logind's `LockedHint` for the user's graphical session with
 `org.freedesktop.ScreenSaver.ActiveChanged`; a link that needs the picker while the screen
 is locked waits for the unlock (PKS-07), a newer one replacing it.
 
-A link that needs the picker goes to one function, `to_picker`, which is where the picker
-broker plugs in; until then it opens with the stand-in (see "Interim picker fallback").
+A link that needs the picker goes to one function, `to_picker`, which hands it to the
+picker broker (`api/picker.rs`): a `PickerRequest` sent with `PickerHost1.ShowPicker` to
+`wye-ui`, answered with `PickerChose`, `PickerCancelled` or `PickerAction`. A newer link
+replaces the pending one (PICK-27). When the UI host cannot be reached, the link opens with
+the stand-in (see "Picker fallback").
 
 ### Configuration and state
 
@@ -130,7 +141,9 @@ The current default is the first *installed* desktop ID listed for
 `x-scheme-handler/https` in the `mimeapps.list` lookup order, as the mime-apps specification
 says; IDs whose entry is missing are skipped. `wye default unset` changes nothing (and
 exits 0, saying so) when Wye is no longer the default, so a browser the user chose since is
-never overwritten; the remembered browser is kept.
+never overwritten; the remembered browser is kept. On Plasma, `BrowserApplication` in
+`kdeglobals` is written through `kwriteconfig6` when it is available, else with an atomic
+write.
 
 ### Startup notification
 
@@ -334,23 +347,25 @@ directly (KEY-51).
 `wye@soldunov.dev`, event page) and Chromium (`manifest.chromium.json`, a fixed `key`
 that makes the ID `lphepmclmllmbbkjkdhjbdgbjfpmmdnn`, service worker); `build.sh`
 assembles one family's unpacked extension. It sends links and pages to the
-native-messaging host `wye-native-host` (second binary of crate `wye`,
-`src/native_host/`), which reads length-prefixed JSON, takes the browser (its parent
+native-messaging host `wye-native-host` (crate `crates/wye-native-host`), which reads length-prefixed JSON, takes the browser (its parent
 process) as the source app and the click's held keys when the browser reports them
 (Firefox), and calls `OpenLink` with `entry = "extension"`; the pipeline forces the picker
 unless the bypass key is held (ADV-10, ADV-11). `wye_desktop::native_messaging` writes the
 host manifest into every detected browser's directory (`NativeMessagingHosts/` for the
 Chromium family, `native-messaging-hosts/` for the Firefox family), naming the host by
 its `PATH` location so upgrades keep it valid; `wye extension install|remove` and
-`wye-native-host --install|--remove` run it (`crates/wye/src/native_host/install.rs`,
-included by both binaries). Flatpak and Snap browsers are not supported.
+`wye-native-host --install|--remove` run it (`crates/wye-native-host/src/install.rs`,
+used by both). Flatpak and Snap browsers are not supported.
 
-### Interim picker fallback
+### Picker fallback
 
-While no picker surface exists, a link that resolves to the Picker opens in the remembered
-previous default browser. Otherwise it opens in the first shown browser, then the first
-discovered browser. The service logs it (`crates/wye-service/src/api/picker_fallback.rs`);
-`wye open`, when it routes a link itself, prints a warning.
+When the picker cannot be shown (the UI host cannot be reached within 10 s, or `wye open`
+routes a link itself without a service), a link that resolves to the Picker opens in the
+remembered previous default browser, else the first shown browser, else the first
+discovered browser (`wye_desktop::stand_in::choose`). The service notifies
+(`crates/wye-service/src/api/picker_fallback.rs`); `wye open` prints a warning
+(`crates/wye/src/commands/open.rs`). The chooser both share is
+`crates/wye-desktop/src/stand_in.rs`.
 
 ### Packaging and channels (decision 11)
 
@@ -361,16 +376,24 @@ under `share/wye/extension`. `packages.<system>.wye-release` exists once `nix/re
 records `{version, rev, narHash}`; it is the `default` package of that tag's own flake,
 fetched with the locked reference `github:psoldunov/wye/<rev>?narHash=<hash>` through
 `builtins.getFlake`, which pure evaluation accepts because the reference is locked. An old
-release therefore never meets newer packaging. `.github/workflows/release.yml` writes
+release therefore never meets newer packaging. The modules, though, always come from the
+flake the user locked, so they rely only on the package layout every release keeps; the
+contract is listed in `nix/channel.nix`. `.github/workflows/release.yml` writes
 the file through a pull request after tagging.
 
 `nix/channel.nix` gives the home-manager and NixOS modules the same `programs.wye.channel`
 (`release` | `git`, default `release` when a release is recorded) and
 `programs.wye.package` (default per channel, overridable). Asking for `release` before one
 exists fails with an assertion. The home-manager module also writes `config.toml` from
-`settings`, the systemd user unit, the D-Bus files, `xdg.mimeApps` and the `kdeglobals`
-browser; the NixOS module wires the package into `environment.systemPackages`,
-`services.dbus.packages` and `systemd.packages`. Native-messaging manifests are written
+`settings` (only when set; the file is then read-only), the systemd user units `wye` and
+`wye-ui`, the D-Bus files, `xdg.mimeApps` (with added associations for local HTML files,
+DEF-07) and the `kdeglobals` browser; the NixOS module wires the package into
+`environment.systemPackages`, `services.dbus.packages` and `systemd.packages`. Both own
+login start (GEN-01) through the unit's `WantedBy`, controlled by `launchAtLogin`, and set
+`WYE_LOGIN_MANAGED=1` on it, so the service never writes or removes the XDG autostart entry
+and Settings shows "Launch at login" as managed. Both prepend the Nix profile directories to
+a `PATH` that ends in `/usr/local/bin:/usr/bin:/bin`, which bare desktop-entry `Exec`s are
+resolved against. Native-messaging manifests are written
 at run time by `wye-native-host --install`, not by Nix.
 
 ## Not yet implemented
@@ -379,18 +402,24 @@ at run time by `wye-native-host --install`, not by Nix.
   extension for the StatusNotifierItem, and held keys, the pointer and the focused window
   have no GNOME source. The reserved `PickerHost1`, `SessionHelper1` and `RegisterTray`
   contract is where it will plug in.
-- Focused window and pointer on Sway and Hyprland (compositor IPC)
+- The `SessionHelper1` interface (reserved for that extension; no implementation)
+- Focused window and pointer on Sway and Hyprland (compositor IPC); held keys there come
+  from layer shell only
 - Global shortcuts by X11 key grabs; shortcuts need the `GlobalShortcuts` portal
 - An AppImage (decision 5); Nix is the only package, through the flake and the home-manager
   and NixOS modules
-- The browser extension and profile discovery for Flatpak and Snap browsers
+- The browser extension for Flatpak and Snap browsers: their sandbox cannot start
+  `wye-native-host` (profile discovery does cover the Flatpak and Snap builds listed in
+  `crates/wye-desktop/src/family.rs`)
 
 ## Runtime files
 
 | Path | Contents |
 |------|----------|
 | `$XDG_CONFIG_HOME/wye/config.toml` | User configuration. Hand-edited. |
-| `$XDG_STATE_HOME/wye/state.toml` | Internal state: the previous default browser (`previous-default-browser`). |
+| `$XDG_STATE_HOME/wye/state.toml` | Internal state: the browsers to restore (`previous-default-browser`, `previous-kdeglobals-browser`), `kept-default`, onboarding and UI state, and the script errors already notified (`script-errors-notified`). |
+| `$XDG_STATE_HOME/wye/history.json` | Recent links (DLG-HIS), newest first, at most 100 entries (decision 10). |
+| `$XDG_CONFIG_HOME/autostart/dev.soldunov.wye.desktop` | The XDG autostart entry (`wye service --activate`) while "Launch at login" is on, unless a Nix module owns login start. |
 | `$XDG_CONFIG_HOME/mimeapps.list` | Default browser association, written by `wye default set`. |
 | `$XDG_RUNTIME_DIR/wye/kwin/wye-query-<nonce>.js` | One `KWin` query script, only while its query runs. |
 | `$XDG_CONFIG_HOME/wye/transform.js` | The global transform script (ADV-03). Hand-editable. |

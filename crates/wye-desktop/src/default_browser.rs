@@ -8,6 +8,9 @@ use std::path::{Path, PathBuf};
 
 use wye_core::DesktopId;
 
+mod added;
+
+pub use self::added::remove_html_association;
 use crate::discovery::find_entry;
 use crate::xdg::XdgDirs;
 use crate::{atomic, keyfile};
@@ -166,6 +169,13 @@ pub fn set_default(
         let text = read_existing(&path)?.unwrap_or_default();
         let pairs: Vec<(&str, &str)> = keys.iter().map(|mime| (*mime, id.as_str())).collect();
         let text = set_keys(&text, DEFAULTS_GROUP, &pairs);
+        // DEF-07: KService only honours a default the app is associated
+        // with, and Wye's desktop entry does not claim HTML files.
+        let text = if include_html && path == main {
+            added::associate(&text, &HTML_TYPES, id)
+        } else {
+            text
+        };
         atomic::write(&path, text.as_bytes(), Some(&path))
             .map_err(|source| DefaultBrowserError::Io { path, source })?;
     }
@@ -271,6 +281,24 @@ pub(crate) fn ensure_writable(path: &Path) -> Result<(), DefaultBrowserError> {
             source,
         }),
     }
+}
+
+/// Removes every `key=` line of `group`, keeping all other lines.
+pub(crate) fn remove_key(text: &str, group: &str, key: &str) -> String {
+    let mut in_group = false;
+    text.split_inclusive('\n')
+        .filter(|line| {
+            let trimmed = line.trim();
+            if let Some(name) = keyfile::group_header(trimmed) {
+                in_group = name == group;
+                return true;
+            }
+            let is_key = trimmed
+                .split_once('=')
+                .is_some_and(|(name, _)| name.trim_end() == key);
+            !(in_group && is_key)
+        })
+        .collect()
 }
 
 #[cfg(test)]

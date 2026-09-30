@@ -30,15 +30,21 @@ pub struct RowView {
     pub target: Value,
 }
 
-/// The rules in `GetConfig`'s JSON; none when it has none or does not
-/// parse.
-#[must_use]
-pub fn rules_of(config_json: &str) -> Vec<Rule> {
-    serde_json::from_str::<Value>(config_json)
-        .ok()
-        .and_then(|config| config.get("rules").cloned())
-        .and_then(|rules| serde_json::from_value(rules).ok())
-        .unwrap_or_default()
+/// The rules in `GetConfig`'s JSON; none when it has none.
+///
+/// # Errors
+///
+/// When the text is not a configuration or its rules cannot be read. A
+/// change built on "no rules" instead would save an empty list and delete
+/// every rule, so the caller builds none.
+pub fn rules_of(config_json: &str) -> Result<Vec<Rule>, String> {
+    let config: Value = serde_json::from_str(config_json)
+        .map_err(|error| format!("the configuration is not JSON: {error}"))?;
+    match config.get("rules") {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(rules) => serde_json::from_value(rules.clone())
+            .map_err(|error| format!("the rules cannot be read: {error}")),
+    }
 }
 
 /// Names by desktop ID from `GetApps(true)`'s JSON (or the fixture's).
@@ -229,12 +235,14 @@ mod tests {
             {"name": "B"}
         ]})
         .to_string();
-        let rows = rows(&rules_of(&config), &names());
+        let rows = rows(&rules_of(&config).expect("rules"), &names());
         assert_eq!(rows.len(), 2);
         assert!(!rows[0].enabled);
         assert_eq!(rows[0].target, json!({"app": "firefox.desktop"}));
         assert_eq!(rows[1].index, 1);
-        assert!(rules_of("nope").is_empty());
+        assert!(rules_of("nope").is_err(), "not a configuration");
+        assert!(rules_of(r#"{"rules": [{"enabled": "yes"}]}"#).is_err());
+        assert_eq!(rules_of("{}"), Ok(Vec::new()));
         assert!(app_names("nope").is_empty());
     }
 }

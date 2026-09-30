@@ -112,13 +112,19 @@ impl PickerState {
     }
 
     /// A key press (PICK-21, PICK-22, KEY-13, KEY-22).
+    ///
+    /// Every key event says what is held now, so it replaces the modifiers
+    /// the request reported: a modifier released before the picker had the
+    /// keyboard sends no release event of its own (KEY-13).
     pub fn key(self, press: &QtKey) -> (Self, Effect) {
+        let state = self.with_held(keys::modifiers(press.modifiers));
         if press.is_modifier() {
-            return (
-                self.with_held(keys::modifiers(press.modifiers)),
-                Effect::None,
-            );
+            return (state, Effect::None);
         }
+        state.dispatch(press)
+    }
+
+    fn dispatch(self, press: &QtKey) -> (Self, Effect) {
         let outcome = self
             .view
             .keymap

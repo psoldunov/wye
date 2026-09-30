@@ -164,7 +164,7 @@ impl SettingsBackend {
         );
         match built {
             Ok(patch) => self.save(&patch),
-            Err(message) => self.set_error(q(&message)),
+            Err(message) => self.show_message("", &message),
         }
     }
 
@@ -192,7 +192,7 @@ impl SettingsBackend {
         );
         match built {
             Ok(patch) => self.save(&patch),
-            Err(message) => self.set_error(q(&message)),
+            Err(message) => self.show_message("", &message),
         }
     }
 

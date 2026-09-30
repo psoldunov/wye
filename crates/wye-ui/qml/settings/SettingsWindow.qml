@@ -186,19 +186,25 @@ Kirigami.ApplicationWindow {
         target: SettingsBackend
     }
 
+    // Changes made elsewhere (`wye default`, a new browser) show without a
+    // restart: while the window is on screen, the backend reads what the
+    // service announces (PropertiesChanged); when it comes back, all of it.
     onVisibleChanged: {
+        SettingsBackend.live = visible;
         if (visible) {
             SettingsBackend.refresh();
         }
     }
+    // Anything the service changed without announcing it shows once the
+    // user returns to the window.
+    onActiveChanged: {
+        if (active && !SettingsBackend.offline) {
+            SettingsBackend.poll();
+        }
+    }
 
-    // Changes made elsewhere (`wye default`, a new browser) show without a restart.
-    Timer {
-        interval: 2000
-        repeat: true
-        running: window.visible && !SettingsBackend.offline
-
-        onTriggered: SettingsBackend.poll()
+    WyeErrorText {
+        id: errors
     }
 
     // SET-07, KEY-50. While a sheet or menu is open, Escape closes that first.
@@ -365,7 +371,7 @@ Kirigami.ApplicationWindow {
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
                     Layout.margins: Kirigami.Units.largeSpacing
-                    text: SettingsBackend.error
+                    text: errors.describe(SettingsBackend.errorKind, SettingsBackend.error)
                     type: Kirigami.MessageType.Error
                     visible: SettingsBackend.error !== ""
 
@@ -381,7 +387,7 @@ Kirigami.ApplicationWindow {
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
                     Layout.margins: Kirigami.Units.largeSpacing
-                    text: SettingsBackend.connectionError
+                    text: errors.describe(SettingsBackend.connectionErrorKind, SettingsBackend.connectionError)
                     type: Kirigami.MessageType.Warning
                     visible: SettingsBackend.connectionError !== ""
                 }

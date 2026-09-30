@@ -17,13 +17,13 @@ impl Removed {
         self.entries.is_empty()
     }
 
-    /// "Deleted “GitHub”" or "Deleted 3 rules".
+    /// How many rules went, and the name of the one when it was one: QML
+    /// words the toast ("Deleted “GitHub”", "Deleted 3 rules").
     #[must_use]
-    pub fn describe(&self) -> String {
+    pub fn summary(&self) -> (usize, &str) {
         match self.entries.as_slice() {
-            [] => String::new(),
-            [(_, rule)] => format!("Deleted \u{201c}{}\u{201d}", rule.name),
-            entries => format!("Deleted {} rules", entries.len()),
+            [(_, rule)] => (1, rule.name.as_str()),
+            entries => (entries.len(), ""),
         }
     }
 
@@ -41,9 +41,13 @@ impl Removed {
 }
 
 /// The patch that saves `rules`.
-#[must_use]
-pub fn patch(rules: &[Rule]) -> Value {
-    json!({ "rules": serde_json::to_value(rules).unwrap_or_else(|_| json!([])) })
+///
+/// # Errors
+///
+/// When a rule cannot be written as JSON; an empty list in its place would
+/// delete every rule.
+pub fn patch(rules: &[Rule]) -> Result<Value, serde_json::Error> {
+    Ok(json!({ "rules": serde_json::to_value(rules)? }))
 }
 
 /// RUL-07: rule `index` turned on or off.
@@ -164,10 +168,10 @@ mod tests {
     fn rul_06_removal_can_be_undone() {
         let (rest, removed) = removed(&abc(), 1);
         assert_eq!(names(&rest), ["a", "c"]);
-        assert_eq!(removed.describe(), "Deleted \u{201c}b\u{201d}");
+        assert_eq!(removed.summary(), (1, "b"));
         assert_eq!(names(&removed.restored(&rest)), ["a", "b", "c"]);
         let all = all_removed(&abc());
-        assert_eq!(all.describe(), "Deleted 3 rules");
+        assert_eq!(all.summary(), (3, ""));
         assert_eq!(names(&all.restored(&[])), ["a", "b", "c"]);
         assert!(super::removed(&abc(), 9).1.is_empty());
     }
@@ -192,7 +196,7 @@ mod tests {
     fn rul_20_saving_replaces_or_appends() {
         assert_eq!(names(&saved(&abc(), Some(1), rule("B"))), ["a", "B", "c"]);
         assert_eq!(names(&saved(&abc(), None, rule("d"))), ["a", "b", "c", "d"]);
-        let patch = patch(&[rule("a")]);
+        let patch = patch(&[rule("a")]).expect("a patch");
         assert_eq!(patch["rules"][0]["name"], "a");
     }
 }

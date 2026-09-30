@@ -324,6 +324,14 @@ fn async_functions_are_awaited() {
 }
 
 #[test]
+fn scr_23_a_promise_that_never_settles_says_so() {
+    let source =
+        "export default async function transform(url) { await new Promise(() => {}); return url; }";
+    let result = outcome(source, "https://a.example/");
+    assert!(result.contains("promise never settled"), "{result}");
+}
+
+#[test]
 fn scr_07_syntax_errors_have_a_position() {
     let error = check("export default function transform(url) {\n  return url.;\n}\n")
         .expect_err("does not compile");

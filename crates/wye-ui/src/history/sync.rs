@@ -11,11 +11,16 @@ use wye_api::proxy::Wye1Proxy;
 use wye_api::targets::TargetInventory;
 use wye_api::{Error, json};
 
-/// The merge patch that switches history on (ADV-09).
-const TURN_ON_PATCH: &str = r#"{"advanced":{"history":true}}"#;
+use crate::settings::save::{self, ConfigApi};
 
-/// The service calls the history window makes.
-pub trait Api: Sync {
+/// The merge patch that switches history on (ADV-09).
+fn turn_on_patch() -> serde_json::Value {
+    serde_json::json!({"advanced": {"history": true}})
+}
+
+/// The service calls the history window makes; saving is
+/// [`crate::settings::save`].
+pub trait Api: ConfigApi {
     fn history_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
     fn inventory_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
     fn get_history(&self) -> impl Future<Output = Result<String, Error>> + Send;
@@ -27,12 +32,6 @@ pub trait Api: Sync {
         id: u64,
         how: &str,
     ) -> impl Future<Output = Result<(), Error>> + Send;
-    fn get_config(&self) -> impl Future<Output = Result<(String, u64), Error>> + Send;
-    fn update_config(
-        &self,
-        patch: &str,
-        base: u64,
-    ) -> impl Future<Output = Result<u64, Error>> + Send;
     fn show_window(
         &self,
         window: &str,
@@ -67,14 +66,6 @@ impl Api for Wye1Proxy<'_> {
 
     async fn reopen_history_entry(&self, id: u64, how: &str) -> Result<(), Error> {
         Wye1Proxy::reopen_history_entry(self, id, how).await
-    }
-
-    async fn get_config(&self) -> Result<(String, u64), Error> {
-        Wye1Proxy::get_config(self).await
-    }
-
-    async fn update_config(&self, patch: &str, base: u64) -> Result<u64, Error> {
-        Wye1Proxy::update_config(self, patch, base).await
     }
 
     async fn show_window(&self, window: &str, argument: &str) -> Result<(), Error> {
@@ -185,8 +176,8 @@ pub async fn run<A: Api>(api: &A, action: Action, known: Known) -> Result<Option
             known
         }
         Action::TurnOn => {
-            let (_, revision) = api.get_config().await?;
-            api.update_config(TURN_ON_PATCH, revision).await?;
+            // A switch set outright: no revision to check (SET-06).
+            save::save(api, &save::Change::unchecked(turn_on_patch())).await?;
             // The switch may not bump `HistoryRevision`: read everything.
             Known::default()
         }

@@ -29,8 +29,6 @@ pub struct Link {
     pub url: String,
     /// The held modifiers, or `None` when the browser does not say.
     pub held: Option<Vec<Modifier>>,
-    /// Whether the user sent the page rather than a link on it.
-    pub page: bool,
 }
 
 #[derive(Deserialize)]
@@ -97,15 +95,14 @@ pub fn parse(body: &[u8]) -> Result<Request, String> {
     if url.len() > MAX_URL {
         return Err(format!("the URL is longer than {MAX_URL} bytes"));
     }
-    let page = match wire.page_or_link.as_deref() {
-        None | Some("link") => false,
-        Some("page") => true,
+    // A page and a link on it route the same way; the value is only checked.
+    match wire.page_or_link.as_deref() {
+        None | Some("link" | "page") => {}
         Some(other) => return Err(format!("unknown pageOrLink `{other}`")),
-    };
+    }
     Ok(Request::Open(Link {
         url,
         held: wire.modifiers.map(|names| held(&names)),
-        page,
     }))
 }
 
@@ -143,7 +140,6 @@ mod tests {
             Request::Open(Link {
                 url: "https://a.example/".into(),
                 held: Some(vec![Modifier::Shift, Modifier::Ctrl]),
-                page: false,
             })
         );
     }
@@ -166,7 +162,6 @@ mod tests {
         else {
             panic!("not a link");
         };
-        assert!(link.page);
         assert_eq!(link.held, None);
     }
 

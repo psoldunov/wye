@@ -1,7 +1,6 @@
 //! Writing and deleting the host manifests of every detected browser
 //! (BEXT-04), through `wye_desktop::native_messaging`: `wye extension
-//! install|remove` and `wye-native-host --install|--remove` both run this
-//! file (each binary includes it).
+//! install|remove` and `wye-native-host --install|--remove` both run it.
 
 use std::io::{self, Write};
 use std::path::Path;

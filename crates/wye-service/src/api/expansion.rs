@@ -22,14 +22,18 @@ pub use crate::platform::http::Resolver;
 /// `advanced.expansion.timeout-ms` from now (DLG-EXP-04).
 #[must_use]
 pub fn resolver(ctx: &ServiceContext, config: &Config) -> Resolver {
+    Resolver::new(ctx.platform().http.clone(), timeout(config))
+}
+
+/// The whole-chain deadline of short-link expansion (DLG-EXP-04), within
+/// the allowed range.
+#[must_use]
+pub(crate) fn timeout(config: &Config) -> Duration {
     let timeout = config.advanced.expansion.timeout_ms.clamp(
         *wye_core::config::ExpansionSettings::TIMEOUT_RANGE.start(),
         *wye_core::config::ExpansionSettings::TIMEOUT_RANGE.end(),
     );
-    Resolver::new(
-        ctx.platform().http.clone(),
-        Duration::from_millis(u64::from(timeout)),
-    )
+    Duration::from_millis(u64::from(timeout))
 }
 
 /// DLG-EXP-04: when `advanced.expansion.notify-on-failure` (`enabled`) is on and a short

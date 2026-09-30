@@ -22,6 +22,7 @@ mod about;
 mod bridge;
 mod cli;
 mod dispatch;
+mod error_text;
 mod history;
 mod host;
 mod onboarding;
@@ -34,6 +35,8 @@ mod selftest;
 mod service;
 mod settings;
 mod surface;
+#[cfg(test)]
+mod test_bus;
 mod tray_menu;
 
 use std::process::ExitCode;

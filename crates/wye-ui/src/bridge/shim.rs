@@ -1,5 +1,6 @@
 //! The C++ shim in `cpp/wye_shim.{h,cpp}` (design B): the application
-//! object, blur behind a window and xdg-activation tokens.
+//! object and xdg-activation tokens. The picker declares the shim's blur
+//! itself (`super::picker`).
 //!
 //! Only [`super::window_effects`] and `crate::qt_app` call it.
 
@@ -32,11 +33,6 @@ pub mod ffi {
         #[namespace = "wye"]
         #[cxx_name = "applicationExec"]
         fn application_exec() -> i32;
-
-        /// Blur behind `window`; false when the compositor cannot.
-        #[namespace = "wye"]
-        #[cxx_name = "blurBehind"]
-        fn blur_behind(window: Pin<&mut QWindow>, enable: bool) -> bool;
 
         /// Request an activation token; `receiver` gets the signal
         /// `activationTokenReady(QString)`. False when not on Wayland.

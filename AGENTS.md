@@ -14,11 +14,12 @@ window or desktop app, or asks with a small picker. The specification is in
 | `crates/wye-api` | The D-Bus contract: bus/interface/error names, JSON payload types (serde, camelCase), zbus proxies. See [docs/dbus-api.md](docs/dbus-api.md). |
 | `crates/wye-script` | The transform-script engine (QuickJS through `rquickjs`): global and per-rule scripts, limits, diffs. |
 | `crates/wye-service` | The session service library behind `wye service`: `bus/` interface impls delegate to one `api/<topic>.rs` per topic; `platform/` holds session integrations behind traits, with no-op and fake implementations. |
-| `crates/wye` | The `wye` binary and CLI, and `wye-native-host`, the browser extension's native-messaging host. Its `tests/e2e.rs` runs the real service on a private bus. |
+| `crates/wye` | The `wye` binary and CLI. Its `tests/e2e.rs` runs the real service on a private bus. |
+| `crates/wye-native-host` | The browser extension's native-messaging host `wye-native-host` (library and binary); `wye extension install\|remove` uses its `install` module. |
 | `crates/wye-ui` | The Qt/Kirigami UI host `wye-ui` (cxx-qt): picker, tray-menu popup, Settings, script editor, onboarding, about and history windows. UI conventions: [crates/wye-ui/README.md](crates/wye-ui/README.md). |
 | `frontends/plasma/` | The Plasma 6 tray applet `dev.soldunov.wye` (pure QML) and its tests. |
 | `frontends/extension/` | The Firefox and Chromium extension (one set of files, one manifest per family). See its README. |
-| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user unit; `kwin/` the KWin query script. |
+| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`); `kwin/` the KWin query script. |
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (applet and extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `.github/workflows/` | `ci.yml` (`nix flake check`, advisories), `rust-doctor.yml`, `release.yml` (tag build, GitHub release, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
@@ -72,3 +73,12 @@ and opens a pull request that writes the tag's commit and content hash to
 `nix/release.json`. Merging that pull request is what makes `programs.wye.channel =
 "release"` the default. Never edit `nix/release.json` by hand. The workflow needs the
 repository setting "Allow GitHub Actions to create and approve pull requests".
+
+A pull request opened with `GITHUB_TOKEN` does not start other workflows, so `ci.yml` does
+not run on it by itself: close and reopen it (or push a commit to it) to run the checks
+before merging. Re-running the workflow is safe: the record step replaces its
+`release/vX.Y.Z` branch and reuses an open pull request.
+
+The modules of a newer flake may install an older release's package, so the package layout
+they rely on is a contract (listed in `nix/channel.nix`): add paths, never move or rename
+them.

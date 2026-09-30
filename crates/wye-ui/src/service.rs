@@ -3,16 +3,25 @@
 //!
 //! Qt objects never block on D-Bus. A backend calls [`request`] with its
 //! `CxxQtThread`; the call runs on the runtime and its result is queued back
-//! onto the Qt thread, where the backend updates its properties.
+//! onto the Qt thread, where the backend updates its properties. A window
+//! that shows what the service holds calls [`watch`] once instead of
+//! polling: the service announces every property change
+//! (`PropertiesChanged`, `docs/dbus-api.md`), and [`follow`] carries any
+//! other signal stream the same way.
 
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use cxx_qt::{CxxQtThread, Threading};
+use futures_lite::{Stream, StreamExt as _, stream};
 use tokio::runtime::Runtime;
 use wye_api::Error;
+use wye_api::names::{BUS_NAME, INTERFACE, OBJECT_PATH};
 use wye_api::proxy::Wye1Proxy;
+use zbus::fdo::{DBusProxy, PropertiesProxy};
+use zbus::proxy::CacheProperties;
 
 /// One worker is plenty: every call is I/O-bound and short.
 const WORKER_THREADS: usize = 1;
@@ -86,8 +95,115 @@ where
     let Some(connection) = connection else {
         return Err(Error::failed("not connected to the session bus"));
     };
-    let proxy = Wye1Proxy::new(connection).await?;
+    // A proxy per call, without the property cache: a cached proxy would
+    // subscribe to `PropertiesChanged` and fetch every property (`GetAll`)
+    // before the first read, only to drop it all again.
+    let proxy = Wye1Proxy::builder(connection)
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?;
     work(proxy).await
+}
+
+/// Follow a signal stream for as long as the object `thread` came from
+/// lives: `open` subscribes on the D-Bus thread, and each item reaches
+/// `deliver` on the Qt thread, in order. It stops when the object is gone or
+/// the stream ends (the bus connection closed). Without a connection (the
+/// self-test) there is nothing to follow.
+pub fn follow<T, O, F, S, D>(thread: CxxQtThread<T>, open: O, deliver: D)
+where
+    T: Threading + 'static,
+    O: FnOnce(zbus::Connection) -> F + Send + 'static,
+    F: Future<Output = Result<S, Error>> + Send + 'static,
+    S: Stream + Unpin + Send + 'static,
+    S::Item: Send + 'static,
+    D: Fn(Pin<&mut T>, S::Item) + Send + Sync + 'static,
+{
+    let Some(connection) = CONNECTION.get().cloned() else {
+        return;
+    };
+    let runtime = match runtime() {
+        Ok(runtime) => runtime,
+        Err(error) => {
+            tracing::warn!(%error, "no D-Bus runtime to follow the service on");
+            return;
+        }
+    };
+    let deliver = Arc::new(deliver);
+    runtime.spawn(async move {
+        let mut items = match open(connection).await {
+            Ok(items) => items,
+            Err(error) => {
+                tracing::info!(%error, "cannot follow the service");
+                return;
+            }
+        };
+        while let Some(item) = items.next().await {
+            let deliver = Arc::clone(&deliver);
+            if thread.queue(move |object| deliver(object, item)).is_err() {
+                // The object is gone: nobody left to tell.
+                break;
+            }
+        }
+    });
+}
+
+/// Call `changed` on the Qt thread whenever one of `properties` of
+/// `dev.soldunov.wye1` changes, when the service starts or stops (a new
+/// service starts over), and once as soon as the subscription stands, for
+/// anything that changed while it was being set up. A burst of changes (one
+/// configuration change moves `ConfigRevision`, `Status` and `Tray`)
+/// arrives as one call. `changed` reads what it needs itself.
+pub fn watch<T, D>(thread: CxxQtThread<T>, properties: &'static [&'static str], changed: D)
+where
+    T: Threading + 'static,
+    D: Fn(Pin<&mut T>) + Send + Sync + 'static,
+{
+    let queued = Arc::new(AtomicBool::new(false));
+    let delivered = Arc::clone(&queued);
+    follow(
+        thread,
+        move |connection| changes(connection, properties, queued),
+        move |object, ()| {
+            // Cleared before reading, so a change during the read is not lost.
+            delivered.store(false, Ordering::SeqCst);
+            changed(object);
+        },
+    );
+}
+
+/// The stream behind [`watch`]: one item per change worth a reload, none
+/// while the last one still waits on the Qt thread.
+async fn changes(
+    connection: zbus::Connection,
+    properties: &'static [&'static str],
+    queued: Arc<AtomicBool>,
+) -> Result<impl Stream<Item = ()> + Unpin + Send, Error> {
+    let changed = PropertiesProxy::builder(&connection)
+        .destination(BUS_NAME)?
+        .path(OBJECT_PATH)?
+        .cache_properties(CacheProperties::No)
+        .build()
+        .await?
+        .receive_properties_changed()
+        .await?
+        .filter_map(move |signal| {
+            let args = signal.args().ok()?;
+            let ours = args.interface_name.as_str() == INTERFACE
+                && properties.iter().any(|name| {
+                    args.changed_properties.contains_key(name)
+                        || args.invalidated_properties.contains(name)
+                });
+            ours.then_some(())
+        });
+    let owners = DBusProxy::new(&connection)
+        .await?
+        .receive_name_owner_changed_with_args(&[(0, BUS_NAME)])
+        .await?
+        .map(|_| ());
+    Ok(stream::once(())
+        .chain(changed.or(owners))
+        .filter(move |()| !queued.swap(true, Ordering::SeqCst)))
 }
 
 fn queue<T, R, D>(thread: &CxxQtThread<T>, deliver: D, result: Result<R, Error>)
@@ -103,7 +219,105 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
+    use crate::test_bus::PrivateBus;
+
+    /// How long a test waits for an item that should not come.
+    const QUIET: Duration = Duration::from_millis(300);
+
+    /// Two properties of the service's interface.
+    struct FakeService {
+        config_revision: u64,
+        tray: String,
+    }
+
+    #[zbus::interface(name = "dev.soldunov.wye1")]
+    impl FakeService {
+        #[zbus(property)]
+        fn config_revision(&self) -> u64 {
+            self.config_revision
+        }
+
+        #[zbus(property)]
+        fn tray(&self) -> String {
+            self.tray.clone()
+        }
+    }
+
+    async fn next(items: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> {
+        tokio::time::timeout(QUIET, items.next())
+            .await
+            .ok()
+            .flatten()
+    }
+
+    #[tokio::test]
+    async fn set_06_a_watched_property_change_is_announced_once() {
+        let Some(bus) = PrivateBus::start() else {
+            return;
+        };
+        let service = bus
+            .builder()
+            .name(BUS_NAME)
+            .expect("name")
+            .serve_at(
+                OBJECT_PATH,
+                FakeService {
+                    config_revision: 1,
+                    tray: String::new(),
+                },
+            )
+            .expect("served")
+            .build()
+            .await
+            .expect("service");
+        let client = bus.builder().build().await.expect("client");
+        let queued = Arc::new(AtomicBool::new(false));
+        let mut items = changes(client, &["ConfigRevision"], Arc::clone(&queued))
+            .await
+            .expect("subscribed");
+
+        // Once as soon as the subscription stands.
+        assert_eq!(next(&mut items).await, Some(()));
+        queued.store(false, Ordering::SeqCst);
+
+        let iface = service
+            .object_server()
+            .interface::<_, FakeService>(OBJECT_PATH)
+            .await
+            .expect("interface");
+        iface.get_mut().await.config_revision = 2;
+        iface
+            .get()
+            .await
+            .config_revision_changed(iface.signal_emitter())
+            .await
+            .expect("emitted");
+        assert_eq!(next(&mut items).await, Some(()), "a watched property");
+        queued.store(false, Ordering::SeqCst);
+
+        iface.get_mut().await.tray = "{}".to_owned();
+        iface
+            .get()
+            .await
+            .tray_changed(iface.signal_emitter())
+            .await
+            .expect("emitted");
+        assert_eq!(next(&mut items).await, None, "not a watched property");
+
+        // While the last change still waits on the Qt thread, more are one.
+        queued.store(true, Ordering::SeqCst);
+        iface.get_mut().await.config_revision = 3;
+        iface
+            .get()
+            .await
+            .config_revision_changed(iface.signal_emitter())
+            .await
+            .expect("emitted");
+        assert_eq!(next(&mut items).await, None, "coalesced");
+    }
 
     #[test]
     fn without_a_connection_the_call_fails_cleanly() {

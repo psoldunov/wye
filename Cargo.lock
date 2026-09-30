@@ -2383,14 +2383,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "serde",
- "serde_json",
  "tempfile",
  "tokio",
  "tracing-subscriber",
  "wye-api",
  "wye-core",
  "wye-desktop",
+ "wye-native-host",
  "wye-service",
  "zbus",
 ]
@@ -2428,6 +2427,20 @@ dependencies = [
  "thiserror 2.0.21",
  "toml",
  "wye-core",
+]
+
+[[package]]
+name = "wye-native-host"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "wye-api",
+ "wye-core",
+ "wye-desktop",
+ "zbus",
 ]
 
 [[package]]

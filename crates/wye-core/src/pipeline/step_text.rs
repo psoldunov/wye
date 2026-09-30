@@ -22,7 +22,7 @@ impl Step {
         Some(match self {
             Self::Unwrapped { wrapper, url } => format!("Expanded ({wrapper} redirect): {url}"),
             Self::ShortLinkNotExpanded => {
-                "Short link not expanded: network expansion is not available yet".to_owned()
+                "Short link not expanded: network expansion was not used".to_owned()
             }
             Self::ShortLinkExpanded { url } => format!("Expanded (short link): {url}"),
             Self::ShortLinkFailed { reason } => {

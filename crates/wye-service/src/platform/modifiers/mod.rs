@@ -18,9 +18,9 @@ pub mod x11;
 pub mod xkb;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, SystemTime};
 
 use async_trait::async_trait;
 use wye_api::context::Modifier;
@@ -88,12 +88,14 @@ pub fn bindings_need_modifiers(config: &Config, entry: EntryPoint) -> bool {
     alternative || rules || bypass
 }
 
-/// A probe that obeys `advanced.held-keys`, read from `config` on every
-/// probe so a change applies to the next link.
+/// A probe that obeys `advanced.held-keys` in `config`, read again only when
+/// the file changed, so a change applies to the next link.
 pub struct Configured {
     probe: Arc<dyn ModifierSource>,
     config: PathBuf,
     enabled: AtomicBool,
+    /// The setting and the file's modification time it was read at.
+    read: Mutex<Option<(Option<SystemTime>, HeldKeys)>>,
 }
 
 impl Configured {
@@ -104,7 +106,25 @@ impl Configured {
             probe,
             config,
             enabled: AtomicBool::new(setting == HeldKeys::Auto),
+            read: Mutex::new(None),
         }
+    }
+
+    /// The setting now, parsing the file only when it changed.
+    async fn setting(&self) -> HeldKeys {
+        let stamp = tokio::fs::metadata(&self.config)
+            .await
+            .and_then(|meta| meta.modified())
+            .ok();
+        let known = *self.read.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some((seen, setting)) = known
+            && seen == stamp
+        {
+            return setting;
+        }
+        let setting = load_held_keys(&self.config).await;
+        *self.read.lock().unwrap_or_else(PoisonError::into_inner) = Some((stamp, setting));
+        setting
     }
 }
 
@@ -115,14 +135,14 @@ impl std::fmt::Debug for Configured {
             .field("probe", &self.probe.mechanism())
             .field("config", &self.config)
             .field("enabled", &self.enabled)
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
 #[async_trait]
 impl ModifierSource for Configured {
     async fn held(&self) -> Option<Vec<Modifier>> {
-        let setting = load_held_keys(&self.config).await;
+        let setting = self.setting().await;
         self.enabled
             .store(setting == HeldKeys::Auto, Ordering::Relaxed);
         match setting {

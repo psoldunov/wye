@@ -84,6 +84,23 @@ impl Plan {
         }
     }
 
+    /// The paths to check for changes when no watcher can be started:
+    /// every file Wye reads that is named up front, and the application
+    /// directories (their modification time changes when an entry is added,
+    /// removed or replaced). [`Plan::classify`] reads each of them.
+    pub fn polled(&self) -> Vec<PathBuf> {
+        let registration = [MIMEAPPS, KDEGLOBALS].map(|name| self.config_home.join(name));
+        let profiles = self
+            .browser_dirs
+            .iter()
+            .flat_map(|dir| PROFILE_FILES.map(|name| dir.join(name)));
+        std::iter::once(self.config_file.clone())
+            .chain(registration)
+            .chain(self.applications.iter().cloned())
+            .chain(profiles)
+            .collect()
+    }
+
     /// What a change at `path` means; empty when nothing Wye reads.
     pub fn classify(&self, path: &Path) -> BTreeSet<Kind> {
         let mut kinds = BTreeSet::new();
@@ -206,6 +223,19 @@ mod tests {
             kinds(&plan, &root.join("config/wye")),
             [Kind::Config, Kind::Rearm]
         );
+    }
+
+    #[test]
+    fn every_polled_path_means_something() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        let plan = Plan::new(&environment(root), &[root.join("browser")]);
+        let polled = plan.polled();
+        assert!(polled.contains(&root.join("config/wye/config.toml")));
+        assert!(polled.contains(&root.join("browser/profiles.ini")));
+        for path in polled {
+            assert!(!plan.classify(&path).is_empty(), "{}", path.display());
+        }
     }
 
     #[test]

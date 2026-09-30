@@ -71,15 +71,6 @@ int applicationExec()
     return QApplication::exec();
 }
 
-bool blurBehind(QWindow &window, bool enable)
-{
-    if (!KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind)) {
-        return false;
-    }
-    KWindowEffects::enableBlurBehind(&window, enable);
-    return true;
-}
-
 bool blurBehindRect(QWindow &window, bool enable, int x, int y, int width, int height, double radius)
 {
     if (!KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind)) {

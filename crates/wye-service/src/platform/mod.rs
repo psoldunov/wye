@@ -1,8 +1,9 @@
 //! Everything the service asks of the desktop session, behind traits.
 //!
-//! Each trait has a real implementation in its own module (filled in by the
-//! unit that owns it), a no-op that reports "unavailable", and a fake in
-//! [`fake`] for tests on a private bus without a desktop.
+//! Each trait has a real implementation in its own module, a no-op that
+//! reports "unavailable", and a fake in [`fake`] for tests on a private bus
+//! without a desktop. [`session`] puts the real ones together for
+//! `wye service`.
 //!
 //! Every `mechanism` method names what is in use (for example
 //! `"wayland-layer-shell"` or `"portal"`) or returns `None` when the session
@@ -18,6 +19,7 @@ pub mod modifiers;
 pub mod notify;
 pub mod probe;
 pub mod scope;
+pub mod session;
 pub mod shortcuts;
 pub mod sni;
 pub mod types;
@@ -223,15 +225,6 @@ impl Platform {
             focus,
             ..self
         }
-    }
-
-    /// The integrations this session supports.
-    ///
-    /// For now the same as [`Platform::unavailable`]; each platform unit
-    /// replaces its own entry with the real implementation as it lands.
-    #[must_use]
-    pub fn detect() -> Self {
-        Self::unavailable()
     }
 }
 

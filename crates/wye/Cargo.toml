@@ -18,9 +18,8 @@ wye-core.workspace = true
 wye-desktop.workspace = true
 wye-service.workspace = true
 zbus.workspace = true
-# The native-messaging host's JSON messages (BEXT-04, BEXT-05).
-serde.workspace = true
-serde_json.workspace = true
+# `wye extension install|remove` writes the host manifests (BEXT-04).
+wye-native-host.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -5,8 +5,6 @@
 //! service` exits with [`wye_api::names::ALREADY_RUNNING_EXIT`], which
 //! `wye.service` lists in `RestartPreventExitStatus=`.
 
-use std::sync::Arc;
-
 use anyhow::Context as _;
 use futures_lite::StreamExt as _;
 use tokio::task::JoinHandle;
@@ -15,11 +13,7 @@ use zbus::fdo::{DBusProxy, RequestNameFlags, RequestNameReply};
 
 pub use crate::api::link::Environment;
 use crate::context::ServiceContext;
-use crate::platform::Platform;
-use crate::platform::lock::SessionLockMonitor;
-use crate::platform::notify::DesktopNotifier;
-use crate::platform::scope::{SpawnLauncher, SystemdScopes};
-use crate::platform::sni::KsniNotifier;
+use crate::platform::{Platform, session};
 use crate::{api, bus, watch};
 
 /// Another process already owns [`BUS_NAME`].
@@ -44,6 +38,12 @@ pub struct ServiceOptions {
 
 /// Run on the session bus until SIGINT, SIGTERM or `Quit`.
 ///
+/// The name is claimed before the session is asked anything slow (DEF-04):
+/// a link that started the service through bus activation is answered as
+/// soon as the objects are served. The session probes and the shortcuts
+/// portal are detected afterwards, each within a deadline
+/// ([`session::probes`], [`session::shortcuts`]).
+///
 /// # Errors
 ///
 /// When the session bus is unreachable, [`AlreadyRunning`] when another
@@ -56,13 +56,18 @@ pub async fn run(options: ServiceOptions) -> anyhow::Result<()> {
     // nothing useful to do.
     refuse_if_owned(&connection).await?;
 
-    let platform = match options.platform {
-        Some(platform) => platform,
-        None => session_platform(&connection).await,
-    };
+    let detect = options.platform.is_none();
+    let platform = options
+        .platform
+        .unwrap_or_else(|| session::base(&connection));
     let ctx = ServiceContext::new(platform);
-    let watchers = start(&connection, &ctx).await?;
+    serve_and_claim(&connection, &ctx).await?;
     tracing::info!("serving {BUS_NAME}");
+    let watchers = if detect {
+        detect_then_spawn(&connection, &ctx).await
+    } else {
+        spawn_tasks(&ctx)
+    };
 
     wait_for_shutdown(&ctx, &connection).await?;
     tracing::info!("shutting down");
@@ -83,53 +88,85 @@ pub async fn start(
     connection: &zbus::Connection,
     ctx: &ServiceContext,
 ) -> anyhow::Result<Vec<JoinHandle<()>>> {
+    serve_and_claim(connection, ctx).await?;
+    Ok(spawn_tasks(ctx))
+}
+
+/// Serve the objects, then take the name.
+async fn serve_and_claim(
+    connection: &zbus::Connection,
+    ctx: &ServiceContext,
+) -> anyhow::Result<()> {
     bus::serve(connection, ctx)
         .await
         .context("cannot serve the D-Bus objects")?;
-    claim_name(connection).await?;
-    Ok(watch::spawn(ctx)
+    claim_name(connection).await
+}
+
+/// Every background task, the global-shortcut listener included.
+fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
+    spawn_session_tasks(ctx)
+        .into_iter()
+        .chain(api::shortcuts::spawn_tasks(ctx))
+        .collect()
+}
+
+/// The background tasks that follow the session probes.
+fn spawn_session_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
+    watch::spawn(ctx)
         .into_iter()
         .chain(api::link::spawn_tasks(ctx))
         .chain(api::tray::spawn_tasks(ctx))
         .chain(api::scripts::spawn_tasks(ctx))
-        .chain(api::shortcuts::spawn_tasks(ctx))
-        .collect())
+        .collect()
+}
+
+/// Detect the session probes, then start the tasks that subscribe to them;
+/// the shortcuts portal follows in the background, with its listener.
+async fn detect_then_spawn(
+    connection: &zbus::Connection,
+    ctx: &ServiceContext,
+) -> Vec<JoinHandle<()>> {
+    let config = Environment::from_env()
+        .inspect_err(|error| tracing::warn!(%error, "no configuration file for advanced.held-keys"))
+        .ok()
+        .map(|environment| environment.config);
+    let reports = ctx.platform().kwin_reports.clone();
+    let probes = session::probes(connection, config.as_deref(), &reports).await;
+    ctx.update_platform(|platform| probes.apply(platform));
+    let shortcuts = {
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let shortcuts = session::shortcuts(config.as_deref()).await;
+            ctx.update_platform(|platform| Platform {
+                shortcuts,
+                ..platform.clone()
+            });
+            let _listeners = AbortOnDrop(api::shortcuts::spawn_tasks(&ctx));
+            std::future::pending::<()>().await;
+        })
+    };
+    spawn_session_tasks(ctx)
+        .into_iter()
+        .chain(std::iter::once(shortcuts))
+        .collect()
+}
+
+/// Aborts its tasks when dropped.
+struct AbortOnDrop(Vec<JoinHandle<()>>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        for task in &self.0 {
+            task.abort();
+        }
+    }
 }
 
 /// Route links with the files `environment` names instead of the session's
 /// (tests point this at temporary directories).
 pub fn use_environment(ctx: &ServiceContext, environment: Environment) {
-    ctx.link().set_environment(environment);
-}
-
-/// The integrations this session supports: notifications, launching,
-/// systemd scopes and lock state over `session` (and the system bus for
-/// logind), the session probes (held modifiers, pointer, focused app;
-/// KEY-06), global shortcuts on a connection of their own (KEY-40), the rest
-/// from [`Platform::detect`].
-pub async fn session_platform(session: &zbus::Connection) -> Platform {
-    let system = zbus::Connection::system()
-        .await
-        .inspect_err(|error| tracing::info!(%error, "no system bus"))
-        .ok();
-    let config = Environment::from_env()
-        .inspect_err(|error| tracing::warn!(%error, "no configuration file for advanced.held-keys"))
-        .ok()
-        .map(|environment| environment.config);
-    Platform {
-        notifier: Arc::new(DesktopNotifier::new(session.clone())),
-        launcher: Arc::new(SpawnLauncher),
-        scope: Arc::new(SystemdScopes::new(session.clone())),
-        lock: Arc::new(SessionLockMonitor::start(session, system.as_ref()).await),
-        sni: Arc::new(KsniNotifier::for_session()),
-        clipboard: crate::platform::clipboard::detect(session).await,
-        http: Arc::new(crate::platform::http::UreqClient::new()),
-        ..Platform::detect()
-    }
-    .with_session_probes(session, config.as_deref())
-    .await
-    .with_global_shortcuts(config.as_deref())
-    .await
+    ctx.set_environment(environment);
 }
 
 /// Ask for [`BUS_NAME`]; refuse to run beside another service.

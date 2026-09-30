@@ -110,6 +110,10 @@ pub(crate) fn stop_being_default(
         )));
     }
     set_default(xdg, previous, include_html).map_err(explain)?;
+    // DEF-07: Wye no longer claims HTML files, whatever the setting says now.
+    if let Err(error) = wye_desktop::default_browser::remove_html_association(xdg, &wye) {
+        tracing::warn!(%error, "cannot remove Wye's HTML association");
+    }
     if let Err(error) = kdeglobals::restore_browser(xdg, &wye, previous_kdeglobals) {
         tracing::warn!(%error, "cannot restore Plasma's default browser");
     }

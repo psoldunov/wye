@@ -224,3 +224,44 @@ async fn an_unregistered_host_gets_the_item_back_after_the_grace() {
         left.elapsed()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn two_applets_on_one_connection_each_count_decision_8() {
+    // Every Plasma applet instance shares plasmashell's connection: removing
+    // one of two must not bring the item back beside the other.
+    let Some(service) = Service::start(SHOWN).await else {
+        return;
+    };
+    let sni = service.fakes.sni.clone();
+    eventually("the StatusNotifierItem shows", || {
+        let sni = sni.clone();
+        async move { sni.shown().is_some() }
+    })
+    .await;
+    let grace = std::time::Duration::from_millis(200);
+    sni.set_grace(grace);
+
+    let plasmashell = service.bus.connect().await;
+    let host = Wye1Proxy::new(&plasmashell).await.expect("proxy");
+    for _ in 0..2 {
+        host.register_tray("plasma-applet")
+            .await
+            .expect("an applet registers");
+    }
+    eventually("the item hides for the applets", || {
+        let sni = sni.clone();
+        async move { sni.shown().is_none() }
+    })
+    .await;
+
+    host.unregister_tray().await.expect("one applet leaves");
+    tokio::time::sleep(grace * 3).await;
+    assert_eq!(sni.shown(), None, "the other applet still shows the tray");
+
+    host.unregister_tray().await.expect("the other leaves");
+    eventually("the item comes back without applets", || {
+        let sni = sni.clone();
+        async move { sni.shown().is_some() }
+    })
+    .await;
+}

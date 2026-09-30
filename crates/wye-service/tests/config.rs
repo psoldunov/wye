@@ -78,6 +78,51 @@ async fn set06_a_stale_revision_is_a_conflict() {
     assert!(matches!(stale, Err(Error::Conflict(_))), "{stale:?}");
 }
 
+/// An edit on disk the service has not reloaded yet is never overwritten:
+/// a patch against the old revision is a conflict, and the edit stays.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn set06_an_unseen_edit_on_disk_is_a_conflict() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let wye = service.wye().await;
+    let (_, revision) = config_json(&service).await;
+    std::fs::write(
+        service.desktop.path(CONFIG),
+        "[extras]\nforce-https = true\n",
+    )
+    .expect("edited");
+    let refused = wye
+        .update_config(r#"{"general": {"launch-at-login": false}}"#, revision)
+        .await;
+    assert!(matches!(refused, Err(Error::Conflict(_))), "{refused:?}");
+    assert!(service.desktop.read(CONFIG).contains("force-https = true"));
+    let (config, now) = config_json(&service).await;
+    assert_eq!(config["extras"]["force-https"], Value::Bool(true));
+    assert!(now > revision);
+}
+
+/// Revision 0 skips the check, but still patches the file as it is now.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn set06_an_unchecked_patch_keeps_an_unseen_edit() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let wye = service.wye().await;
+    config_json(&service).await;
+    std::fs::write(
+        service.desktop.path(CONFIG),
+        "[extras]\nforce-https = true\n",
+    )
+    .expect("edited");
+    wye.update_config(r#"{"general": {"launch-at-login": false}}"#, 0)
+        .await
+        .expect("saved");
+    let text = service.desktop.read(CONFIG);
+    assert!(text.contains("force-https = true"), "{text}");
+    assert!(text.contains("launch-at-login = false"), "{text}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn set06_a_symlinked_file_is_read_only() {
     let Some(service) = Service::start("").await else {
@@ -236,4 +281,32 @@ async fn gen01_launch_at_login_follows_the_setting() {
         .await
         .expect("saved");
     assert!(!service.desktop.path(AUTOSTART).exists());
+}
+
+/// GEN-01: while login start is managed outside Wye (`WYE_LOGIN_MANAGED=1`)
+/// the autostart entry is never written or removed, and `Status` says so.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gen01_managed_login_start_leaves_the_autostart_entry_alone() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    assert!(!service.status().await.login_managed);
+    service.ctx.set_login_managed(true);
+    service
+        .ctx
+        .set_wye_executable(service.desktop.path("bin/wye"));
+    let wye = service.wye().await;
+    wye.update_config(r#"{"general": {"launch-at-login": true}}"#, 0)
+        .await
+        .expect("saved");
+    assert!(!service.desktop.path(AUTOSTART).exists(), "not written");
+    assert!(service.status().await.login_managed);
+
+    let entry = service.desktop.path(AUTOSTART);
+    std::fs::create_dir_all(entry.parent().expect("parent")).expect("dir");
+    std::fs::write(&entry, "[Desktop Entry]\n").expect("written");
+    wye.update_config(r#"{"general": {"launch-at-login": false}}"#, 0)
+        .await
+        .expect("saved");
+    assert!(entry.exists(), "not removed");
 }

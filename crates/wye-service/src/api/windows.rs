@@ -15,20 +15,9 @@ use zbus::zvariant::OwnedValue;
 
 use super::{Caller, Dict, Result};
 use crate::context::ServiceContext;
-use crate::platform::Platform;
 
 /// How long the UI host may take to start and answer.
 const UI_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// State this topic keeps. Empty until the topic needs any.
-#[derive(Debug, Default)]
-pub struct State;
-
-impl State {
-    pub(crate) fn new(_platform: &Platform) -> Self {
-        Self
-    }
-}
 
 /// `org.freedesktop.Application.Activate`: Wye started without a link
 /// (TRAY-05).

@@ -220,6 +220,30 @@ async fn a_new_link_supersedes_the_pending_one() {
     );
 }
 
+/// PIPE-13: only a target the request showed is accepted; anything else
+/// is refused and the request stays pending.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_target_the_picker_did_not_show_is_refused() {
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    let (ui, _ui_connection) = fake_ui(&service).await;
+    let proxy = wye(&service).await;
+    proxy.open_link(URL, cli()).await.expect("routed");
+    shown_count(&ui, 1).await;
+    let id = ui.shown().remove(0).0;
+    let refused = proxy
+        .picker_chose(&id, r#"{"custom":"/bin/sh"}"#, HashMap::new())
+        .await;
+    assert!(matches!(refused, Err(Error::InvalidArgs(_))), "{refused:?}");
+    assert!(service.launched().is_empty());
+    proxy
+        .picker_chose(&id, &two(), HashMap::new())
+        .await
+        .expect("still pending");
+    assert_eq!(service.fakes.launcher.launched().len(), 1);
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cancelling_opens_nothing() {
     // PICK-23.

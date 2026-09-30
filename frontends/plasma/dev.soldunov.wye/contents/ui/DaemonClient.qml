@@ -27,6 +27,8 @@ Item {
     readonly property bool serviceRunning: serviceWatcher.registered
     /*! RegisterTray answered on the current service. */
     property bool registered: false
+    /*! A RegisterTray call is on its way. */
+    property bool registering: false
     /*! Last transport or parse failure; empty after a good exchange. */
     property string lastError: ""
 
@@ -55,22 +57,38 @@ Item {
        Announce the applet as the tray host, so the service hides its own
        StatusNotifierItem (decision 8). The bus name is D-Bus activatable, so
        this also starts the service.
+
+       Exactly once per applet instance and service: every instance shares
+       plasmashell's connection, and the service counts each RegisterTray
+       until a matching UnregisterTray. Once registered, this only reads the
+       `Tray` model again.
     */
     function register() {
+        if (client.registered) {
+            properties.updateAll();
+            return;
+        }
+        if (client.registering) {
+            return;
+        }
+        client.registering = true;
         DBus.SessionBus.asyncCall(buildMessage("RegisterTray", ["plasma-applet"]), reply => {
+            client.registering = false;
             client.registered = true;
             client.lastError = "";
             properties.updateAll();
         }, reply => {
+            client.registering = false;
             client.registered = false;
             client.lastError = client.errorText(reply);
         });
     }
 
     /*!
-       Stop being the tray host. The applet's connection is plasmashell's and
+       Stop being a tray host. The applet's connection is plasmashell's and
        outlives the applet, so removing or disabling the applet has to say so
-       for the service's own tray icon to come back.
+       for the service's own tray icon to come back (once no other instance
+       is registered).
     */
     function unregister() {
         if (!client.registered) {
@@ -139,7 +157,9 @@ Item {
                 // A new service knows no hosts yet.
                 client.register();
             } else {
+                // The service is gone and with it every registration.
                 client.registered = false;
+                client.registering = false;
                 client.tray = null;
             }
         }

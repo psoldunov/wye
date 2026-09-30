@@ -91,7 +91,9 @@ use futures_lite::StreamExt as _;
 use wye_api::Error;
 use wye_api::actions::ScriptScope;
 use wye_api::context as keys;
+use wye_api::proxy::Wye1Proxy;
 use wye_api::scripts::ScriptRun;
+use zbus::proxy::CacheProperties;
 use zbus::zvariant::Value;
 
 use crate::script_editor::document::{self, Document};
@@ -99,9 +101,6 @@ use crate::script_editor::editing;
 use crate::script_editor::opening::{self, Fixture};
 use crate::script_editor::result::{self, ResultView};
 use crate::service;
-
-/// `RunScript`'s context key for the rule name (`docs/dbus-api.md`).
-const RULE_KEY: &str = "rule";
 
 /// What the editor keeps besides its properties.
 #[derive(Default)]
@@ -205,7 +204,7 @@ impl qobject::ScriptEditorBackend {
                     context.insert(keys::SOURCE_DESKTOP_ID, Value::from(app.as_str()));
                 }
                 if let Some(rule) = &rule {
-                    context.insert(RULE_KEY, Value::from(rule.as_str()));
+                    context.insert(keys::RULE, Value::from(rule.as_str()));
                 }
                 proxy.run_script(&source, &url, context).await
             },
@@ -396,37 +395,31 @@ impl qobject::ScriptEditorBackend {
         );
     }
 
-    /// Wait for the next `ScriptFileChanged` and offer to reload when it is
-    /// this editor's script (SCR-08); then wait again.
+    /// Follow `ScriptFileChanged` for the editor's lifetime and offer to
+    /// reload when it names this editor's script (SCR-08). One subscription
+    /// for the whole time, so no change falls between two.
     fn listen(mut self: Pin<&mut Self>) {
         if self.listening {
             return;
         }
         self.as_mut().rust_mut().get_mut().listening = true;
-        service::request(
+        service::follow(
             self.qt_thread(),
-            |proxy| async move {
-                let mut changes = proxy.receive_script_file_changed().await?;
-                let signal = changes
-                    .next()
-                    .await
-                    .ok_or_else(|| Error::failed("the service went away"))?;
-                Ok(signal.args()?.scope.to_string())
+            |connection| async move {
+                let proxy = Wye1Proxy::builder(&connection)
+                    .cache_properties(CacheProperties::No)
+                    .build()
+                    .await?;
+                let changes = proxy.receive_script_file_changed().await?;
+                Ok(changes.filter_map(|signal| Some(signal.args().ok()?.scope.to_string())))
             },
-            |mut backend, answer| {
-                backend.as_mut().rust_mut().get_mut().listening = false;
-                match answer {
-                    Ok(scope) => {
-                        let ours = backend
-                            .scope
-                            .as_ref()
-                            .is_some_and(|mine| mine.to_string() == scope);
-                        if ours {
-                            backend.as_mut().set_external_change(true);
-                        }
-                        backend.listen();
-                    }
-                    Err(error) => tracing::info!(%error, "not watching the script file"),
+            |mut backend, scope: String| {
+                let ours = backend
+                    .scope
+                    .as_ref()
+                    .is_some_and(|mine| mine.to_string() == scope);
+                if ours {
+                    backend.as_mut().set_external_change(true);
                 }
             },
         );

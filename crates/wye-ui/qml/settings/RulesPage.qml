@@ -15,6 +15,9 @@ WyePage {
 
     // How long the undo toast stays (RUL-06).
     readonly property int undoTime: 8000
+    // The undo toast's text (RUL-06) and what an import or export did (RUL-02).
+    property string undoText
+    property string transferText
     readonly property string appsJson: SettingsBackend.offline ? SettingsBackend.fixtureAppsJson : RulesBackend.appsJson
     readonly property var rows: SettingsBackend.generation >= 0 ? JSON.parse(RulesBackend.rows(SettingsBackend.configJson, page.appsJson)) : []
 
@@ -67,7 +70,12 @@ WyePage {
         }
 
         function onImported(count) {
+            page.transferText = qsTr("Imported %n rule(s)", "", count);
             SettingsBackend.refresh();
+        }
+
+        function onExported() {
+            page.transferText = qsTr("Rules exported");
         }
 
         target: RulesBackend
@@ -85,12 +93,28 @@ WyePage {
         target: SettingsBackend
     }
 
+    // RUL-06: each deletion gets the whole undo time, also one made while
+    // the previous toast still shows.
     Timer {
         id: undoTimer
 
         interval: page.undoTime
-        running: RulesBackend.canUndo
         onTriggered: RulesBackend.dropUndo()
+    }
+
+    Connections {
+        function onUndoArmed(count, name) {
+            page.undoText = count === 1 ? qsTr("Deleted \u201c%1\u201d").arg(name) : qsTr("Deleted %n rule(s)", "", count);
+            undoTimer.restart();
+        }
+
+        function onCanUndoChanged() {
+            if (!RulesBackend.canUndo) {
+                undoTimer.stop();
+            }
+        }
+
+        target: RulesBackend
     }
 
     // RUL-06: the undo toast.
@@ -100,7 +124,7 @@ WyePage {
         Layout.rightMargin: Kirigami.Units.largeSpacing
         type: Kirigami.MessageType.Information
         visible: RulesBackend.canUndo
-        text: RulesBackend.notice
+        text: page.undoText
         actions: [
             Kirigami.Action {
                 icon.name: "edit-undo"
@@ -108,6 +132,20 @@ WyePage {
                 onTriggered: page.save(RulesBackend.undoPatch(SettingsBackend.configJson))
             }
         ]
+    }
+
+    // RUL-02: what an import or export did.
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        Layout.rightMargin: Kirigami.Units.largeSpacing
+        type: Kirigami.MessageType.Positive
+        visible: page.transferText !== ""
+        text: page.transferText
+        showCloseButton: true
+        onVisibleChanged: if (!visible) {
+            page.transferText = "";
+        }
     }
 
     Kirigami.InlineMessage {

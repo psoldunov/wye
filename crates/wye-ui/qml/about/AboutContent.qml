@@ -179,7 +179,7 @@ Kirigami.Page {
                     Layout.margins: Kirigami.Units.largeSpacing
                     font.family: "monospace"
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    text: page.troubleshooting === "" ? qsTr("Reading what Wye detected…") : page.troubleshooting
+                    text: page.troubleshooting !== "" ? page.troubleshooting : page.error !== "" ? qsTr("Not available.") : qsTr("Reading what Wye detected…")
                     wrapMode: Text.WrapAtWordBoundaryOrAnywhere
                 }
 

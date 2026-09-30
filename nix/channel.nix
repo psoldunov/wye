@@ -2,6 +2,16 @@
 # `programs.wye` installs. `git` is the flake's own source (latest master when
 # the flake input tracks master); `release` is the latest published release
 # recorded in nix/release.json, built by that release's own flake.
+#
+# Layout contract: the modules come from this flake but may install an older
+# release's package, so they rely only on what every release's packaging
+# ships: bin/wye, bin/wye-ui, bin/wye-native-host,
+# share/dbus-1/services/dev.soldunov.wye{,.Ui}.service,
+# share/systemd/user/wye{,-ui}.service with lib/systemd/user links, and
+# share/plasma/plasmoids/dev.soldunov.wye. Moving or renaming any of these
+# breaks the `release` channel until the next release; add new paths instead,
+# and have the modules use them only once a release that ships them is
+# recorded.
 {
   self,
   release,

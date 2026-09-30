@@ -54,12 +54,16 @@ OnboardingPage {
     Kirigami.InlineMessage {
         Layout.fillWidth: true
         showCloseButton: true
-        text: OnboardingBackend.error
+        text: errors.describe(OnboardingBackend.errorKind, OnboardingBackend.error)
         type: Kirigami.MessageType.Error
         visible: OnboardingBackend.error !== ""
 
         onVisibleChanged: if (!visible) {
             OnboardingBackend.clearError()
         }
+    }
+
+    WyeErrorText {
+        id: errors
     }
 }

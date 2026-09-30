@@ -13,6 +13,9 @@ use crate::api::Dict;
 /// What the picker chose, validated.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Choice {
+    /// The target as the picker sent it, before `private` applies: one of
+    /// the request's targets.
+    pub target: Target,
     pub chosen: Chosen,
     /// The token from the picker's own input event, for the launched app
     /// (PICK-29, LAUNCH-03).
@@ -35,14 +38,18 @@ pub(crate) fn parse(target: &str, options: &Dict) -> Result<Choice, Error> {
     }
     let private = flag(options, OPTION_PRIVATE)?;
     let chosen = Chosen {
-        target: private_variant(target, private),
+        target: private_variant(target.clone(), private),
         options: OpenOptions {
             background: flag(options, OPTION_BACKGROUND)?,
             new_window: flag(options, OPTION_NEW_WINDOW)?,
         },
     };
     let token = text(options, OPTION_ACTIVATION_TOKEN)?.filter(|token| !token.is_empty());
-    Ok(Choice { chosen, token })
+    Ok(Choice {
+        target,
+        chosen,
+        token,
+    })
 }
 
 /// KEY-13: a private window is the browser's private target. Targets

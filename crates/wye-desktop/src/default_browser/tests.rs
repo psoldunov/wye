@@ -86,7 +86,18 @@ fn creates_file_and_group() {
          x-scheme-handler/http=dev.soldunov.wye.desktop\n\
          x-scheme-handler/https=dev.soldunov.wye.desktop\n\
          text/html=dev.soldunov.wye.desktop\n\
-         application/xhtml+xml=dev.soldunov.wye.desktop\n"
+         application/xhtml+xml=dev.soldunov.wye.desktop\n\n\
+         [Added Associations]\n\
+         text/html=dev.soldunov.wye.desktop;\n\
+         application/xhtml+xml=dev.soldunov.wye.desktop;\n",
+        "DEF-07: KService needs the association too"
+    );
+    remove_html_association(&fx.xdg, &wye()).unwrap();
+    assert!(
+        !fs::read_to_string(&path)
+            .unwrap()
+            .contains("[Added Associations]\ntext/html"),
+        "removed again"
     );
 
     fs::write(&path, "[Added Associations]\ntext/html=a.desktop").unwrap();

@@ -74,6 +74,12 @@ pub(crate) async fn current(ctx: &ServiceContext) -> Result<Arc<Current>> {
 /// `Failed` when there is no home directory.
 pub(crate) async fn reload(ctx: &ServiceContext) -> Result<Arc<Current>> {
     let _writing = ctx.config().writing.lock().await;
+    reload_locked(ctx).await.map(|(current, _)| current)
+}
+
+/// [`reload`] for a caller that holds `writing`; also says whether the
+/// file said something new.
+async fn reload_locked(ctx: &ServiceContext) -> Result<(Arc<Current>, bool)> {
     let environment = ctx.environment()?;
     let before = ctx.config().get();
     let last_good = before.clone();
@@ -81,13 +87,13 @@ pub(crate) async fn reload(ctx: &ServiceContext) -> Result<Arc<Current>> {
     if let Some(before) = &before
         && before.same_as(&loaded)
     {
-        return Ok(before.clone());
+        return Ok((before.clone(), false));
     }
     let revision = before.as_ref().map_or(1, |before| before.revision + 1);
     let current = Arc::new(Current { revision, ..loaded });
     ctx.config().set(current.clone());
     effects::announce(ctx, before.as_deref(), &current, false).await;
-    Ok(current)
+    Ok((current, true))
 }
 
 /// The `ConfigRevision` property; 0 before the file could be read at all.
@@ -126,10 +132,20 @@ pub(crate) async fn apply_patch(
     patch: &Value,
     base_revision: u64,
 ) -> Result<u64> {
-    let before = current(ctx).await?;
+    current(ctx).await?;
     let writing = ctx.config().writing.lock().await;
-    // A reload may have landed while waiting for the lock.
-    let before = ctx.config().get().unwrap_or(before);
+    // SET-06: patch what the file says now, not what was read last. An edit
+    // the watcher has not reloaded yet (or cannot, without a watcher) would
+    // otherwise be overwritten. A caller that named a revision reloads and
+    // tries again; revision 0 ("no check", `SetPrimary`) patches the edit.
+    let (before, changed) = reload_locked(ctx).await?;
+    if changed && base_revision != 0 {
+        return Err(Error::Conflict(format!(
+            "{} changed on disk (now revision {}); reload and try again",
+            before.environment.config.display(),
+            before.revision
+        )));
+    }
     update::writable(&before, base_revision)?;
     let checked = update::check(&before, patch)?;
     if checked.loaded.config == before.config {
@@ -201,8 +217,8 @@ pub(crate) async fn snapshot(ctx: &ServiceContext) -> Result<Snapshot> {
     let inventory = super::inventory::current(ctx).await?;
     let state = super::state::load(ctx).await.unwrap_or_default();
     Ok(Snapshot {
-        pipeline: (*config.pipeline).clone(),
-        inventory: (*inventory.inventory).clone(),
+        pipeline: Arc::clone(&config.pipeline),
+        inventory: Arc::clone(&inventory.inventory),
         previous_default: state.previous_default_browser.clone(),
     })
 }

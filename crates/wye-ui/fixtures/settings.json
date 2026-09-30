@@ -827,6 +827,29 @@
           }
         }
       }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": true
+            },
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true,
+            "uiState": {
+              "onboardingDone": true,
+              "dismissedCallouts": []
+            }
+          }
+        }
+      }
     }
   ]
 }

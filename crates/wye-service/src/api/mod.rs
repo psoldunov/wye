@@ -4,8 +4,9 @@
 //! function here, so each topic lives in its own file. Each module also owns
 //! a `State` type that [`crate::context::ServiceContext`] holds one of.
 //!
-//! A member that is not implemented yet answers
-//! `dev.soldunov.wye.Error.NotImplemented`.
+//! Every member of the contract is implemented here;
+//! `dev.soldunov.wye.Error.NotImplemented` is reserved for older services,
+//! which `wye` treats as absent.
 
 pub mod clipboard;
 pub mod config;

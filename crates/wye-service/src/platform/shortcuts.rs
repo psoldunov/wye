@@ -16,7 +16,7 @@ use tokio::sync::broadcast;
 use wye_api::shortcuts::{CLIPBOARD_ALTERNATIVE, CLIPBOARD_PRIMARY, TOGGLE_MENU};
 
 pub use self::portal::{PortalShortcuts, Preferred};
-use super::{BoundShortcut, Platform, PlatformError, ShortcutProvider};
+use super::{BoundShortcut, PlatformError, ShortcutProvider};
 
 /// How many presses a slow listener may fall behind.
 const ACTIVATION_BUFFER: usize = 16;
@@ -120,16 +120,6 @@ pub async fn detect(config: Option<&Path>) -> Arc<dyn ShortcutProvider> {
             tracing::info!(%error, "no global shortcuts portal");
             Arc::new(NoShortcuts::new())
         }
-    }
-}
-
-impl Platform {
-    /// `self` with this session's global shortcuts ([`detect`]), preferring
-    /// the triggers in the configuration file at `config`.
-    pub async fn with_global_shortcuts(self, config: Option<&Path>) -> Self {
-        let shortcuts = detect(config).await;
-        tracing::info!(shortcuts = shortcuts.mechanism(), "global shortcuts");
-        Self { shortcuts, ..self }
     }
 }
 

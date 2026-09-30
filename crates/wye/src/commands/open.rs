@@ -1,13 +1,16 @@
 //! `wye open` (IN-01, IN-07): hand each link to the Wye service, or route
-//! and launch it here when the service cannot be reached (PIPE-01 to
-//! PIPE-15).
+//! and launch it here when there is no service (PIPE-01 to PIPE-15).
 //!
 //! The service is asked first (`OpenLink`, [`bus::TIMEOUT`] including bus
 //! activation) with the source app from Wye's own parent chain and the
-//! launcher's activation token. When no service answers, the link is routed
-//! in this process with the picker stand-in, so a link is never lost. A
+//! launcher's activation token. When no service exists or can be started,
+//! the link is routed in this process with the service's own hooks
+//! (short links, scripts; [`OfflineHooks`]) and the picker stand-in, so a
+//! link is never lost; held keys and the lock state are unknown here. A
 //! link the service refused (PIPE-02) or failed to launch (LAUNCH-07) is
-//! not retried: the service has already told the user.
+//! not retried: the service has already told the user. Neither is one the
+//! service took but did not answer in time: it may still open it, and
+//! opening it here as well would open it twice.
 //!
 //! Every message here goes to stderr best effort ([`notice`]): links
 //! clicked in apps often arrive with a closed or broken stderr, and a
@@ -20,15 +23,18 @@ use std::process::ExitCode;
 use anyhow::Context as _;
 use wye_api::Error;
 use wye_api::context as keys;
-use wye_core::{EntryPoint, Force, LinkRequest, Pipeline, Resolution, SourceApp, Target};
+use wye_core::{
+    Chosen, EntryPoint, Force, LinkRequest, OpenOptions, Pipeline, Resolution, SourceApp, Target,
+};
 use wye_desktop::launch::ACTIVATION_ENV;
-use wye_desktop::{Inventory, LaunchRequest, build_command, source_app, spawn};
+use wye_desktop::{Inventory, LaunchRequest, build_command, source_app, spawn, stand_in};
+use wye_service::offline::OfflineHooks;
 use zbus::zvariant::Value;
 
 use super::{Console, Context, INVALID};
 use crate::bus::{CallError, Client};
 use crate::cli::OpenArgs;
-use crate::{display, notice, picker_fallback};
+use crate::{display, notice};
 
 /// What became of one link.
 #[derive(Debug, Default, Clone, Copy)]
@@ -82,6 +88,10 @@ pub fn run(
                 } else {
                     tally.failed = true;
                 }
+            }
+            Err(unanswered @ CallError::NoAnswer(_)) => {
+                // Never opened here as well: the service may still open it.
+                notice::write(console.err, format_args!("wye: {unanswered}"));
             }
             Err(unreachable @ CallError::Unreachable(_)) => {
                 if debug {
@@ -207,9 +217,11 @@ fn open_here(
             force,
             ..LinkRequest::new(*url, EntryPoint::Handler)
         };
-        match pipeline.resolve(&request, &inventory) {
+        // PIPE-03, PIPE-05, PIPE-14: the same hooks as the service.
+        let hooks = OfflineHooks::new(&context.paths.config, pipeline.config());
+        match pipeline.resolve_with(&request, &inventory, hooks.hooks()) {
             Ok(resolution) => {
-                if let Err(error) = opener.launch(console, &resolution) {
+                if let Err(error) = opener.launch(console, &request, &resolution, &hooks) {
                     notice::write(console.err, format_args!("wye: {error:#}"));
                     tally.failed = true;
                 }
@@ -231,44 +243,61 @@ struct Opener<'a> {
 }
 
 impl Opener<'_> {
-    /// Launches a resolved link, standing in for the picker when needed.
-    /// The stand-in is announced only after the launch, so the notice can
-    /// never delay or stop it.
-    fn launch(&self, console: &mut Console<'_>, resolution: &Resolution) -> anyhow::Result<()> {
-        let stand_in = picker_fallback::needed(resolution);
-        let target = if stand_in {
-            self.stand_in(console)?
+    /// Finishes a resolved link as the service would (PIPE-13 to PIPE-15),
+    /// standing in for the picker when needed, and launches it. The
+    /// stand-in is announced only after the launch, so the notice can never
+    /// delay or stop it.
+    fn launch(
+        &self,
+        console: &mut Console<'_>,
+        request: &LinkRequest,
+        resolution: &Resolution,
+        hooks: &OfflineHooks,
+    ) -> anyhow::Result<()> {
+        let chosen = if stand_in::needed(resolution) {
+            Some(Chosen {
+                target: self.stand_in(console)?,
+                options: OpenOptions::default(),
+            })
         } else {
-            resolution.target.clone()
+            None
         };
-        let url = self.pipeline.launch_url(&resolution.url, &target);
+        let stood_in = chosen.is_some();
+        let finished = self
+            .pipeline
+            .finish(resolution, request, chosen, hooks.hooks());
+        let url = self.pipeline.launch_url(&finished.url, &finished.target);
         let command = build_command(
             self.inventory,
             &LaunchRequest {
-                target: &target,
+                target: &finished.target,
                 url: &url,
-                background: resolution.options.background,
-                new_window: resolution.options.new_window,
+                background: finished.options.background,
+                new_window: finished.options.new_window,
             },
         )?;
         spawn(&command).with_context(|| format!("cannot start {}", command.program))?;
-        if stand_in {
+        if stood_in {
             notice::write(
                 console.err,
                 format_args!(
-                    "wye: the picker is not available yet; opening in {}",
-                    display::target_name(&target, self.inventory)
+                    "wye: the Wye service is not running, so no picker could be shown; opened in {}",
+                    display::target_name(&finished.target, self.inventory)
                 ),
             );
         }
         Ok(())
     }
 
-    /// The interim picker stand-in.
+    /// The picker stand-in (PIPE-13).
     fn stand_in(&self, console: &mut Console<'_>) -> anyhow::Result<Target> {
         let state = self.context.state_or_default(console.err);
-        picker_fallback::choose(self.pipeline.config(), self.inventory, &state)
-            .context("the picker is not available yet and no web browser is installed")
+        stand_in::choose(
+            self.pipeline.config(),
+            self.inventory,
+            state.previous_default_browser.as_ref(),
+        )
+        .context("no picker could be shown and no web browser is installed")
     }
 }
 

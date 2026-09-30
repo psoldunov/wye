@@ -133,3 +133,17 @@ fn hovering_selects_but_only_real_tiles() {
     assert_eq!(state().hover(1).selected, 1);
     assert_eq!(state().hover(7).selected, 0);
 }
+
+#[test]
+fn key_13_a_key_press_replaces_the_modifiers_the_request_reported() {
+    // Shift was held when the link was clicked but released before the
+    // picker had the keyboard: no release event arrives, and Enter without
+    // Shift opens normally.
+    let state = state().with_held(wye_core::Modifiers::from_slice(&[
+        wye_core::Modifier::Shift,
+    ]));
+    assert_ne!(state.hint(), "");
+    let (state, effect) = state.key(&key(KEY_RETURN, "\r", 0));
+    assert!(!chosen(&effect).target.contains("private"), "{effect:?}");
+    assert_eq!(state.hint(), "");
+}

@@ -35,7 +35,13 @@ pub async fn detect(
     connection: &zbus::Connection,
     reports: &Reports,
 ) -> (Arc<dyn PointerSource>, Arc<dyn FocusSource>) {
-    if let Some(helper) = KWinHelper::detect(connection, reports.clone()).await {
+    let helper = match KWinHelper::detect(connection, reports.clone()).await {
+        Some(helper) => Some(helper),
+        // KWin may register after the service starts; on Plasma it will.
+        None if is_plasma() => KWinHelper::for_session(connection, reports.clone()),
+        None => None,
+    };
+    if let Some(helper) = helper {
         let helper = Arc::new(helper);
         return (Arc::clone(&helper) as _, helper as _);
     }
@@ -46,6 +52,15 @@ pub async fn detect(
         }
     }
     (Arc::new(NoPointer), Arc::new(NoFocus))
+}
+
+/// A Plasma session, where `KWin` is the compositor.
+fn is_plasma() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|desktops| {
+        desktops
+            .split(':')
+            .any(|desktop| desktop.eq_ignore_ascii_case("KDE"))
+    })
 }
 
 /// An X11 session, not `Xwayland` beside a Wayland one: on Wayland the X

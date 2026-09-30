@@ -23,6 +23,7 @@ pub mod loop_guard;
 pub mod native_messaging;
 pub mod profiles;
 pub mod source_app;
+pub mod stand_in;
 pub mod state;
 pub mod xdg;
 

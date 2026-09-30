@@ -15,10 +15,21 @@ wye=${1:?usage: $0 path/to/wye}
 command -v plasmawindowed > /dev/null || { echo "plasmawindowed not found" >&2; exit 2; }
 
 scratch=$(mktemp -d)
+# Remove the scratch directory. The private bus may have started the
+# document portal, which mounts a FUSE file system at
+# $XDG_RUNTIME_DIR/doc and lets go of it only once it sees the bus is gone.
+remove_scratch() {
+    for _ in $(seq 30); do
+        fusermount3 -uz "${scratch}/runtime/doc" 2>/dev/null || fusermount -uz "${scratch}/runtime/doc" 2>/dev/null || true
+        rm -r "${scratch}" 2>/dev/null && return 0
+        sleep 0.1
+    done
+    echo "warning: cannot remove ${scratch}" >&2
+}
 pids=()
 cleanup() {
     for pid in "${pids[@]}"; do kill "${pid}" 2>/dev/null || true; done
-    rm -r "${scratch}"
+    remove_scratch
 }
 trap cleanup EXIT
 

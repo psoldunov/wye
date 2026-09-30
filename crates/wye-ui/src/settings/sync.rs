@@ -1,6 +1,6 @@
-//! Talking to the service for the Settings window, without Qt: saving a
-//! patch (SET-06), reloading what changed, and the buttons that act on the
-//! machine. The bridge runs these on the D-Bus thread through
+//! Talking to the service for the Settings window, without Qt: reloading
+//! what changed and the buttons that act on the machine (saving a patch is
+//! [`super::save`]). The bridge runs these on the D-Bus thread through
 //! `service::request`; tests run them against a fake [`Api`].
 
 use std::future::Future;
@@ -8,16 +8,12 @@ use std::future::Future;
 use wye_api::Error;
 use wye_api::proxy::Wye1Proxy;
 
+use super::save::ConfigApi;
 use super::snapshot::Snapshot;
 
-/// The service calls the Settings window makes.
-pub trait Api: Sync {
-    fn update_config(
-        &self,
-        patch: &str,
-        base: u64,
-    ) -> impl Future<Output = Result<u64, Error>> + Send;
-    fn get_config(&self) -> impl Future<Output = Result<(String, u64), Error>> + Send;
+/// The service calls the Settings window makes; saving is
+/// [`super::save::save`].
+pub trait Api: ConfigApi {
     fn status(&self) -> impl Future<Output = Result<String, Error>> + Send;
     fn config_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
     fn inventory_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
@@ -30,14 +26,6 @@ pub trait Api: Sync {
 }
 
 impl Api for Wye1Proxy<'_> {
-    async fn update_config(&self, patch: &str, base: u64) -> Result<u64, Error> {
-        Wye1Proxy::update_config(self, patch, base).await
-    }
-
-    async fn get_config(&self) -> Result<(String, u64), Error> {
-        Wye1Proxy::get_config(self).await
-    }
-
     async fn status(&self) -> Result<String, Error> {
         Ok(Wye1Proxy::status(self).await?)
     }
@@ -166,27 +154,6 @@ pub async fn poll<A: Api>(api: &A, known: Known) -> Result<Delta, Error> {
     })
 }
 
-/// Save `patch` on top of `base` (SET-06). A stale `base` (`Conflict`)
-/// reloads the revision and applies the patch again once: merge patches
-/// touch only their own keys, so re-applying is safe. Returns what the
-/// service holds afterwards.
-///
-/// # Errors
-///
-/// `ReadOnly`, `NotLossless`, `InvalidArgs`, or a second `Conflict`.
-pub async fn save<A: Api>(api: &A, patch: &str, base: u64) -> Result<(String, u64), Error> {
-    match api.update_config(patch, base).await {
-        Ok(_) => {}
-        Err(Error::Conflict(reason)) => {
-            tracing::debug!(%reason, "configuration changed under us; applying the patch again");
-            let (_, fresh) = api.get_config().await?;
-            api.update_config(patch, fresh).await?;
-        }
-        Err(error) => return Err(error),
-    }
-    api.get_config().await
-}
-
 /// A button that acts on the machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Action {
@@ -232,29 +199,6 @@ pub async fn run<A: Api>(api: &A, action: Action, known: Known) -> Result<Option
         }
     }
     poll(api, known).await.map(Some)
-}
-
-/// The sentence an error becomes in the window's message bar.
-#[must_use]
-pub fn describe(error: &Error) -> String {
-    match error {
-        Error::ReadOnly(reason) => {
-            format!("Wye cannot change this setting: the file is read-only. {reason}")
-        }
-        Error::NotLossless(reason) => format!(
-            "Wye did not save the change because it would drop values the configuration file contains. {reason}"
-        ),
-        Error::Conflict(_) => {
-            "The configuration changed while you were editing it. Try again.".to_owned()
-        }
-        Error::InvalidArgs(reason) => format!("The service refused the change: {reason}"),
-        Error::Unavailable(reason) => format!("Not available in this session: {reason}"),
-        Error::NotFound(reason)
-        | Error::Failed(reason)
-        | Error::NotImplemented(reason)
-        | Error::ScriptSyntax(reason) => reason.clone(),
-        Error::Bus(error) => format!("Cannot reach the Wye service: {error}"),
-    }
 }
 
 #[cfg(test)]

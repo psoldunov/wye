@@ -32,10 +32,14 @@ PlasmoidItem {
         return null;
     }
 
+    /*! The menu was asked for before the service sent its first `Tray`. */
+    property bool menuWanted: false
+
     function openMenu() {
         if (!daemon.serviceRunning || !root.tray) {
-            // Starts the service through D-Bus activation; the menu comes
-            // with its first `Tray`.
+            // Starts the service through D-Bus activation, or reads the
+            // model again; the menu opens when the first `Tray` arrives.
+            root.menuWanted = true;
             daemon.register();
             return;
         }
@@ -51,6 +55,13 @@ PlasmoidItem {
     }
 
     preferredRepresentation: compactRepresentation
+
+    onTrayChanged: {
+        if (root.menuWanted && root.tray) {
+            root.menuWanted = false;
+            root.openMenu();
+        }
+    }
 
     // TRAY-04: hidden (moved to the hidden items; Wye keeps running) when
     // the tray icon is off, and while no service runs (TRAY-17).

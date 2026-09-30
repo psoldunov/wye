@@ -26,30 +26,43 @@ let
 
   # DEF-01, DEF-07: the schemes always, HTML files only when the settings ask.
   localHtml = cfg.settings.general.open-local-html or false;
+  htmlTypes = [
+    "text/html"
+    "application/xhtml+xml"
+  ];
   mimeTypes = [
     "x-scheme-handler/http"
     "x-scheme-handler/https"
   ]
-  ++ lib.optionals localHtml [
-    "text/html"
-    "application/xhtml+xml"
-  ];
+  ++ lib.optionals localHtml htmlTypes;
 
-  # GEN-01: with a managed config the file has to carry the choice, or Wye
-  # would default to launching at login and write an autostart entry itself.
-  managedSettings = lib.recursiveUpdate (lib.optionalAttrs (!cfg.launchAtLogin) {
-    general.launch-at-login = false;
-  }) cfg.settings;
-  managedConfig = cfg.settings != { } || !cfg.launchAtLogin;
+  # The file is managed (a read-only store link) only when `settings` asks.
+  # Login start is the unit's `WantedBy` alone (GEN-01, `launchAtLogin`).
+  managedConfig = cfg.settings != { };
 
-  # systemd user services start with a minimal PATH; browsers launched from
-  # desktop entries with a bare `Exec=firefox` need the profile directories.
+  # Browsers launched from desktop entries with a bare `Exec=firefox` are
+  # looked up on the service's PATH. `Environment=PATH=` replaces the user
+  # manager's PATH, so the Nix profile directories come first and the usual
+  # system directories follow, which is where other distributions keep
+  # their browsers.
   searchPath = lib.concatStringsSep ":" [
     "${config.home.profileDirectory}/bin"
     "/etc/profiles/per-user/${config.home.username}/bin"
+    "/run/wrappers/bin"
     "/run/current-system/sw/bin"
     "${config.home.homeDirectory}/.local/bin"
+    "/usr/local/bin"
+    "/usr/bin"
+    "/bin"
   ];
+
+  # Common to both units: stop with the graphical session.
+  sessionUnit = description: {
+    Description = description;
+    Documentation = [ "https://github.com/psoldunov/wye" ];
+    PartOf = [ "graphical-session.target" ];
+    After = [ "graphical-session.target" ];
+  };
 in
 {
   options.programs.wye = channel.options // {
@@ -90,10 +103,10 @@ in
       default = true;
       description = ''
         Start the Wye service with the graphical session, so the tray icon is
-        there from the start (the "Launch at login" setting). Off, the service
-        still starts on the first link. Combined with a managed
-        {option}`settings`, this also writes `general.launch-at-login` to the
-        config file unless {option}`settings` sets it.
+        there from the start. Off, the service still starts on the first link.
+        The module owns login start through the systemd unit: the service
+        leaves the XDG autostart entry alone (`WYE_LOGIN_MANAGED=1`) and the
+        "Launch at login" setting shows as managed by Nix.
       '';
     };
   };
@@ -107,7 +120,7 @@ in
         home.packages = [ cfg.package ];
 
         xdg.configFile."wye/config.toml" = lib.mkIf managedConfig {
-          source = tomlFormat.generate "wye-config.toml" managedSettings;
+          source = tomlFormat.generate "wye-config.toml" cfg.settings;
         };
 
         # Route D-Bus activation through the package's own files, so the
@@ -118,12 +131,7 @@ in
         });
 
         systemd.user.services.wye = {
-          Unit = {
-            Description = "Wye browser picker service";
-            Documentation = [ "https://github.com/psoldunov/wye" ];
-            PartOf = [ "graphical-session.target" ];
-            After = [ "graphical-session.target" ];
-          };
+          Unit = sessionUnit "Wye browser picker service";
           Service = {
             Type = "dbus";
             BusName = "dev.soldunov.wye";
@@ -134,9 +142,27 @@ in
             RestartPreventExitStatus = 75;
             # Browsers Wye launches outlive a restart of the service (LAUNCH-06).
             KillMode = "process";
-            Environment = [ "PATH=${searchPath}" ];
+            Environment = [
+              "PATH=${searchPath}"
+              # GEN-01: login start is this unit's WantedBy, not the XDG
+              # autostart entry the service would otherwise write.
+              "WYE_LOGIN_MANAGED=1"
+            ];
           };
           Install.WantedBy = lib.optional cfg.launchAtLogin "graphical-session.target";
+        };
+
+        # The UI host (picker, windows, tray-menu popup): D-Bus activation of
+        # `dev.soldunov.wye.Ui` starts it through this unit; never at login.
+        systemd.user.services.wye-ui = {
+          Unit = sessionUnit "Wye picker and settings windows";
+          Service = {
+            Type = "dbus";
+            BusName = "dev.soldunov.wye.Ui";
+            ExecStart = lib.getExe' cfg.package "wye-ui";
+            Restart = "on-failure";
+            RestartSec = 2;
+          };
         };
 
         # Plasma's system tray looks for applets when plasmashell starts, and
@@ -175,6 +201,12 @@ in
         xdg.mimeApps.enable = true;
         # mkBefore: Wye leads the list when another module names a browser.
         xdg.mimeApps.defaultApplications = lib.genAttrs mimeTypes (_: lib.mkBefore [ desktopId ]);
+        # DEF-07: the desktop entry lists only the URL schemes, and some
+        # desktops (KService) ignore a default the entry does not support, so
+        # the HTML types are also added as associations.
+        xdg.mimeApps.associations.added = lib.mkIf localHtml (
+          lib.genAttrs htmlTypes (_: lib.mkBefore [ desktopId ])
+        );
 
         # Plasma keeps its own default browser in kdeglobals, a file Plasma
         # writes too, so it is set in place rather than linked. Only where

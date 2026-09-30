@@ -8,17 +8,6 @@ use wye_api::{Error, json};
 
 use super::{Caller, Dict, Result};
 use crate::context::{ServiceContext, blocking};
-use crate::platform::Platform;
-
-/// State this topic keeps: none; rules live in the configuration.
-#[derive(Debug, Default)]
-pub struct State;
-
-impl State {
-    pub(crate) fn new(_platform: &Platform) -> Self {
-        Self
-    }
-}
 
 /// `dev.soldunov.wye1.TestLink` (IN-08): JSON [`wye_api::trace::LinkTrace`].
 /// Routes with the configuration in use; nothing is opened or recorded.

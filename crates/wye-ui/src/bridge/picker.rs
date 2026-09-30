@@ -229,7 +229,16 @@ impl qobject::PickerBackend {
         let view = match PickerView::parse(&json.to_string()) {
             Ok(view) => view,
             Err(error) => {
+                // `ShowPicker` already refuses what cannot be read; should one
+                // get here anyway, answer it so the link is not left pending
+                // (PICK-23).
                 tracing::warn!(%error, "cannot show the picker");
+                let id = request_id.to_string();
+                service::request(
+                    self.qt_thread(),
+                    |proxy| async move { proxy.picker_cancelled(&id).await },
+                    |_, result| log("PickerCancelled", result),
+                );
                 return false;
             }
         };
@@ -268,7 +277,10 @@ impl qobject::PickerBackend {
         if *self.request_id() != *request_id {
             return false;
         }
-        self.as_mut().rust_mut().get_mut().state = None;
+        let rust = self.as_mut().rust_mut().get_mut();
+        rust.state = None;
+        // A token that arrives later must not answer a closed request.
+        rust.choice = None;
         self.close_requested();
         true
     }
@@ -472,7 +484,11 @@ impl qobject::PickerBackend {
             Effect::None => self.refresh(),
             Effect::Choose(choice) => {
                 let app_id = q(&choice.app_id);
-                self.as_mut().rust_mut().get_mut().choice = Some(choice);
+                // The request is decided: while the token is on its way, no
+                // other input may choose again or cancel it (PICK-29).
+                let rust = self.as_mut().rust_mut().get_mut();
+                rust.state = None;
+                rust.choice = Some(choice);
                 self.token_requested(app_id);
             }
             Effect::Cancel => self.cancel(),

@@ -17,16 +17,19 @@ pub mod qobject {
         #[qml_element]
         #[qproperty(QString, view_json, cxx_name = "viewJson")]
         #[qproperty(QString, error)]
+        #[qproperty(QString, error_kind, cxx_name = "errorKind")]
         #[qproperty(bool, loaded)]
         #[qproperty(bool, offline)]
+        #[qproperty(bool, live)]
         type HistoryBackend = super::HistoryBackendRust;
 
         /// Read everything from the service.
         #[qinvokable]
         fn refresh(self: Pin<&mut Self>);
 
-        /// Read what changed since the last read; the window calls it on a
-        /// timer while it is visible (DLG-HIS-01, live refresh).
+        /// Read what changed since the last read (DLG-HIS-01, live refresh).
+        /// The service's change signals call it while `live`; the window
+        /// also calls it when it becomes active.
         #[qinvokable]
         fn poll(self: Pin<&mut Self>);
 
@@ -83,19 +86,29 @@ use serde_json::json;
 use wye_api::Error;
 use wye_api::actions::Reopen;
 
+use crate::error_text::{self, ErrorText};
 use crate::history::fixture::Fixture;
 use crate::history::sync::{self, Action, Snapshot, Update};
 use crate::history::view::{View, split_url};
 use crate::service;
-use crate::settings::sync::describe;
 
 /// The properties' values and what the window shows.
 #[derive(Default)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "one field per boolean Q_PROPERTY QML binds to, and whether the service is followed"
+)]
 pub struct HistoryBackendRust {
     view_json: QString,
     error: QString,
+    error_kind: QString,
     loaded: bool,
     offline: bool,
+    /// Set by QML while the window is on screen: the changes the service
+    /// announces are read at once then, and on the next `refresh` otherwise.
+    live: bool,
+    /// The service's change signals are followed (`service::watch`).
+    watching: bool,
     snapshot: Snapshot,
     query: String,
 }
@@ -105,6 +118,12 @@ fn q(text: &str) -> QString {
 }
 
 impl qobject::HistoryBackend {
+    /// Show `text` in the message bar; empty clears it.
+    fn show_error(mut self: Pin<&mut Self>, text: &ErrorText) {
+        self.as_mut().set_error_kind(QString::from(text.kind));
+        self.set_error(QString::from(text.detail.as_str()));
+    }
+
     /// Publish the rows of `snapshot` for the current search.
     fn show(mut self: Pin<&mut Self>, snapshot: Snapshot) {
         let view = View::build(&snapshot.history, &snapshot.targets, &self.rust().query);
@@ -116,7 +135,7 @@ impl qobject::HistoryBackend {
 
     fn fail(mut self: Pin<&mut Self>, error: &Error) {
         tracing::warn!(%error, "history request failed");
-        self.as_mut().set_error(q(&describe(error)));
+        self.as_mut().show_error(&error_text::describe(error));
     }
 
     /// An update from the service, applied to what the window shows.
@@ -128,10 +147,10 @@ impl qobject::HistoryBackend {
         match result {
             Ok(Some(update)) => {
                 let next = update.apply(&self.rust().snapshot);
-                self.as_mut().set_error(QString::default());
+                self.as_mut().show_error(&ErrorText::default());
                 self.show(next);
             }
-            Ok(None) => self.as_mut().set_error(QString::default()),
+            Ok(None) => self.as_mut().show_error(&ErrorText::default()),
             Err(error) => self.fail(&error),
         }
     }
@@ -160,8 +179,27 @@ impl qobject::HistoryBackend {
     }
 
     /// See the bridge declaration.
-    pub fn refresh(self: Pin<&mut Self>) {
+    pub fn refresh(mut self: Pin<&mut Self>) {
+        self.as_mut().watch_service();
         self.reload(sync::Known::default());
+    }
+
+    /// Follow `HistoryRevision` and `InventoryRevision`, once (DLG-HIS-01):
+    /// no polling.
+    fn watch_service(mut self: Pin<&mut Self>) {
+        if *self.offline() || self.rust().watching {
+            return;
+        }
+        self.as_mut().rust_mut().get_mut().watching = true;
+        service::watch(
+            self.qt_thread(),
+            &["HistoryRevision", "InventoryRevision"],
+            |backend| {
+                if *backend.live() {
+                    backend.poll();
+                }
+            },
+        );
     }
 
     /// See the bridge declaration.
@@ -181,7 +219,9 @@ impl qobject::HistoryBackend {
     pub fn reopen(mut self: Pin<&mut Self>, id: u64, how: &QString) {
         match how.to_string().parse::<Reopen>() {
             Ok(how) => self.act(Action::Reopen(id, how)),
-            Err(error) => self.as_mut().set_error(q(&error.to_string())),
+            Err(error) => self
+                .as_mut()
+                .show_error(&ErrorText::plain(error.to_string())),
         }
     }
 
@@ -211,7 +251,8 @@ impl qobject::HistoryBackend {
             .find(|entry| entry.id == id)
             .cloned();
         let Some(entry) = entry else {
-            self.as_mut().set_error(q("That entry is gone."));
+            self.as_mut()
+                .show_error(&ErrorText::kind(error_text::ENTRY_GONE));
             return;
         };
         // PICK-31: the prefill the picker's "Create Rule…" sends.
@@ -222,7 +263,7 @@ impl qobject::HistoryBackend {
 
     /// See the bridge declaration.
     pub fn clear_error(self: Pin<&mut Self>) {
-        self.set_error(QString::default());
+        self.show_error(&ErrorText::default());
     }
 
     /// See the bridge declaration.
@@ -235,7 +276,7 @@ impl qobject::HistoryBackend {
             }
         };
         self.as_mut().set_offline(true);
-        self.as_mut().set_error(QString::default());
+        self.as_mut().show_error(&ErrorText::default());
         self.show(fixture.snapshot());
         true
     }

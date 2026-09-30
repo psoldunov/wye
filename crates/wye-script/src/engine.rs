@@ -178,7 +178,13 @@ fn call<'js>(
     let argument: Value = helpers.make.call((url.as_str(),))?;
     let returned: Value = transform.call((argument, context_object(ctx, input)?))?;
     let returned = match returned.as_promise() {
-        Some(promise) => promise.finish::<Value>()?,
+        Some(promise) => promise.finish::<Value>().map_err(|error| match error {
+            // Nothing left to run and the promise still pending (SCR-23).
+            rquickjs::Error::WouldBlock => Failure::from(ScriptError::new(
+                "the script's promise never settled; resolve it with a URL, a string or nothing",
+            )),
+            other => Failure::from(other),
+        })?,
         None => returned,
     };
     interpret(helpers, &returned, url)

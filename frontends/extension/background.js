@@ -51,9 +51,13 @@ async function showError(message) {
   await api.action.setTitle({ title: `Wye: ${message}` });
 }
 
+// The manifest's tooltip. An empty title would show the extension's name in
+// Firefox instead.
+const DEFAULT_TITLE = api.runtime.getManifest().action.default_title;
+
 async function clearError() {
   await api.action.setBadgeText({ text: "" });
-  await api.action.setTitle({ title: "" });
+  await api.action.setTitle({ title: DEFAULT_TITLE });
 }
 
 async function closeTabAfterSending() {

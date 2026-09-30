@@ -18,6 +18,7 @@ pub mod qobject {
         #[qml_singleton]
         #[qproperty(QString, view_json, cxx_name = "viewJson")]
         #[qproperty(QString, error)]
+        #[qproperty(QString, error_kind, cxx_name = "errorKind")]
         #[qproperty(bool, loaded)]
         #[qproperty(bool, offline)]
         #[qproperty(i32, step)]
@@ -104,6 +105,7 @@ use serde_json::Value;
 use wye_api::Error;
 
 use crate::about::link;
+use crate::error_text::{self, ErrorText};
 use crate::onboarding::choices;
 use crate::onboarding::desktop::Desktop;
 use crate::onboarding::flow::{Effect, Flow};
@@ -112,12 +114,12 @@ use crate::onboarding::view::View;
 use crate::service;
 use crate::settings::fixture::Fixture;
 use crate::settings::snapshot::Snapshot;
-use crate::settings::sync::describe;
 
 /// The properties' values and the window's state.
 pub struct OnboardingBackendRust {
     view_json: QString,
     error: QString,
+    error_kind: QString,
     loaded: bool,
     offline: bool,
     step: i32,
@@ -133,6 +135,7 @@ impl Default for OnboardingBackendRust {
         Self {
             view_json: QString::default(),
             error: QString::default(),
+            error_kind: QString::default(),
             loaded: false,
             offline: false,
             step: 0,
@@ -150,6 +153,12 @@ fn q(text: &str) -> QString {
 }
 
 impl qobject::OnboardingBackend {
+    /// Show `text` in the message bar; empty clears it.
+    fn show_error(mut self: Pin<&mut Self>, text: &ErrorText) {
+        self.as_mut().set_error_kind(QString::from(text.kind));
+        self.set_error(QString::from(text.detail.as_str()));
+    }
+
     /// Publish the step and the data for `snapshot`.
     fn show(mut self: Pin<&mut Self>, snapshot: Snapshot) {
         self.as_mut().rust_mut().get_mut().snapshot = snapshot;
@@ -168,7 +177,7 @@ impl qobject::OnboardingBackend {
 
     fn fail(mut self: Pin<&mut Self>, error: &Error) {
         tracing::warn!(%error, "first-run request failed");
-        self.as_mut().set_error(q(&describe(error)));
+        self.as_mut().show_error(&error_text::describe(error));
     }
 
     fn add_pending(mut self: Pin<&mut Self>, delta: i32) {
@@ -201,7 +210,7 @@ impl qobject::OnboardingBackend {
         }
         match result {
             Ok(snapshot) if *self.pending() == 0 => {
-                self.as_mut().set_error(QString::default());
+                self.as_mut().show_error(&ErrorText::default());
                 self.show(snapshot);
             }
             Ok(_) => {}
@@ -314,7 +323,9 @@ impl qobject::OnboardingBackend {
     pub fn set_primary(mut self: Pin<&mut Self>, target_json: &QString) {
         match serde_json::from_str::<Value>(&target_json.to_string()) {
             Ok(target) => self.patch(choices::primary_patch(&target)),
-            Err(error) => self.as_mut().set_error(q(&error.to_string())),
+            Err(error) => self
+                .as_mut()
+                .show_error(&ErrorText::plain(error.to_string())),
         }
     }
 
@@ -323,7 +334,8 @@ impl qobject::OnboardingBackend {
         let target = match serde_json::from_str::<Value>(&target_json.to_string()) {
             Ok(target) => target,
             Err(error) => {
-                self.as_mut().set_error(q(&error.to_string()));
+                self.as_mut()
+                    .show_error(&ErrorText::plain(error.to_string()));
                 return;
             }
         };
@@ -336,6 +348,11 @@ impl qobject::OnboardingBackend {
 
     /// See the bridge declaration.
     pub fn set_launch_at_login(self: Pin<&mut Self>, on: bool) {
+        // GEN-01: the Nix configuration owns login start; the key would
+        // change nothing, so it is never written.
+        if self.rust().snapshot.status.login_managed {
+            return;
+        }
         self.patch(choices::launch_patch(on));
     }
 
@@ -359,7 +376,7 @@ impl qobject::OnboardingBackend {
 
     /// See the bridge declaration.
     pub fn clear_error(self: Pin<&mut Self>) {
-        self.set_error(QString::default());
+        self.show_error(&ErrorText::default());
     }
 
     /// See the bridge declaration.
@@ -377,7 +394,7 @@ impl qobject::OnboardingBackend {
         };
         let desktop = desktop.to_string();
         self.as_mut().set_offline(true);
-        self.as_mut().set_error(QString::default());
+        self.as_mut().show_error(&ErrorText::default());
         if !desktop.is_empty() {
             self.as_mut().rust_mut().get_mut().desktop = Desktop::of(&desktop);
         }

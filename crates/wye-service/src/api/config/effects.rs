@@ -33,6 +33,12 @@ pub(crate) async fn announce(
     if saved || login_changed {
         sync_autostart(ctx, after).await;
     }
+    // Decision 2: the picker just became reachable; start the UI host now.
+    crate::api::picker::ready::config_changed(
+        ctx,
+        before.map(|before| &before.config),
+        &after.config,
+    );
 }
 
 /// Emit `PropertiesChanged` from a task of its own; a service not on a bus
@@ -69,8 +75,13 @@ async fn notify_broken(ctx: &ServiceContext, current: &Current) {
 }
 
 /// GEN-01: the autostart entry follows `general.launch-at-login`. A managed
-/// entry (a symlink) is left alone and logged.
+/// entry (a symlink) is left alone and logged; so is everything while login
+/// start is managed outside Wye (`WYE_LOGIN_MANAGED=1`).
 pub(crate) async fn sync_autostart(ctx: &ServiceContext, current: &Current) {
+    if ctx.login_managed() {
+        tracing::debug!("login start is managed outside Wye; the autostart entry stays as it is");
+        return;
+    }
     let xdg = current.environment.xdg.clone();
     let enabled = current.config.general.launch_at_login;
     let explicit = ctx.wye_executable_override();

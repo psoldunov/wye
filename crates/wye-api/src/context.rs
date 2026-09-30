@@ -25,6 +25,8 @@ pub const ENTRY: &str = "entry";
 pub const FORCE: &str = "force";
 /// `b`, `TestLink` only: do not contact short-link services.
 pub const SKIP_NETWORK: &str = "skip-network";
+/// `s`, `RunScript` only: the rule name the script sees as `context.rule`.
+pub const RULE: &str = "rule";
 
 /// `PickerChose` option `b`: open in a private window (PICK-20).
 pub const OPTION_PRIVATE: &str = "private";

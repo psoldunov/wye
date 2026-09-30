@@ -12,6 +12,8 @@ use serde_json::{Value, json};
 use wye_api::Error;
 use wye_api::proxy::Wye1Proxy;
 
+use crate::settings;
+use crate::settings::save::{Change, ConfigApi};
 use crate::settings::snapshot::Snapshot;
 
 /// The UI state patch that ends the first run (ONB-06).
@@ -19,15 +21,10 @@ fn done_patch() -> Value {
     json!({"onboardingDone": true})
 }
 
-/// The service calls the first-run window makes.
-pub trait Api: Sync {
+/// The service calls the first-run window makes; saving is
+/// [`crate::settings::save`].
+pub trait Api: ConfigApi {
     fn status(&self) -> impl Future<Output = Result<String, Error>> + Send;
-    fn get_config(&self) -> impl Future<Output = Result<(String, u64), Error>> + Send;
-    fn update_config(
-        &self,
-        patch: &str,
-        base: u64,
-    ) -> impl Future<Output = Result<u64, Error>> + Send;
     fn get_targets(&self) -> impl Future<Output = Result<String, Error>> + Send;
     fn get_services(&self) -> impl Future<Output = Result<String, Error>> + Send;
     fn make_default(&self) -> impl Future<Output = Result<(), Error>> + Send;
@@ -38,14 +35,6 @@ pub trait Api: Sync {
 impl Api for Wye1Proxy<'_> {
     async fn status(&self) -> Result<String, Error> {
         Ok(Wye1Proxy::status(self).await?)
-    }
-
-    async fn get_config(&self) -> Result<(String, u64), Error> {
-        Wye1Proxy::get_config(self).await
-    }
-
-    async fn update_config(&self, patch: &str, base: u64) -> Result<u64, Error> {
-        Wye1Proxy::update_config(self, patch, base).await
     }
 
     async fn get_targets(&self) -> Result<String, Error> {
@@ -85,22 +74,14 @@ pub async fn load<A: Api>(api: &A) -> Result<Snapshot, Error> {
         .with_inventory(&targets, &services)
 }
 
-/// Apply `patch` to the configuration on top of the revision `snapshot`
-/// knows. A stale revision (`Conflict`) reads the fresh one and applies the
-/// patch again once: merge patches touch only their own keys, so
-/// re-applying is safe.
+/// Save `patch`, built from `snapshot`'s configuration (SET-06).
 async fn save<A: Api>(api: &A, snapshot: &Snapshot, patch: &Value) -> Result<Snapshot, Error> {
-    let text = patch.to_string();
-    match api.update_config(&text, snapshot.revision).await {
-        Ok(_) => {}
-        Err(Error::Conflict(reason)) => {
-            tracing::debug!(%reason, "configuration changed under us; applying the patch again");
-            let (_, fresh) = api.get_config().await?;
-            api.update_config(&text, fresh).await?;
-        }
-        Err(error) => return Err(error),
-    }
-    let (config, revision) = api.get_config().await?;
+    let change = Change {
+        patch: patch.clone(),
+        base_revision: snapshot.revision,
+        base_config: snapshot.config.clone(),
+    };
+    let (config, revision) = settings::save::save(api, &change).await?;
     snapshot.with_config(&config, revision)
 }
 

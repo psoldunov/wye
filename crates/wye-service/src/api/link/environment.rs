@@ -3,6 +3,7 @@
 
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use wye_core::{DesktopId, Pipeline};
 use wye_desktop::{Inventory, XdgDirs};
@@ -53,10 +54,11 @@ impl Environment {
 }
 
 /// Everything one link is routed with, from the service's cached
-/// configuration and inventory (`api::config::snapshot`).
+/// configuration and inventory (`api::config::snapshot`), shared rather
+/// than copied for each link.
 pub(crate) struct Snapshot {
-    pub pipeline: Pipeline,
-    pub inventory: Inventory,
+    pub pipeline: Arc<Pipeline>,
+    pub inventory: Arc<Inventory>,
     /// The browser Wye replaced as the default (for the picker stand-in).
     pub previous_default: Option<DesktopId>,
 }

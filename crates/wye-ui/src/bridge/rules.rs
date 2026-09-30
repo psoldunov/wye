@@ -23,7 +23,6 @@ pub mod qobject {
         #[qml_singleton]
         #[qproperty(QString, apps_json, cxx_name = "appsJson")]
         #[qproperty(QString, error)]
-        #[qproperty(QString, notice)]
         #[qproperty(bool, can_undo, cxx_name = "canUndo")]
         #[qproperty(bool, busy)]
         type RulesBackend = super::RulesBackendRust;
@@ -138,6 +137,17 @@ pub mod qobject {
         /// Rules were imported; the configuration changed.
         #[qsignal]
         fn imported(self: Pin<&mut Self>, count: i32);
+
+        /// A deletion of `count` rules (`name` when it was one) can be
+        /// undone for the next few seconds (RUL-06); each one starts the
+        /// time again.
+        #[qsignal]
+        #[cxx_name = "undoArmed"]
+        fn undo_armed(self: Pin<&mut Self>, count: i32, name: QString);
+
+        /// The rules were written to the chosen file (RUL-02).
+        #[qsignal]
+        fn exported(self: Pin<&mut Self>);
     }
 
     impl cxx_qt::Threading for RulesBackend {}
@@ -161,7 +171,6 @@ use crate::service;
 pub struct RulesBackendRust {
     apps_json: QString,
     error: QString,
-    notice: QString,
     can_undo: bool,
     busy: bool,
     /// `{key, argument}` of the last `request`, until taken.
@@ -182,8 +191,24 @@ fn index(value: i32) -> Option<usize> {
     usize::try_from(value).ok()
 }
 
-fn rules(config_json: &QString) -> Vec<Rule> {
+/// The rules of `config_json`, or `None` (logged) when they cannot be
+/// read: no change is built then, since one built on an empty list would
+/// delete every rule.
+fn rules(config_json: &QString) -> Option<Vec<Rule>> {
     list::rules_of(&config_json.to_string())
+        .inspect_err(|error| tracing::warn!(%error, "cannot change the rules"))
+        .ok()
+}
+
+/// The patch that saves `rules`, or empty (QML then saves nothing).
+fn patch_text(rules: &[Rule]) -> QString {
+    ops::patch(rules).map_or_else(
+        |error| {
+            tracing::warn!(%error, "cannot write the rules");
+            QString::default()
+        },
+        |patch| text(&patch),
+    )
 }
 
 /// `browsers.alternative-key` of the configuration (RUL-27).
@@ -241,50 +266,59 @@ impl qobject::RulesBackend {
     /// See the bridge declaration.
     pub fn rows(&self, config_json: &QString, apps_json: &QString) -> QString {
         let names = list::app_names(&apps_json.to_string());
-        let rows = list::rows(&rules(config_json), &names);
+        let shown = list::rules_of(&config_json.to_string()).unwrap_or_default();
+        let rows = list::rows(&shown, &names);
         qs(&serde_json::to_string(&rows).unwrap_or_else(|_| "[]".to_owned()))
     }
 
     /// See the bridge declaration.
     pub fn toggle_patch(&self, config_json: &QString, at: i32, enabled: bool) -> QString {
-        let rules = rules(config_json);
-        index(at).map_or_else(QString::default, |at| {
-            text(&ops::patch(&ops::toggled(&rules, at, enabled)))
-        })
+        let (Some(rules), Some(at)) = (rules(config_json), index(at)) else {
+            return QString::default();
+        };
+        patch_text(&ops::toggled(&rules, at, enabled))
     }
 
     /// See the bridge declaration.
     pub fn move_patch(&self, config_json: &QString, from: i32, to: i32) -> QString {
-        let rules = rules(config_json);
-        match (index(from), index(to)) {
-            (Some(from), Some(to)) => text(&ops::patch(&ops::moved(&rules, from, to))),
+        match (rules(config_json), index(from), index(to)) {
+            (Some(rules), Some(from), Some(to)) => patch_text(&ops::moved(&rules, from, to)),
             _ => QString::default(),
         }
     }
 
     /// See the bridge declaration.
     pub fn delete_patch(self: Pin<&mut Self>, config_json: &QString, at: i32) -> QString {
-        let Some(at) = index(at) else {
+        let (Some(rules), Some(at)) = (rules(config_json), index(at)) else {
             return QString::default();
         };
-        let (rest, removed) = ops::removed(&rules(config_json), at);
-        let patch = text(&ops::patch(&rest));
-        self.remember(removed);
+        let (rest, removed) = ops::removed(&rules, at);
+        let patch = patch_text(&rest);
+        if !patch.is_empty() {
+            self.remember(removed);
+        }
         patch
     }
 
     /// See the bridge declaration.
     pub fn delete_all_patch(self: Pin<&mut Self>, config_json: &QString) -> QString {
-        let removed = ops::all_removed(&rules(config_json));
-        self.remember(removed);
-        text(&ops::patch(&[]))
+        let Some(rules) = rules(config_json) else {
+            return QString::default();
+        };
+        self.remember(ops::all_removed(&rules));
+        patch_text(&[])
     }
 
     /// See the bridge declaration.
     pub fn undo_patch(mut self: Pin<&mut Self>, config_json: &QString) -> QString {
-        let restored = self.removed.restored(&rules(config_json));
-        self.as_mut().drop_undo();
-        text(&ops::patch(&restored))
+        let Some(rules) = rules(config_json) else {
+            return QString::default();
+        };
+        let patch = patch_text(&self.removed.restored(&rules));
+        if !patch.is_empty() {
+            self.as_mut().drop_undo();
+        }
+        patch
     }
 
     /// See the bridge declaration.
@@ -293,18 +327,23 @@ impl qobject::RulesBackend {
     }
 
     fn remember(mut self: Pin<&mut Self>, removed: Removed) {
-        self.as_mut().set_notice(qs(&removed.describe()));
-        self.as_mut().set_can_undo(!removed.is_empty());
-        self.rust_mut().get_mut().removed = removed;
+        let armed = !removed.is_empty();
+        let (count, name) = removed.summary();
+        let (count, name) = (i32::try_from(count).unwrap_or(i32::MAX), qs(name));
+        self.as_mut().set_can_undo(armed);
+        self.as_mut().rust_mut().get_mut().removed = removed;
+        if armed {
+            self.undo_armed(count, name);
+        }
     }
 
     /// See the bridge declaration.
     pub fn duplicate_patch(&self, config_json: &QString, at: i32) -> QString {
-        let rules = rules(config_json);
+        let (Some(rules), Some(at)) = (rules(config_json), index(at)) else {
+            return QString::default();
+        };
         let id = draft::fresh_id(&rules, seed());
-        index(at).map_or_else(QString::default, |at| {
-            text(&ops::patch(&ops::duplicated(&rules, at, &id)))
-        })
+        patch_text(&ops::duplicated(&rules, at, &id))
     }
 
     /// See the bridge declaration.
@@ -312,13 +351,10 @@ impl qobject::RulesBackend {
         let rule = serde_json::from_str::<Value>(&draft_json.to_string())
             .map_err(|error| error.to_string())
             .and_then(|draft| draft::rule_of(&draft));
-        match rule {
-            Ok(rule) => text(&ops::patch(&ops::saved(
-                &rules(config_json),
-                index(at),
-                rule,
-            ))),
-            Err(error) => {
+        match (rules(config_json), rule) {
+            (Some(rules), Ok(rule)) => patch_text(&ops::saved(&rules, index(at), rule)),
+            (None, _) => QString::default(),
+            (_, Err(error)) => {
                 tracing::warn!(%error, "the rule draft is not a rule");
                 QString::default()
             }
@@ -327,7 +363,8 @@ impl qobject::RulesBackend {
 
     /// See the bridge declaration.
     pub fn new_draft(&self, config_json: &QString, argument: &QString) -> QString {
-        let id = draft::fresh_id(&rules(config_json), seed());
+        let rules = list::rules_of(&config_json.to_string()).unwrap_or_default();
+        let id = draft::fresh_id(&rules, seed());
         text(&draft::new_draft(
             &Prefill::parse(&argument.to_string()),
             &id,
@@ -336,7 +373,7 @@ impl qobject::RulesBackend {
 
     /// See the bridge declaration.
     pub fn draft_for(&self, config_json: &QString, at: i32) -> QString {
-        let rules = rules(config_json);
+        let rules = list::rules_of(&config_json.to_string()).unwrap_or_default();
         let id = draft::fresh_id(&rules, seed());
         index(at)
             .and_then(|at| draft::draft_for(&rules, at, &id))
@@ -381,7 +418,7 @@ impl qobject::RulesBackend {
                     .map_err(|error| error.to_string())
                     .and_then(|text| files::write(&chosen, &text));
                 match written {
-                    Ok(()) => backend.set_notice(qs("Rules exported")),
+                    Ok(()) => backend.exported(),
                     Err(error) => backend.set_error(qs(&error)),
                 }
             },
@@ -404,11 +441,7 @@ impl qobject::RulesBackend {
             |mut backend, answer| {
                 backend.as_mut().set_busy(false);
                 match answer {
-                    Ok(count) => {
-                        let message = format!("Imported {count} rules");
-                        backend.as_mut().set_notice(qs(&message));
-                        backend.imported(i32::try_from(count).unwrap_or(i32::MAX));
-                    }
+                    Ok(count) => backend.imported(i32::try_from(count).unwrap_or(i32::MAX)),
                     Err(error) => backend.set_error(qs(&error.to_string())),
                 }
             },

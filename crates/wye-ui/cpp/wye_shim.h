@@ -25,14 +25,10 @@ std::unique_ptr<QApplication> applicationNew(rust::Slice<const rust::String> arg
 // QApplication::exec().
 int applicationExec();
 
-// Blur what is behind `window` (KWindowEffects). False when the compositor
-// has no blur effect: the caller then draws the popover background at full
-// opacity (02-picker.md, "No blur available").
-bool blurBehind(QWindow &window, bool enable);
-
 // Blur behind a rounded rectangle of `window` only, for a panel inside a
-// larger transparent window (the picker, PICK-01). Same fallback as
-// blurBehind.
+// larger transparent window (the picker, PICK-01; KWindowEffects). False
+// when the compositor has no blur effect: the caller then draws the panel
+// at full opacity (02-picker.md, "No blur available").
 bool blurBehindRect(QWindow &window, bool enable, int x, int y, int width, int height, double radius);
 
 // Ask the compositor for an xdg-activation token for `appId`, using the

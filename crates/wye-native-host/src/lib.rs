@@ -148,7 +148,6 @@ mod tests {
         Link {
             url: "https://a.example/".into(),
             held,
-            page: false,
         }
     }
 

@@ -17,6 +17,10 @@ pub struct Status {
     pub capabilities: Capabilities,
     /// The screen is locked (PKS-07).
     pub locked: bool,
+    /// Starting at login is managed outside Wye (the Nix modules set
+    /// `WYE_LOGIN_MANAGED=1`): the service never writes the autostart entry,
+    /// and `general.launch-at-login` changes nothing (GEN-01).
+    pub login_managed: bool,
     /// State the UI keeps across runs; changed with `UpdateUiState`.
     pub ui_state: UiState,
 }
@@ -109,6 +113,7 @@ mod tests {
     fn keys_are_camel_case() {
         let json = serde_json::to_value(Status::default()).expect("encodes");
         assert!(json.get("defaultBrowser").is_some());
+        assert_eq!(json["loginManaged"], serde_json::Value::Bool(false));
         assert!(json["uiState"].get("onboardingDone").is_some());
         assert!(json["capabilities"].get("heldKeys").is_some());
     }

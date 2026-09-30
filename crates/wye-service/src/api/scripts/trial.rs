@@ -16,9 +16,6 @@ use zbus::zvariant::Value;
 
 use crate::api::Dict;
 
-/// `s`, `RunScript` only: the rule name `context.rule` shows.
-pub(crate) const RULE: &str = "rule";
-
 /// The link and context of one trial run.
 ///
 /// # Errors
@@ -44,7 +41,7 @@ pub(crate) fn input(url: &str, context: &Dict) -> Result<(Url, ScriptInput), Err
         desktop_id,
         executable: text(context, keys::SOURCE_EXECUTABLE)?.map(str::to_owned),
     };
-    let rule_name = text(context, RULE)?;
+    let rule_name = text(context, keys::RULE)?;
     let transform = TransformContext {
         entry,
         source: &source,
@@ -160,7 +157,7 @@ mod tests {
             (keys::ENTRY, Value::from("clipboard")),
             (keys::SOURCE_DESKTOP_ID, Value::from("org.kde.dolphin")),
             (keys::HELD, Value::from(vec!["Ctrl", "Shift"])),
-            (RULE, Value::from("GitHub")),
+            (keys::RULE, Value::from("GitHub")),
         ]);
         let (url, input) = input("https://example.com/", &context).expect("valid");
         assert_eq!(url.as_str(), "https://example.com/");

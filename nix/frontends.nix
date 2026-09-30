@@ -60,12 +60,19 @@ in
     pname = "wye-extension";
     inherit version;
     src = ../frontends/extension;
-    nativeBuildInputs = [ zip ];
+    nativeBuildInputs = [
+      jq
+      zip
+    ];
     dontConfigure = true;
     buildPhase = ''
       runHook preBuild
       for family in firefox chromium; do
         sh ./build.sh "$family" "$family"
+        # Stamp the workspace version, like the applet's KPlugin.Version.
+        jq --arg version ${lib.escapeShellArg version} '.version = $version' \
+          "$family/manifest.json" > manifest.stamped.json
+        mv manifest.stamped.json "$family/manifest.json"
         # Fixed timestamps and order keep the zip reproducible.
         (cd "$family" && find . -type f | LC_ALL=C sort | TZ=UTC zip -X -q -@ "../wye-extension-$family.zip")
       done

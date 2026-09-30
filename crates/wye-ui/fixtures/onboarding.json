@@ -972,6 +972,23 @@
       "action": "show",
       "key": "first-run",
       "argument": {
+        "step": 3,
+        "fixture": {
+          "status": {
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true
+          }
+        },
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
         "scheme": "light",
         "step": 4,
         "desktop": "kde"

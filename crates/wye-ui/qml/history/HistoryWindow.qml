@@ -68,24 +68,31 @@ Kirigami.ApplicationWindow {
 
     HistoryBackend {
         id: backend
+
+        // DLG-HIS-01: while the window is on screen, changes made elsewhere
+        // (a link opened, another window's Clear) show as the service
+        // announces them.
+        live: window.visible
     }
 
     CopyHelper {
         id: clipboard
     }
 
-    // DLG-HIS-01: changes made elsewhere (a link opened, another window's Clear) show without a restart.
-    Timer {
-        interval: 2000
-        repeat: true
-        running: window.visible && !backend.offline
-
-        onTriggered: backend.poll()
+    WyeErrorText {
+        id: errors
     }
 
     onVisibleChanged: {
         if (visible) {
             backend.refresh();
+        }
+    }
+    // Anything the service changed without announcing it shows once the
+    // user returns to the window.
+    onActiveChanged: {
+        if (active && !backend.offline) {
+            backend.poll();
         }
     }
 
@@ -189,7 +196,7 @@ Kirigami.ApplicationWindow {
             Kirigami.InlineMessage {
                 Layout.fillWidth: true
                 showCloseButton: true
-                text: backend.error
+                text: errors.describe(backend.errorKind, backend.error)
                 type: Kirigami.MessageType.Error
                 visible: backend.error !== ""
 

@@ -1,7 +1,7 @@
 # Evaluates the home-manager and NixOS modules the way a user's configuration
 # would, and asserts what they produce: the config file, the systemd unit, the
 # D-Bus activation files, the default-browser associations (GEN-01, DEF-01,
-# DEF-02, DEF-04, DEF-07). Nothing here boots anything; the VM test does that.
+# DEF-02, DEF-04, DEF-07). Nothing here boots anything.
 {
   pkgs,
   self,
@@ -171,7 +171,9 @@ let
       configToml =
         if file "wye/config.toml" == null then null else toString (file "wye/config.toml").source;
       mimeApps = config.xdg.mimeApps.defaultApplications;
+      mimeAdded = config.xdg.mimeApps.associations.added;
       unitFile = toString (file "systemd/user/wye.service").source;
+      uiUnit = config.systemd.user.services.wye-ui or null;
     };
 
   enabled = homeFacts "enabled" {
@@ -213,6 +215,7 @@ let
     dbusPackages = map toString nixos.services.dbus.packages;
     systemdPackages = map toString nixos.systemd.packages;
     wantedBy = nixos.systemd.user.services.wye.wantedBy;
+    environment = nixos.systemd.user.services.wye.environment;
     quietWantedBy = nixosQuiet.systemd.user.services.wye.wantedBy;
     mime = nixos.xdg.mime.defaultApplications;
     offHasUnit = nixosOff.systemd.user.services ? wye;
@@ -246,26 +249,37 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
       \"dbus-1/services/dev.soldunov.wye.Ui.service\": \"\(\$p)/share/dbus-1/services/dev.soldunov.wye.Ui.service\"
     }"
     grep -qxF 'KillMode=process' "$(jq -r ".home.$name.unitFile" "$facts")"
+    # GEN-01: the unit owns login start; the service leaves XDG autostart alone.
+    check ".home.$name.unit.Service.Environment | index(\"WYE_LOGIN_MANAGED=1\") != null"
+    # Browsers with a bare Exec: Nix profiles first, then the system's directories.
+    check ".home.$name.unit.Service.Environment[] | select(startswith(\"PATH=\")) | startswith(\"PATH=/home/alice/.nix-profile/bin:\") and endswith(\":/usr/local/bin:/usr/bin:/bin\")"
+    # The UI host's unit: bus-activated, never at login.
+    check ".package as \$p | .home.$name.uiUnit | .Service.Type == \"dbus\" and .Service.BusName == \"dev.soldunov.wye.Ui\" and .Service.ExecStart == [\"\(\$p)/bin/wye-ui\"] and ((.Install.WantedBy // []) == [])"
   done
 
   # GEN-01: launch at login follows the unit's WantedBy.
   check '.home.enabled.unit.Install.WantedBy == ["graphical-session.target"]'
   check '.home.quiet.unit.Install.WantedBy == []'
 
-  # A managed config file only when settings (or launch-at-login = false) ask.
+  # A managed config file only when settings ask; launchAtLogin alone never
+  # makes the file read-only.
   check '.home.minimal.configToml == null'
+  check '.home.quiet.configToml == null'
   config=$(jq -r '.home.enabled.configToml' "$facts")
   grep -qxF '[browsers.primary]' "$config"
   grep -qxF 'picker = true' "$config"
   grep -qxF 'open-local-html = true' "$config"
-  quiet=$(jq -r '.home.quiet.configToml' "$facts")
-  grep -qxF 'launch-at-login = false' "$quiet"
+  if grep -q 'launch-at-login' "$config"; then exit 1; fi
 
-  # DEF-02, DEF-07: associations only on request; HTML files only when on.
+  # DEF-02, DEF-07: associations only on request; HTML files only when on,
+  # as the default and as an added association.
   check '.home.minimal.mimeApps == {}'
+  check '.home.minimal.mimeAdded == {}'
   check '.home.enabled.mimeApps == (
     ["x-scheme-handler/http", "x-scheme-handler/https", "text/html", "application/xhtml+xml"]
     | map({(.): ["dev.soldunov.wye.desktop"]}) | add)'
+  check '.home.enabled.mimeAdded == (
+    ["text/html", "application/xhtml+xml"] | map({(.): ["dev.soldunov.wye.desktop"]}) | add)'
 
   # NixOS: the package's own files, wired in.
   check '.package as $p | .nixos.systemPackages | index($p) != null'
@@ -273,6 +287,8 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
   check '.package as $p | .nixos.systemdPackages | index($p) != null'
   check '.nixos.wantedBy == ["graphical-session.target"]'
   check '.nixos.quietWantedBy == []'
+  check '.nixos.environment.WYE_LOGIN_MANAGED == "1"'
+  check '.nixos.environment.PATH | startswith("/etc/profiles/per-user/%u/bin:/run/wrappers/bin:") and endswith(":/usr/local/bin:/usr/bin:/bin")'
   check '.nixos.mime == {
     "x-scheme-handler/http": "dev.soldunov.wye.desktop",
     "x-scheme-handler/https": "dev.soldunov.wye.desktop"

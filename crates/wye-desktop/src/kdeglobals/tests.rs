@@ -1,5 +1,6 @@
 use std::fs;
-use std::os::unix::fs::symlink;
+use std::os::unix::fs::{PermissionsExt as _, symlink};
+use std::path::PathBuf;
 
 use super::*;
 use crate::test_support::Fixture;
@@ -219,4 +220,48 @@ fn a_managed_file_that_already_names_wye_needs_no_write_to_set_but_cannot_be_res
         restore_browser(&xdg, &wye(), None),
         Err(DefaultBrowserError::Managed { .. })
     ));
+}
+
+/// A `kwriteconfig6` that records its arguments, one call per line.
+fn recording_kwriteconfig(fx: &Fixture) -> PathBuf {
+    let log = fx.path("kwriteconfig.log");
+    let script = fx.write(
+        "bin/kwriteconfig6",
+        &format!("#!/bin/sh\necho \"$*\" >> '{}'\n", log.display()),
+    );
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+    log
+}
+
+// DEF-02, DEF-05: with kwriteconfig6 on PATH, KConfig's own writer (and
+// lock) makes the change; Wye does not rewrite the file itself.
+#[test]
+fn kwriteconfig6_sets_and_restores_the_browser_when_available() {
+    let (fx, xdg) = kde();
+    let log = recording_kwriteconfig(&fx);
+    fx.write("home/.config/kdeglobals", SAMPLE);
+    let file = path(&xdg);
+    assert_eq!(
+        set_browser(&xdg, &wye()).unwrap(),
+        Applied::Set {
+            previous: Some("firefox.desktop".into())
+        }
+    );
+    assert_eq!(read(&xdg), SAMPLE, "left to kwriteconfig6");
+    fx.write(
+        "home/.config/kdeglobals",
+        "[General]\nBrowserApplication=dev.soldunov.wye.desktop\n",
+    );
+    assert_eq!(
+        restore_browser(&xdg, &wye(), None).unwrap(),
+        Restored::Restored
+    );
+    assert_eq!(
+        fs::read_to_string(log).unwrap(),
+        format!(
+            "--file {0} --group General --key BrowserApplication -- dev.soldunov.wye.desktop\n\
+             --file {0} --group General --key BrowserApplication --delete\n",
+            file.display()
+        )
+    );
 }

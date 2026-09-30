@@ -9,20 +9,29 @@
 //! it back to [`restore_browser`] when Wye stops being the default.
 //!
 //! Only `kdeglobals` itself is touched, and only when the session is KDE
-//! (`XDG_CURRENT_DESKTOP` contains `KDE`). Every other line is kept byte for
-//! byte and the file is replaced atomically. A symlink or read-only file is
+//! (`XDG_CURRENT_DESKTOP` contains `KDE`). The change goes through
+//! `kwriteconfig6` when it is on `PATH` (always on Plasma), which takes
+//! `KConfig`'s lock, so a Plasma process saving `kdeglobals` at the same
+//! moment loses nothing. Without it, every other line is kept byte for byte
+//! and the file is replaced atomically. A symlink or read-only file is
 //! managed elsewhere (home-manager, say) and gives
 //! [`DefaultBrowserError::Managed`].
 
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use wye_core::DesktopId;
 
-use crate::default_browser::{DefaultBrowserError, ensure_writable, read_existing, set_keys};
+use crate::default_browser::{
+    DefaultBrowserError, ensure_writable, read_existing, remove_key, set_keys,
+};
 use crate::xdg::XdgDirs;
 use crate::{atomic, keyfile};
 
 const FILE: &str = "kdeglobals";
+/// Plasma's command-line `KConfig` writer.
+const KWRITECONFIG: &str = "kwriteconfig6";
 const GROUP: &str = "General";
 /// The key KDE reads the default browser from.
 pub const BROWSER_KEY: &str = "BrowserApplication";
@@ -102,8 +111,10 @@ pub fn set_browser(xdg: &XdgDirs, id: &DesktopId) -> Result<Applied, DefaultBrow
     }
     ensure_writable(&path)?;
     let key = current.as_ref().map_or(BROWSER_KEY, |(key, _)| *key);
-    let updated = set_keys(&text, GROUP, &[(key, id.as_str())]);
-    write(&path, &updated)?;
+    match xdg.find_program(KWRITECONFIG) {
+        Some(program) => kwriteconfig(&program, &path, Some(id.as_str()))?,
+        None => write(&path, &set_keys(&text, GROUP, &[(key, id.as_str())]))?,
+    }
     Ok(Applied::Set {
         previous: current.map(|(_, value)| value),
     })
@@ -148,7 +159,12 @@ pub fn restore_browser(
         return Ok(Restored::NotOurs);
     }
     ensure_writable(&path)?;
-    let updated = match previous.map(str::trim).filter(|value| !value.is_empty()) {
+    let previous = previous.map(str::trim).filter(|value| !value.is_empty());
+    if let Some(program) = xdg.find_program(KWRITECONFIG) {
+        kwriteconfig(&program, &path, previous)?;
+        return Ok(Restored::Restored);
+    }
+    let updated = match previous {
         Some(previous) => set_keys(&text, GROUP, &[(key, previous)]),
         None => remove_key(&text, GROUP, key),
     };
@@ -156,29 +172,46 @@ pub fn restore_browser(
     Ok(Restored::Restored)
 }
 
-fn write(path: &std::path::Path, text: &str) -> Result<(), DefaultBrowserError> {
+/// Set `BrowserApplication` in `path` to `value`, or delete it for `None`,
+/// with `kwriteconfig6` at `program`.
+fn kwriteconfig(
+    program: &Path,
+    path: &Path,
+    value: Option<&str>,
+) -> Result<(), DefaultBrowserError> {
+    let mut command = Command::new(program);
+    command
+        .arg("--file")
+        .arg(path)
+        .args(["--group", GROUP, "--key", BROWSER_KEY]);
+    match value {
+        Some(value) => command.arg("--").arg(value),
+        None => command.arg("--delete"),
+    };
+    let failed = |source: io::Error| DefaultBrowserError::Io {
+        path: path.to_path_buf(),
+        source,
+    };
+    let output = command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .output()
+        .map_err(failed)?;
+    if output.status.success() {
+        return Ok(());
+    }
+    Err(failed(io::Error::other(format!(
+        "{KWRITECONFIG} failed ({}): {}",
+        output.status,
+        String::from_utf8_lossy(&output.stderr).trim()
+    ))))
+}
+
+fn write(path: &Path, text: &str) -> Result<(), DefaultBrowserError> {
     atomic::write(path, text.as_bytes(), Some(path)).map_err(|source| DefaultBrowserError::Io {
         path: path.to_path_buf(),
         source,
     })
-}
-
-/// Removes every `key=` line of `group`, keeping all other lines.
-fn remove_key(text: &str, group: &str, key: &str) -> String {
-    let mut in_group = false;
-    text.split_inclusive('\n')
-        .filter(|line| {
-            let trimmed = line.trim();
-            if let Some(name) = keyfile::group_header(trimmed) {
-                in_group = name == group;
-                return true;
-            }
-            let is_key = trimmed
-                .split_once('=')
-                .is_some_and(|(name, _)| name.trim_end() == key);
-            !(in_group && is_key)
-        })
-        .collect()
 }
 
 #[cfg(test)]

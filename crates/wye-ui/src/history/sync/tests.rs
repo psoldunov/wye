@@ -33,6 +33,24 @@ impl Fake {
     clippy::unused_async_trait_impl,
     reason = "the fake service answers at once; the trait's methods are async"
 )]
+impl ConfigApi for Fake {
+    async fn get_config(&self) -> Result<(String, u64), Error> {
+        Ok(("{}".to_owned(), 9))
+    }
+
+    async fn update_config(&self, patch: &str, base: u64) -> Result<u64, Error> {
+        self.record(format!("update {patch} @{base}"));
+        if self.read_only {
+            return Err(Error::ReadOnly("home-manager".into()));
+        }
+        Ok(base + 1)
+    }
+}
+
+#[allow(
+    clippy::unused_async_trait_impl,
+    reason = "the fake service answers at once; the trait's methods are async"
+)]
 impl Api for Fake {
     async fn history_revision(&self) -> Result<u64, Error> {
         Ok(self.history_revision)
@@ -65,18 +83,6 @@ impl Api for Fake {
     async fn reopen_history_entry(&self, id: u64, how: &str) -> Result<(), Error> {
         self.record(format!("reopen {id} {how}"));
         Ok(())
-    }
-
-    async fn get_config(&self) -> Result<(String, u64), Error> {
-        Ok(("{}".to_owned(), 9))
-    }
-
-    async fn update_config(&self, patch: &str, base: u64) -> Result<u64, Error> {
-        self.record(format!("update {patch} @{base}"));
-        if self.read_only {
-            return Err(Error::ReadOnly("home-manager".into()));
-        }
-        Ok(base + 1)
     }
 
     async fn show_window(&self, window: &str, argument: &str) -> Result<(), Error> {
@@ -194,7 +200,7 @@ fn turning_history_on_patches_the_configuration_and_reads_everything() {
     assert_eq!(
         fake.calls(),
         [
-            r#"update {"advanced":{"history":true}} @9"#,
+            r#"update {"advanced":{"history":true}} @0"#,
             "get-history",
             "get-targets"
         ]

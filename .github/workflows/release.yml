@@ -1,0 +1,128 @@
+name: Release
+
+# Push a tag `vX.Y.Z` that names the workspace version in Cargo.toml. The
+# workflow builds it, publishes the GitHub release, and opens a pull request
+# that records the release in nix/release.json, which is what
+# `programs.wye.channel = "release"` installs. Nothing here creates a tag.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      rev: ${{ steps.version.outputs.rev }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The tag must be on master; that needs the branch history.
+          fetch-depth: 0
+
+      - name: Check the tag against Cargo.toml and master
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          version=$(awk '/^\[workspace\.package\]/ { in_section = 1; next } /^\[/ { in_section = 0 } in_section && /^version *=/ { gsub(/[" ]/, "", $3); print $3; exit }' Cargo.toml)
+          if [ -z "$version" ]; then
+            echo "::error::no workspace version in Cargo.toml"
+            exit 1
+          fi
+          if [ "$TAG" != "v$version" ]; then
+            echo "::error::tag $TAG does not match the workspace version v$version in Cargo.toml"
+            exit 1
+          fi
+          rev=$(git rev-parse HEAD)
+          if ! git merge-base --is-ancestor "$rev" origin/master; then
+            echo "::error::tag $TAG ($rev) is not on master"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: psoldunov
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      # The same derivation `programs.wye.channel = "release"` builds; the
+      # cache push (when the token is set) is what makes that install fast.
+      - name: nix build
+        run: nix build -L
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "release $TAG exists; leaving it as it is"
+            exit 0
+          fi
+          gh release create "$TAG" --verify-tag --title "Wye ${TAG#v}" --generate-notes
+
+  record:
+    needs: [build, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: master
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      - name: Open a pull request that records the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ needs.build.outputs.version }}
+          REV: ${{ needs.build.outputs.rev }}
+        run: |
+          set -euo pipefail
+          # The content hash of the tagged tree, exactly as a locked
+          # `github:psoldunov/wye/<rev>?narHash=…` reference names it.
+          narHash=$(nix flake prefetch --json "github:${GH_REPO}/${REV}" | jq -r .hash)
+          if [ -z "$narHash" ] || [ "$narHash" = null ]; then
+            echo "::error::could not prefetch github:${GH_REPO}/${REV}"
+            exit 1
+          fi
+          jq -n --arg version "$VERSION" --arg rev "$REV" --arg narHash "$narHash" \
+            '{version: $version, rev: $rev, narHash: $narHash}' > nix/release.json
+          if git diff --quiet -- nix/release.json; then
+            echo "nix/release.json already records $TAG"
+            exit 0
+          fi
+          branch="release/${TAG}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add nix/release.json
+          git commit -m "chore: record release ${TAG} in nix/release.json"
+          git push origin "$branch"
+          gh pr create --base master --head "$branch" \
+            --title "chore: record release ${TAG}" \
+            --body "Points \`programs.wye.channel = \"release\"\` at ${TAG} (${REV}). Opened by the release workflow."

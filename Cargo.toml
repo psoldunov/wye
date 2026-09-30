@@ -68,7 +68,12 @@ smithay-client-toolkit = "0.21"
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 wayland-protocols-wlr = { version = "0.3", features = ["client"] }
-x11rb = { version = "0.14", features = ["xfixes"] }
+# `randr` names the output under the pointer (PICK-02).
+x11rb = { version = "0.14", features = ["randr", "xfixes"] }
+# Maps the held-modifier mask with the compositor's keymap (KEY-06). The
+# keymap is read from its file descriptor without mmap, so `wayland`
+# (memmap2) stays off.
+xkbcommon = { version = "0.9", default-features = false }
 
 # Transform scripts.
 rquickjs = { version = "0.14", features = ["classes", "macro", "properties"] }

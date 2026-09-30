@@ -31,6 +31,20 @@ let
   '';
 
   qt = rec {
+    # Every QML module the Plasma applet and its tests import (QtQuick,
+    # libplasma's plasmoid/core/extras, Kirigami, plasma-workspace's D-Bus
+    # bindings), for qmllint and the offscreen QML runtime (nix/frontends.nix,
+    # frontends/plasma/tests/qml-env.sh).
+    plasmaQmlModules = [
+      kde.qtdeclarative
+      kde.libplasma
+      # The wrapper carries no QML modules; the unwrapped package does.
+      kde.kirigami.unwrapped
+      kde.ksvg
+      kde.kitemmodels
+      kde.plasma-workspace
+    ];
+    plasmaQmlPath = lib.makeSearchPath "lib/qt-6/qml" plasmaQmlModules;
     # cxx-qt-build reads Qt's whole layout (headers, libraries,
     # qmltyperegistrar, qmlcachegen) from one `qmake -query`. nixpkgs installs
     # every Qt module in its own store path, which cxx-qt does not support
@@ -158,10 +172,16 @@ let
       ../Cargo.toml
       ../Cargo.lock
       (lib.fileset.intersection (craneLib.fileset.commonCargoSources root) ../crates)
+      # wye-script embeds its JavaScript prelude and template with include_str!.
+      (lib.fileset.fileFilter (file: file.hasExt "js") ../crates)
       ../data/services.toml
       ../data/expansion.toml
       ../data/tracking-parameters.toml
       ../data/applications/dev.soldunov.wye.desktop
+      # The D-Bus service-file templates crates/wye/tests/e2e.rs activates.
+      ../data/dbus
+      # The KWin query script wye-service embeds with include_str!.
+      ../data/kwin/wye-query.js
       (lib.fileset.maybeMissing ../crates/wye-ui/qml)
       (lib.fileset.maybeMissing ../crates/wye-ui/cpp)
       (lib.fileset.maybeMissing ../crates/wye-ui/fixtures)
@@ -190,6 +210,10 @@ let
       nativeBuildInputs = commonArgs.nativeBuildInputs ++ [ qt6.wrapQtAppsHook ];
       # Tests run as their own flake check.
       doCheck = false;
+      # nixpkgs' fixup would move lib/systemd/user to share/systemd/user, where
+      # NixOS' `systemd.packages` does not look; the unit lives in share and
+      # lib/systemd/user links to it (see postInstall).
+      dontMoveSystemdUserUnits = true;
       # The source entry runs `wye` from $PATH; the installed one names this
       # package's binary (the main Exec and every desktop action's), so launchers find it even when the profile's bin
       # directory is not on their PATH, and TryExec hides the entry once the
@@ -214,6 +238,8 @@ let
           $out/share/icons/hicolor/32x32/apps/dev.soldunov.wye.svg
         install -Dm644 ${../data/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg} \
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg
+        install -Dm644 ${../data/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg} \
+          $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg
         # D-Bus activation (DEF-04) and the systemd user unit, with the
         # absolute path of this package's binaries.
         for template in \
@@ -224,6 +250,9 @@ let
           install -Dm644 "''${template%%:*}" "$target"
           substituteInPlace "$target" --replace-fail '@bindir@' "$out/bin"
         done
+        # NixOS' `systemd.packages` reads lib/systemd/user, not share/.
+        mkdir -p $out/lib/systemd/user
+        ln -s ../../../share/systemd/user/wye.service $out/lib/systemd/user/wye.service
       '';
       postFixup = ''
         wrapQtApp $out/bin/wye-ui ${lib.escapeShellArgs qt.wrapperArgs}

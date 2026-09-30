@@ -24,6 +24,10 @@ const ACTIONS: [Action; 3] = [Action::Show, Action::Close, Action::Toggle];
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct FixtureFile {
+    /// The surface the cases are for, when the file is not named after it
+    /// (`fixtures/rules.json` feeds `settings`).
+    #[serde(default)]
+    surface: Option<String>,
     cases: Vec<FixtureCase>,
 }
 
@@ -52,14 +56,24 @@ pub struct Case {
 /// When the surface has no fixture, or it is not valid.
 pub fn cases(surface: Surface) -> anyhow::Result<Vec<Case>> {
     let name = surface.name();
-    let (_, text) = FIXTURES
-        .iter()
-        .find(|(stem, _)| *stem == name)
-        .ok_or_else(|| anyhow::anyhow!("no fixture fixtures/{name}.json"))?;
-    let file: FixtureFile = serde_json::from_str(text)
-        .map_err(|error| anyhow::anyhow!("fixtures/{name}.json: {error}"))?;
-    anyhow::ensure!(!file.cases.is_empty(), "fixtures/{name}.json has no cases");
-    file.cases.into_iter().map(case).collect()
+    anyhow::ensure!(
+        FIXTURES.iter().any(|(stem, _)| *stem == name),
+        "no fixture fixtures/{name}.json"
+    );
+    let mut cases = Vec::new();
+    for (stem, text) in FIXTURES {
+        let file: FixtureFile = serde_json::from_str(text)
+            .map_err(|error| anyhow::anyhow!("fixtures/{stem}.json: {error}"))?;
+        let ours = *stem == name || file.surface.as_deref() == Some(name);
+        if !ours {
+            continue;
+        }
+        anyhow::ensure!(!file.cases.is_empty(), "fixtures/{stem}.json has no cases");
+        for fixture in file.cases {
+            cases.push(case(fixture)?);
+        }
+    }
+    Ok(cases)
 }
 
 fn case(fixture: FixtureCase) -> anyhow::Result<Case> {

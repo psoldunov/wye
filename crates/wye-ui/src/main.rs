@@ -9,6 +9,8 @@
 //! - [`route`] and [`dispatch`]: from a D-Bus call to a surface's QML.
 //! - [`service`]: the tokio runtime and calls to the service.
 //! - [`surface`]: the surfaces and their QML root files.
+//! - [`picker`]: the picker's input handling and view, without Qt.
+//! - [`settings`]: the Settings window's patches, menus and sheets, without Qt.
 //! - [`bridge`]: the cxx-qt `QObject`s, one file per surface, and the C++ shim.
 //! - [`qt_app`]: the application object, QML engine and event loop.
 //! - [`selftest`]: `--self-test`, offscreen loading of every surface.
@@ -16,15 +18,23 @@
 //! Requirement IDs such as `SET-04` refer to the specification in
 //! `docs/spec/`.
 
+mod about;
 mod bridge;
 mod cli;
 mod dispatch;
+mod history;
 mod host;
+mod onboarding;
+mod picker;
 mod qt_app;
 mod route;
+mod rules;
+mod script_editor;
 mod selftest;
 mod service;
+mod settings;
 mod surface;
+mod tray_menu;
 
 use std::process::ExitCode;
 

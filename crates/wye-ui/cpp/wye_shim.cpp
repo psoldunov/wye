@@ -6,6 +6,9 @@
 #include <QtCore/QFuture>
 #include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
+#include <QtGui/QPainterPath>
+#include <QtGui/QPolygon>
+#include <QtGui/QRegion>
 #include <QtQuickControls2/QQuickStyle>
 
 #include <KWaylandExtras>
@@ -74,6 +77,17 @@ bool blurBehind(QWindow &window, bool enable)
         return false;
     }
     KWindowEffects::enableBlurBehind(&window, enable);
+    return true;
+}
+
+bool blurBehindRect(QWindow &window, bool enable, int x, int y, int width, int height, double radius)
+{
+    if (!KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind)) {
+        return false;
+    }
+    QPainterPath path;
+    path.addRoundedRect(QRectF(x, y, width, height), radius, radius);
+    KWindowEffects::enableBlurBehind(&window, enable, QRegion(path.toFillPolygon().toPolygon()));
     return true;
 }
 

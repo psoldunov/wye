@@ -1,1 +1,113 @@
-{ "cases": [{ "action": "show", "key": "history" }] }
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "light",
+        "fixture": {
+          "history": {
+            "enabled": true,
+            "entries": [
+              {
+                "id": 5,
+                "time": 1789050720,
+                "originalUrl": "https://github.com/example/repo/pull/42?utm_source=slack",
+                "finalUrl": "https://github.com/example/repo/pull/42",
+                "entry": "handler",
+                "source": "com.slack.Slack.desktop",
+                "sourceName": "Slack",
+                "target": { "app": "firefox.desktop" },
+                "targetName": "Firefox",
+                "reason": "primary browser",
+                "cleaned": true,
+                "expanded": false
+              },
+              {
+                "id": 4,
+                "time": 1789049100,
+                "originalUrl": "https://meet.google.com/abc-defg-hij",
+                "finalUrl": "https://meet.google.com/abc-defg-hij",
+                "entry": "handler",
+                "source": "org.mozilla.thunderbird.desktop",
+                "sourceName": "Thunderbird",
+                "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } },
+                "targetName": "Work (Chrome)",
+                "reason": "rule “Meetings”",
+                "cleaned": false,
+                "expanded": false
+              },
+              {
+                "id": 3,
+                "time": 1789040000,
+                "originalUrl": "https://bit.ly/3xYzAbC",
+                "finalUrl": "https://www.example.org/a/very/long/path/that/keeps/going/and/going/until/it/needs/cutting/in/the/middle/article-title-2026?ref=newsletter&section=world",
+                "entry": "clipboard",
+                "targetName": "Picker",
+                "target": { "picker": true },
+                "reason": "picker choice",
+                "cleaned": false,
+                "expanded": true
+              },
+              {
+                "id": 2,
+                "time": 1788950000,
+                "originalUrl": "https://discord.com/channels/1/2",
+                "finalUrl": "https://discord.com/channels/1/2",
+                "entry": "handler",
+                "source": "org.kde.konsole.desktop",
+                "sourceName": "Konsole",
+                "target": { "app": "com.discordapp.Discord.desktop" },
+                "targetName": "Discord",
+                "reason": "web app “Discord”",
+                "cleaned": false,
+                "expanded": false
+              }
+            ]
+          },
+          "targets": {
+            "targets": [
+              { "target": { "picker": true }, "kind": "picker", "name": "Picker" },
+              { "target": { "app": "firefox.desktop" }, "kind": "app", "name": "Firefox", "icon": "firefox" },
+              { "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } }, "kind": "profile", "name": "Work (Chrome)", "icon": "google-chrome" },
+              { "target": { "app": "com.discordapp.Discord.desktop" }, "kind": "app", "name": "Discord", "icon": "discord" }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "dark",
+        "query": "slack firefox"
+      }
+    },
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "dark",
+        "query": "nothing matches this"
+      }
+    },
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "light",
+        "query": "",
+        "fixture": { "history": { "enabled": true, "entries": [] } }
+      }
+    },
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "dark",
+        "fixture": { "history": { "enabled": false, "entries": [] } }
+      }
+    }
+  ]
+}

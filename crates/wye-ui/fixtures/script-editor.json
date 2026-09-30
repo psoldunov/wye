@@ -1,1 +1,59 @@
-{ "cases": [{ "action": "show", "key": "script-editor", "argument": "global" }] }
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "// Return a new URL to change the link, or nothing to keep it.\nexport default function transform(url, context) {\n  console.log(\"host\", url.hostname);\n  if (url.hostname === \"twitter.com\") url.hostname = \"x.com\";\n  return url;\n}\n",
+          "testUrl": "https://twitter.com/example/status/1",
+          "run": {
+            "ok": true,
+            "url": "https://x.com/example/status/1",
+            "changed": [[8, 9]],
+            "micros": 400,
+            "logs": ["host twitter.com"]
+          },
+          "apps": [["com.slack.Slack.desktop", "Slack"], ["org.kde.dolphin.desktop", "Dolphin"]]
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:github",
+        "ruleName": "GitHub in Firefox",
+        "fixture": {
+          "source": "export default function transform(url, context) {\n  const a = 1;\n  return missing.href;\n}\n",
+          "run": { "ok": false, "error": "ReferenceError: missing is not defined", "line": 3, "micros": 180 },
+          "externalChange": true
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url.;\n}\n",
+          "run": { "ok": false, "error": "SyntaxError: unexpected token in expression: ';'", "line": 2, "micros": 90 }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "export default function transform(url) {}\n",
+          "run": { "ok": true, "micros": 50 }
+        }
+      }
+    },
+    { "action": "show", "key": "script-editor", "argument": "rule:unsaved" }
+  ]
+}

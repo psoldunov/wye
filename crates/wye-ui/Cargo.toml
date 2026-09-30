@@ -14,14 +14,22 @@ clap.workspace = true
 cxx.workspace = true
 cxx-qt.workspace = true
 cxx-qt-lib.workspace = true
+# `StreamExt` for the `ScriptFileChanged` signal stream (SCR-08).
+futures-lite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+url.workspace = true
 wye-api.workspace = true
+wye-core.workspace = true
 zbus.workspace = true
+
+[dev-dependencies]
+# Import/export file tests (RUL-02).
+tempfile.workspace = true
 
 [build-dependencies]
 cxx-qt-build.workspace = true

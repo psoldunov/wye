@@ -26,9 +26,10 @@ const KF6_WINDOW_SYSTEM: &str = "KF6WindowSystem";
 
 fn main() {
     if let Err(error) = build() {
-        // A build script reports failure by panicking; the message is the
-        // whole diagnostic Cargo shows.
-        panic!("wye-ui build script: {error}");
+        // Cargo shows `cargo::error` as the build's diagnostic; the exit
+        // status fails the build.
+        println!("cargo::error=wye-ui build script: {error}");
+        std::process::exit(1);
     }
 }
 

@@ -30,6 +30,11 @@ int applicationExec();
 // opacity (02-picker.md, "No blur available").
 bool blurBehind(QWindow &window, bool enable);
 
+// Blur behind a rounded rectangle of `window` only, for a panel inside a
+// larger transparent window (the picker, PICK-01). Same fallback as
+// blurBehind.
+bool blurBehindRect(QWindow &window, bool enable, int x, int y, int width, int height, double radius);
+
 // Ask the compositor for an xdg-activation token for `appId`, using the
 // last input event `window` received (KWaylandExtras). The token arrives
 // later: `receiver`'s signal `activationTokenReady(QString)` is emitted with

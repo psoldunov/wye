@@ -487,3 +487,17 @@ fn positions_are_unchanged_when_nothing_was_dropped() {
         [ConfigWarning::UnknownKey("rules.1.colour".into())]
     );
 }
+
+#[test]
+fn key06_held_keys_defaults_to_auto_and_round_trips() {
+    assert_eq!(parse("").config.advanced.held_keys, HeldKeys::Auto);
+    let loaded = parse("[advanced]\nheld-keys = \"off\"\n");
+    assert!(loaded.is_lossless(), "{:?}", loaded.warnings);
+    assert_eq!(loaded.config.advanced.held_keys, HeldKeys::Off);
+    let again = parse(&loaded.config.to_toml().unwrap());
+    assert_eq!(again.config.advanced.held_keys, HeldKeys::Off);
+
+    let unknown = parse("[advanced]\nheld-keys = \"sometimes\"\n");
+    assert_eq!(unknown.config.advanced.held_keys, HeldKeys::Auto);
+    assert!(!unknown.is_lossless(), "an unknown value is reported");
+}

@@ -37,6 +37,13 @@ pub struct Wrapper {
 }
 
 impl Wrapper {
+    /// The host patterns the wrapper applies to, as in `data/expansion.toml`
+    /// (DLG-EXP-01).
+    #[must_use]
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
+    }
+
     fn applies_to(&self, url: &Url) -> bool {
         let host = url.host_str().unwrap_or_default();
         let path = url.path().trim_end_matches('/');

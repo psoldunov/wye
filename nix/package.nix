@@ -5,12 +5,22 @@
 let
   root = ../.;
 
-  # Cargo sources plus the data files the crates embed with include_str!.
+  # Only what the Rust build reads: the workspace manifest and lock file, the
+  # crates' Rust sources and manifests, the three data files wye-core embeds
+  # with include_str!, and the desktop entry the CLI tests install as a
+  # fixture. commonCargoSources over the whole repository
+  # would also pick up every other *.toml (.ensemblr/settings.toml,
+  # deny.toml, …), so editing those would rebuild every check.
   src = lib.fileset.toSource {
     inherit root;
     fileset = lib.fileset.unions [
-      (craneLib.fileset.commonCargoSources root)
-      ../data
+      ../Cargo.toml
+      ../Cargo.lock
+      (lib.fileset.intersection (craneLib.fileset.commonCargoSources root) ../crates)
+      ../data/services.toml
+      ../data/expansion.toml
+      ../data/tracking-parameters.toml
+      ../data/applications/dev.soldunov.wye.desktop
     ];
   };
 

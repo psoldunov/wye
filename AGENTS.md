@@ -43,6 +43,7 @@ Run in this order. Every gate must pass before a change is ready.
    request comment); config, if needed, goes in `rust-doctor.toml`.
 5. `nix develop -c cargo deny check` (advisories need the network).
 6. `nix flake check -L --keep-going`
+   Run it through the `ci-check` script (or `cachix watch-exec psoldunov -- nix flake check -L --keep-going`) with `CACHIX_AUTH_TOKEN` set before pushing: it fills the public psoldunov Cachix cache, so CI substitutes instead of building.
 
 ## Commits
 

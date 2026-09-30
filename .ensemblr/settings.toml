@@ -22,7 +22,7 @@ icon = "shield-check"
 command = "nix build -L"
 icon = "hammer"
 
-# Runs the same checks as the CI flake-check job.
+# Runs the same checks as CI. With CACHIX_AUTH_TOKEN set it pushes every path it builds to the public psoldunov Cachix cache, so CI substitutes instead of rebuilding.
 [scripts.run.ci-check]
-command = "nix flake check -L --keep-going"
+command = "nix develop -c sh -c 'if [ -n \"${CACHIX_AUTH_TOKEN:-}\" ]; then cachix watch-exec psoldunov -- nix flake check -L --keep-going; else nix flake check -L --keep-going; fi'"
 icon = "badge-check"

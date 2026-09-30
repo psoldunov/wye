@@ -63,7 +63,7 @@
               inherit (wye) cargoArtifacts;
             }
           );
-          fmt = craneLib.cargoFmt { inherit (wye.commonArgs) src; };
+          fmt = craneLib.cargoFmt { inherit (wye.commonArgs) src pname version; };
           # Licences, bans and sources per deny.toml. Advisories need the
           # network, so CI runs them as a separate job.
           deny = craneLib.cargoDeny {
@@ -125,6 +125,7 @@
             cargo-machete
             desktop-file-utils
             nixfmt
+            cachix
           ];
           RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
         };

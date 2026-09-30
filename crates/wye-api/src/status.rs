@@ -69,6 +69,8 @@ pub struct Capabilities {
     pub clipboard_read: Option<String>,
     /// Watching the clipboard (EXT-12).
     pub clipboard_watch: Option<String>,
+    /// Writing the clipboard back (EXT-12).
+    pub clipboard_write: Option<String>,
     /// Global shortcuts (KEY-40).
     pub global_shortcuts: Option<String>,
     /// Screen-lock detection (PKS-07).

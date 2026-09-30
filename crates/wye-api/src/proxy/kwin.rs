@@ -23,7 +23,7 @@ pub trait KWin1 {
         x: i32,
         y: i32,
         output: &str,
-        pid: u32,
+        pid: i32,
         desktop_file: &str,
         resource_class: &str,
     ) -> Result<(), Error>;

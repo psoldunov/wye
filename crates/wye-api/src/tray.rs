@@ -20,19 +20,42 @@ pub struct TrayMenu {
     pub items: Vec<TrayItem>,
 }
 
+/// Wye's monochrome tray icon, which takes the panel's colour (GEN-02
+/// "Wye").
+pub const APP_ICON: &str = "dev.soldunov.wye-symbolic";
+
+/// The picker glyph, a bulleted list (TRAY-02): the tray icon while the
+/// primary browser is the Picker, and the Picker's menu item.
+pub const PICKER_ICON: &str = "dev.soldunov.wye-picker-symbolic";
+
 /// The tray icon (TRAY-02).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum TrayIcon {
-    /// The picker glyph: Wye's own icon.
+    /// Wye's own icon, [`APP_ICON`] (GEN-02 "Wye", or a primary browser
+    /// with no icon).
+    App,
+    /// The picker glyph, [`PICKER_ICON`]: the primary browser is the
+    /// Picker.
     #[default]
     Picker,
-    /// An icon theme name or absolute path, for example the primary
-    /// browser's icon.
+    /// An icon theme name or absolute path: the primary browser's icon.
     Theme {
         /// Theme name or path.
         name: String,
     },
+}
+
+impl TrayIcon {
+    /// The icon theme name or path a host draws.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        match self {
+            Self::App => APP_ICON,
+            Self::Picker => PICKER_ICON,
+            Self::Theme { name } => name,
+        }
+    }
 }
 
 wire_enum! {
@@ -54,7 +77,8 @@ pub struct TrayItem {
     /// Text; empty for separators.
     #[serde(default)]
     pub label: String,
-    /// Icon theme name or absolute path (TRAY-14).
+    /// Icon theme name or absolute path (TRAY-14); [`PICKER_ICON`] for the
+    /// Picker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub icon: Option<String>,
     /// Shortcut shown next to the item, for example `P`, `1`, `Ctrl+,`
@@ -119,6 +143,18 @@ mod tests {
         assert_eq!(json["overlay"], "warning");
         assert_eq!(json["items"][0]["kind"], "radio");
         assert!(json["items"][0].get("children").is_none());
+    }
+
+    #[test]
+    fn every_icon_names_what_to_draw() {
+        assert_eq!(TrayIcon::App.name(), APP_ICON);
+        assert_eq!(TrayIcon::Picker.name(), PICKER_ICON);
+        let theme = TrayIcon::Theme {
+            name: "firefox".into(),
+        };
+        assert_eq!(theme.name(), "firefox");
+        let json = serde_json::to_value(TrayIcon::App).expect("encodes");
+        assert_eq!(json, serde_json::json!({"kind": "app"}));
     }
 
     #[test]

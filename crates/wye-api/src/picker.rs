@@ -74,7 +74,8 @@ pub struct PickerTile {
     /// Profile badge (DISC-08).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub badge: Option<Badge>,
-    /// Hotkey label (KEY-10, KEY-11).
+    /// The hotkey as a canonical XKB key name such as `1` or `f` (KEY-10,
+    /// KEY-11); the UI derives the label and matches key presses against it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hotkey: Option<String>,
     /// What the target can do.
@@ -123,12 +124,32 @@ wire_enum! {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct PickerKeys {
-    /// Action name to key names, for example `"open": ["Return"]` (KEY-03).
+    /// Action name ([`ACTIONS`]) to key names, for example
+    /// `"open": ["Return"]` (KEY-03).
     pub actions: BTreeMap<String, Vec<String>>,
-    /// Action name to the modifiers that trigger it while choosing, for
+    /// Action name ([`MODIFIER_ACTIONS`]) to the modifiers that trigger it
+    /// while choosing, for
     /// example `"private": ["Shift"]` (KEY-22).
     pub modifier_actions: BTreeMap<String, Vec<Modifier>>,
 }
+
+/// The names of [`PickerKeys::actions`], as in `config.toml`'s
+/// `[picker.keys]` (KEY-22).
+pub const ACTIONS: [&str; 9] = [
+    "open",
+    "cancel",
+    "next",
+    "previous",
+    "first",
+    "last",
+    "copy-link",
+    "more",
+    "create-rule",
+];
+
+/// The names of [`PickerKeys::modifier_actions`] (KEY-13); `config.toml`
+/// stores each as `<name>-modifier`.
+pub const MODIFIER_ACTIONS: [&str; 3] = ["private", "background", "new-window"];
 
 /// Where the picker opens: the pointer on a named output.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

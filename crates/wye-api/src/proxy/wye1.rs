@@ -116,6 +116,9 @@ pub trait Wye1 {
     /// Save a script; `ScriptSyntax` when it does not compile (SCR-07).
     fn set_script(&self, scope: &str, source: &str) -> Result<(), Error>;
 
+    /// Whether a script has a file with more than whitespace (SCR-09).
+    fn script_exists(&self, scope: &str) -> Result<bool, Error>;
+
     /// JSON [`crate::scripts::ScriptRun`] (SCR-04).
     fn run_script(
         &self,
@@ -157,6 +160,13 @@ pub trait Wye1 {
     /// Announce a tray host ([`crate::actions::TrayHost`]); the service
     /// hides its own tray icon while the caller is connected.
     fn register_tray(&self, kind: &str) -> Result<(), Error>;
+
+    /// The caller no longer shows the tray; the service's own tray icon comes
+    /// back after the start-up grace.
+    fn unregister_tray(&self) -> Result<(), Error>;
+
+    /// Carry out the tray item `id` of the `Tray` model (01-tray-menu.md).
+    fn activate_tray_item(&self, id: &str) -> Result<(), Error>;
 
     /// Troubleshooting text for the About window (DLG-ABT-02).
     fn get_troubleshooting(&self) -> Result<String, Error>;

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use wye_core::{DesktopId, SourceApp};
 
 use crate::launch::WYE_DESKTOP_ID;
+use crate::loop_guard::OPENERS;
 
 /// Processes between the source app and Wye: launch helpers and shells.
 const SKIPPED: &[&str] = &[
@@ -79,11 +80,13 @@ fn walk_parents(proc_root: &Path, start_pid: u32) -> Option<SourceApp> {
     None
 }
 
-/// The app unit Wye itself runs in, unless it is Wye's own.
+/// The app unit Wye itself runs in, unless it is Wye's own or an opener's
+/// (`app-Hyprland-wye@1.service`, or a scope named after `xdg-open`): those
+/// units belong to what forwarded the link, not to the app it came from.
 fn own_scope(proc_root: &Path) -> Option<SourceApp> {
     let text = fs::read_to_string(proc_root.join("self").join("cgroup")).ok()?;
     let desktop_id = desktop_id_from_cgroup(&text)?;
-    if desktop_id.as_str() == WYE_DESKTOP_ID {
+    if desktop_id.as_str() == WYE_DESKTOP_ID || OPENERS.contains(&desktop_id.app_id()) {
         return None;
     }
     Some(SourceApp {

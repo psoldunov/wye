@@ -4,7 +4,8 @@
 //! write `github.com/org` rather than `https://www.github.com/org`. Host
 //! comparison ignores case; the path, query and fragment keep theirs.
 //! Patterns are normalised the way the `url` crate normalises links, so an
-//! internationalised host or path written by hand matches the link.
+//! internationalised host, or a path or query written with characters the
+//! crate encodes (`{`, `}`, `'`, non-ASCII), matches the link.
 
 use url::Url;
 
@@ -49,6 +50,11 @@ impl MatchUrl {
         &self.text
     }
 
+    /// The path, query and fragment, as they follow the host and port.
+    fn tail(&self) -> &str {
+        self.text.get(self.host_len..).unwrap_or_default()
+    }
+
     /// The host without port, lowercase, without `www.`.
     #[must_use]
     pub fn host(&self) -> &str {
@@ -59,15 +65,16 @@ impl MatchUrl {
 
 /// Normalises a user-written pattern the same way as links: drops a scheme;
 /// when the pattern starts with a host, converts that host to lowercase
-/// ASCII (punycode) and drops a leading `www.`; percent-encodes the rest
-/// like the `url` crate does. A pattern that does not start with a host,
-/// such as `/pull/` or `*ABC-*`, keeps its case.
+/// ASCII (punycode) and drops a leading `www.`; the path, query and
+/// fragment go through the `url` crate like a link's, so they encode the
+/// same. A pattern that does not start with a host, such as `/pull/` or
+/// `*ABC-*`, keeps its case.
 #[must_use]
 pub fn normalize_pattern(pattern: &str) -> String {
     let rest = strip_scheme(pattern.trim());
     let (host, tail) = split_host(rest);
-    if starts_with_host(host, tail) {
-        format!("{}{}", normalize_host(host), encode(tail))
+    if starts_with_host(rest, host, tail) {
+        format!("{}{}", normalize_host(host), normalize_tail(tail))
     } else {
         encode(rest)
     }
@@ -75,7 +82,12 @@ pub fn normalize_pattern(pattern: &str) -> String {
 
 /// Normalises a "Contains" pattern: drops a scheme and a leading `www.`,
 /// which links never carry (RUL-11), and percent-encodes like the `url`
-/// crate. Case is kept, since the needle is often a path fragment.
+/// crate for the characters that every part of a link encodes.
+///
+/// The needle may span the host and the path (`github.com/Org`), and it is
+/// matched case-sensitively against the normalised link, whose host is
+/// lowercase. Write the host part of a needle in lowercase; the path keeps
+/// its case, as in a link.
 #[must_use]
 pub fn normalize_contains(pattern: &str) -> String {
     encode(strip_www(strip_scheme(pattern.trim())))
@@ -145,9 +157,27 @@ fn parsed_host(host: &str) -> Option<String> {
 }
 
 /// A pattern starts with a host when its first segment is followed by a
-/// path, contains a dot or is an IPv6 literal.
-fn starts_with_host(host: &str, tail: &str) -> bool {
-    !host.is_empty() && (tail.starts_with('/') || host.contains('.') || host.starts_with('['))
+/// path, contains a dot or is an IPv6 literal. A first segment that starts
+/// with `*` in a pattern without a `/` is a name fragment such as
+/// `*README.md`, not a host.
+fn starts_with_host(pattern: &str, host: &str, tail: &str) -> bool {
+    let wildcard_fragment = host.starts_with('*') && !pattern.contains('/');
+    !host.is_empty()
+        && !wildcard_fragment
+        && (tail.starts_with('/') || host.contains('.') || host.starts_with('['))
+}
+
+/// Encodes the path, query and fragment of a pattern by making a link of
+/// them and normalising it, so `{`, `}` and `'` encode exactly as in the
+/// links they are matched against. `*` is kept by the parser in each part.
+fn normalize_tail(tail: &str) -> String {
+    if tail.is_empty() {
+        return String::new();
+    }
+    Url::parse(&format!("https://placeholder.invalid{tail}")).map_or_else(
+        |_| encode(tail),
+        |url| MatchUrl::new(&url).tail().to_owned(),
+    )
 }
 
 /// Percent-encodes what the `url` crate encodes in every part of a link:
@@ -247,6 +277,36 @@ mod tests {
         );
         assert_eq!(normalize_pattern("*ABC-*"), "*ABC-*");
         assert_eq!(normalize_pattern("LocalHost:8080/x"), "localhost:8080/x");
+    }
+
+    #[test]
+    fn a_wildcard_name_fragment_is_not_a_host() {
+        assert_eq!(normalize_pattern("*README.md"), "*README.md");
+        assert_eq!(normalize_pattern("*.Atlassian.net"), "*.Atlassian.net");
+        assert_eq!(
+            normalize_pattern("*.Atlassian.net/Browse/*"),
+            "*.atlassian.net/Browse/*"
+        );
+    }
+
+    #[test]
+    fn patterns_encode_like_links() {
+        for link in [
+            "https://a.example/x{1}",
+            "https://a.example/?q=it's",
+            "https://a.example/a`b?c=d#e{f}",
+            "https://a.example/x y?z=1 2",
+        ] {
+            assert_eq!(normalize_pattern(link), norm(link).as_str(), "{link}");
+        }
+        assert_eq!(normalize_pattern("a.example/x{1}"), "a.example/x%7B1%7D");
+        assert_eq!(normalize_pattern("a.example/*{1}"), "a.example/*%7B1%7D");
+    }
+
+    #[test]
+    fn a_pattern_without_a_path_gets_no_slash() {
+        assert_eq!(normalize_pattern("github.com"), "github.com");
+        assert_eq!(normalize_pattern("localhost:8080"), "localhost:8080");
     }
 
     #[test]

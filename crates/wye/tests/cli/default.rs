@@ -5,28 +5,27 @@ use crate::support::{Desktop, ONE, TWO, WYE, is_symlink};
 const MIMEAPPS: &str = "config/mimeapps.list";
 const STATE: &str = "state/wye/state.toml";
 
-/// A desktop where Wye is installed and is the default browser.
-fn with_wye_default() -> Desktop {
+/// A desktop whose `mimeapps.list` lists `id` as the http and https handler.
+fn listing(id: &str) -> Desktop {
     let desktop = Desktop::new();
-    desktop.install_wye();
     desktop.write(
         MIMEAPPS,
         &format!(
-            "[Default Applications]\nx-scheme-handler/http={WYE}\nx-scheme-handler/https={WYE}\n"
+            "[Default Applications]\nx-scheme-handler/http={id}\nx-scheme-handler/https={id}\n"
         ),
     );
     desktop
 }
 
-fn with_fake_one_default() -> Desktop {
-    let desktop = Desktop::new();
-    desktop.write(
-        MIMEAPPS,
-        &format!(
-            "[Default Applications]\nx-scheme-handler/http={ONE}\nx-scheme-handler/https={ONE}\n"
-        ),
-    );
+/// A desktop where Wye is installed and is the default browser.
+fn with_wye_default() -> Desktop {
+    let desktop = listing(WYE);
+    desktop.install_wye();
     desktop
+}
+
+fn with_fake_one_default() -> Desktop {
+    listing(ONE)
 }
 
 #[test]
@@ -151,6 +150,32 @@ fn unset_keeps_a_default_the_user_changed_since() {
         run.stdout,
         "Wye is not your default browser; nothing changed\n"
     );
+}
+
+// Wye is listed as the default, but its entry is not visible to this process
+// (a different `XDG_DATA_DIRS`, say): `listing(WYE)` without `install_wye`.
+
+#[test]
+fn status_sees_wye_as_default_without_its_entry() {
+    let status = listing(WYE).wye(&["default", "status"]).expect_code(0);
+    assert_eq!(status.stdout, "Wye is your default browser\n");
+}
+
+#[test]
+fn unset_restores_the_remembered_browser_without_wyes_entry() {
+    let desktop = listing(WYE);
+    desktop.write(STATE, &format!("previous-default-browser = \"{ONE}\"\n"));
+    let unset = desktop.wye(&["default", "unset"]).expect_code(0);
+    assert_eq!(
+        unset.stdout,
+        "Fake One (fake-one.desktop) is your default browser again\n"
+    );
+    let mimeapps = desktop.read(MIMEAPPS);
+    assert!(
+        mimeapps.contains(&format!("x-scheme-handler/https={ONE}")),
+        "{mimeapps}"
+    );
+    assert!(!desktop.read(STATE).contains(ONE));
 }
 
 #[test]

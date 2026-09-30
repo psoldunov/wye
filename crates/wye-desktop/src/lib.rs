@@ -25,7 +25,9 @@ pub mod xdg;
 #[cfg(test)]
 mod test_support;
 
-pub use default_browser::{DefaultBrowserError, current_default, is_default, set_default};
+pub use default_browser::{
+    DefaultBrowserError, current_default, is_default, listed_default, set_default,
+};
 pub use discovery::{InstalledApp, Inventory, PrivateMode, find_entry};
 pub use entry::{DesktopAction, DesktopEntry, EntryError};
 pub use exec::{ExecContext, ExecError, ExecTemplate};

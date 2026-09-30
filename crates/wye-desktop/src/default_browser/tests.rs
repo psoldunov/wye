@@ -194,3 +194,27 @@ fn skips_listed_apps_that_are_not_installed() {
     );
     assert_eq!(default_for(&fx.xdg, HTTP), Some(id("chromium")));
 }
+
+#[test]
+fn listed_default_ignores_whether_the_entry_is_installed() {
+    let fx = Fixture::new();
+    install(&fx, &["firefox"]);
+    fx.write(
+        "home/.config/mimeapps.list",
+        "[Default Applications]\n\
+         x-scheme-handler/https=dev.soldunov.wye.desktop;firefox.desktop;\n\
+         x-scheme-handler/http=dev.soldunov.wye.desktop\n",
+    );
+    // The installed filter skips the missing Wye entry; the listed one does not.
+    assert_eq!(current_default(&fx.xdg), Some(id("firefox")));
+    assert_eq!(listed_default(&fx.xdg), Some(wye()));
+    assert_eq!(listed_default_for(&fx.xdg, HTTP), Some(wye()));
+    assert!(is_default(&fx.xdg, &wye()));
+    assert_eq!(listed_default_for(&fx.xdg, "text/html"), None);
+    // Invalid IDs are still skipped, and lookup order still applies.
+    fx.write(
+        "home/.config/gnome-mimeapps.list",
+        "[Default Applications]\nx-scheme-handler/https=bad id;firefox.desktop\n",
+    );
+    assert_eq!(listed_default(&fx.xdg), Some(id("firefox")));
+}

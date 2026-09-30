@@ -97,6 +97,8 @@ pub struct OpenOptions {
 pub enum Decision {
     AlternativeKey,
     Rule {
+        /// Position in `Config::rules` as loaded, which is the file position
+        /// only when no unreadable rule was dropped before it.
         index: usize,
         name: String,
         position: RunPosition,
@@ -134,6 +136,7 @@ pub enum Step {
         target: Target,
     },
     RuleMatched {
+        /// Position in `Config::rules` as loaded; see [`Decision::Rule`].
         index: usize,
         name: String,
         position: RunPosition,

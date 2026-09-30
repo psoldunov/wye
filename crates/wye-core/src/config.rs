@@ -322,12 +322,39 @@ pub struct ConfigError(#[from] toml::de::Error);
 /// A parsed configuration and every problem found in it.
 #[derive(Debug, Clone)]
 pub struct Loaded {
-    /// The configuration as written, minus values that could not be read.
-    /// Values that parse but cannot apply are kept, so saving it back loses
-    /// nothing; [`Pipeline::new`](crate::Pipeline::new) routes with the
-    /// [`Config::sanitized`] copy.
+    /// The configuration as read. Saving it with [`Config::to_toml`] keeps
+    /// every value that was read, including values that parse but cannot
+    /// apply (they are only reported; [`Pipeline::new`](crate::Pipeline::new)
+    /// routes with the [`Config::sanitized`] copy). It does **not** keep
+    /// unknown keys, values that could not be read (they come back as their
+    /// default), list entries that could not be read, or comments and
+    /// formatting. Check [`Loaded::is_lossless`] before writing the file.
     pub config: Config,
+    /// Every problem found. A list entry (rule, shown browser) is named by
+    /// its place in the file, counted from 0 in key paths and from 1 in
+    /// messages, even when unreadable entries before it were dropped.
     pub warnings: Vec<ConfigWarning>,
+}
+
+impl Loaded {
+    /// Whether saving [`Loaded::config`] would write back everything the file
+    /// said. False when a warning shows that something was dropped: an
+    /// unknown key, an unreadable value or entry, or a file that could not be
+    /// combined into a configuration.
+    ///
+    /// A frontend must not overwrite the file when this is false.
+    #[must_use]
+    pub fn is_lossless(&self) -> bool {
+        !self.warnings.iter().any(|warning| {
+            matches!(
+                warning,
+                ConfigWarning::UnknownKey(_)
+                    | ConfigWarning::InvalidValue { .. }
+                    | ConfigWarning::InvalidEntry { .. }
+                    | ConfigWarning::Unusable(_)
+            )
+        })
+    }
 }
 
 impl Config {
@@ -344,9 +371,9 @@ impl Config {
     pub fn parse(text: &str, known_services: &[&str]) -> Result<Loaded, ConfigError> {
         let table: toml::Table = text.parse()?;
         let mut warnings = Vec::new();
-        let config: Self = load::lenient(table, &mut warnings);
+        let (config, kept) = load::lenient::<Self>(table, &mut warnings);
         let (_, corrections) = config.sanitized(known_services);
-        warnings.extend(corrections);
+        warnings.extend(corrections.into_iter().map(|warning| kept.locate(warning)));
         Ok(Loaded { config, warnings })
     }
 

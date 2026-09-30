@@ -38,8 +38,9 @@ Run in this order. Every gate must pass before a change is ready.
    `clippy::pedantic` is on workspace-wide. Each `#[allow]` needs a comment giving the reason.
 3. `nix develop -c cargo test --workspace --locked`
 4. `nix develop -c rust-doctor --yes --blocking warning`. A change must not introduce findings.
-   Install once with `nix develop -c cargo install --locked rust-doctor`. CI runs it through
-   `.github/workflows/rust-doctor.yml`; config, if needed, goes in `rust-doctor.toml`.
+   Install once with `nix develop -c cargo install --locked rust-doctor`. CI installs the
+   pinned version and runs it in `.github/workflows/rust-doctor.yml` (read-only token, no pull
+   request comment); config, if needed, goes in `rust-doctor.toml`.
 5. `nix develop -c cargo deny check` (advisories need the network).
 6. `nix flake check -L --keep-going`
 

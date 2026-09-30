@@ -356,3 +356,134 @@ fn held_modifier_actions_must_differ() {
     let (config, _) = loaded.config.sanitized(SERVICES);
     assert_eq!(config.picker.keys.background_modifier.to_string(), "Shift");
 }
+
+// KEY-21: an empty set is not a shared modifier set.
+#[test]
+fn two_empty_modifier_sets_do_not_clash() {
+    let loaded = parse("[picker.keys]\nprivate-modifier = []\nbackground-modifier = []\n");
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+    let loaded = parse(
+        "[picker.keys]\nprivate-modifier = []\nbackground-modifier = [\"Ctrl\"]\n\
+         new-window-modifier = []\n",
+    );
+    assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
+}
+
+#[test]
+fn a_clean_file_is_lossless() {
+    let loaded = parse(SPEC_EXAMPLE);
+    assert!(loaded.is_lossless());
+    // Values that parse but cannot apply survive a save.
+    let loaded = parse(
+        "[browsers]\nprimary = { default = true }\n[apps]\nunknown-svc = { app = \"a.desktop\" }\n",
+    );
+    assert!(!loaded.warnings.is_empty());
+    assert!(loaded.is_lossless(), "{:?}", loaded.warnings);
+}
+
+#[test]
+fn dropped_data_makes_the_load_lossy() {
+    for text in [
+        "[extras]\nforce-http = true\n",
+        "[extras]\nforce-https = \"yes\"\n",
+        "[[rules]]\nname = \"r\"\ntarget = { app = \"not a desktop id\" }\n",
+        "general = 5\n",
+    ] {
+        let loaded = parse(text);
+        assert!(!loaded.is_lossless(), "{text}: {:?}", loaded.warnings);
+    }
+}
+
+#[test]
+fn unknown_keys_use_the_file_position_of_their_rule() {
+    let loaded = parse(
+        r#"
+[[rules]]
+name = "broken"
+target = { app = "not a desktop id" }
+
+[[rules]]
+name = "b"
+url-matchers = [{ pattern = "b.example" }]
+colour = 1
+"#,
+    );
+    assert_eq!(loaded.config.rules.len(), 1);
+    assert!(
+        loaded
+            .warnings
+            .contains(&ConfigWarning::UnknownKey("rules.1.colour".into())),
+        "{:?}",
+        loaded.warnings
+    );
+}
+
+#[test]
+fn unknown_keys_use_the_file_position_of_their_shown_browser() {
+    let loaded = parse(
+        "[[browsers.shown]]\ntarget = { browser = \"x\" }\n\
+         [[browsers.shown]]\ntarget = { app = \"a.desktop\" }\nlabel = \"x\"\n",
+    );
+    assert!(
+        loaded
+            .warnings
+            .contains(&ConfigWarning::UnknownKey("browsers.shown.1.label".into())),
+        "{:?}",
+        loaded.warnings
+    );
+}
+
+#[test]
+fn a_shown_entry_that_is_not_concrete_is_named_by_its_file_position() {
+    let loaded = parse(
+        "[[browsers.shown]]\ntarget = { browser = \"x\" }\n\
+         [[browsers.shown]]\ntarget = { picker = true }\n\
+         [[browsers.shown]]\ntarget = { app = \"a.desktop\" }\n",
+    );
+    assert!(
+        loaded
+            .warnings
+            .contains(&ConfigWarning::ShownNotConcrete(1)),
+        "{:?}",
+        loaded.warnings
+    );
+    let text = messages(&loaded);
+    assert!(
+        text.iter().any(|w| w.starts_with("shown browser 2 ")),
+        "{text:?}"
+    );
+}
+
+#[test]
+fn an_invalid_rule_is_named_by_its_file_position() {
+    let loaded = parse(
+        r#"
+[[rules]]
+name = "broken"
+target = { app = "not a desktop id" }
+
+[[rules]]
+name = ""
+"#,
+    );
+    assert!(
+        loaded
+            .warnings
+            .iter()
+            .any(|w| matches!(w, ConfigWarning::InvalidRule { index: 1, .. })),
+        "{:?}",
+        loaded.warnings
+    );
+}
+
+#[test]
+fn positions_are_unchanged_when_nothing_was_dropped() {
+    let loaded = parse(
+        "[[rules]]\nname = \"a\"\nurl-matchers = [{ pattern = \"a.b\" }]\n\
+         [[rules]]\nname = \"b\"\nurl-matchers = [{ pattern = \"a.c\" }]\ncolour = 1\n",
+    );
+    assert_eq!(
+        loaded.warnings,
+        [ConfigWarning::UnknownKey("rules.1.colour".into())]
+    );
+}

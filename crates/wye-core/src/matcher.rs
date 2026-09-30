@@ -23,7 +23,10 @@ pub enum MatcherKind {
     Domain,
     /// The normalised link starts with the pattern.
     Prefix,
-    /// The normalised link contains the pattern.
+    /// The normalised link contains the pattern. The pattern may span the
+    /// host and the path, and it is matched case-sensitively after removing
+    /// the scheme and `www.` from both; the host of a link is lowercase, so
+    /// write host parts of the pattern in lowercase.
     Contains,
     /// `*` matches any run of characters; the whole link must match.
     Wildcard,
@@ -63,6 +66,10 @@ pub enum MatcherError {
         "a domain matcher takes a host name such as github.com, without a port; use \"Starts with\" to match a port"
     )]
     DomainWithPort,
+    #[error("a domain matcher takes a host name, without user info (`@`)")]
+    DomainWithUserInfo,
+    #[error("a domain matcher needs a host name; `*` alone would match every link")]
+    DomainWildcardOnly,
     #[error("invalid regular expression: {0}")]
     Regex(String),
 }
@@ -72,8 +79,8 @@ impl UrlMatcher {
     ///
     /// # Errors
     ///
-    /// Returns an error for an empty pattern, a domain with a path, or an
-    /// invalid regular expression.
+    /// Returns an error for an empty pattern, a domain with a path, a port,
+    /// user info or nothing but a wildcard, or an invalid regular expression.
     pub fn compile(&self) -> Result<CompiledMatcher, MatcherError> {
         let raw = self.pattern.trim();
         if raw.is_empty() {
@@ -83,7 +90,7 @@ impl UrlMatcher {
             MatcherKind::Domain => CompiledMatcher::Domain(compile_domain(raw)?),
             MatcherKind::Prefix => CompiledMatcher::Prefix(normalize_pattern(raw)),
             // "Contains" often holds a path fragment such as `/pull/`, so it
-            // keeps its case.
+            // keeps its case; a host part must be written in lowercase.
             MatcherKind::Contains => CompiledMatcher::Contains(normalize_contains(raw)),
             MatcherKind::Wildcard => {
                 let pattern = normalize_pattern(raw);
@@ -104,8 +111,14 @@ impl UrlMatcher {
 /// (same meaning as the bare domain) or followed by a single `/`.
 fn compile_domain(raw: &str) -> Result<String, MatcherError> {
     let rest = strip_scheme(raw);
-    let rest = rest.strip_prefix("*.").unwrap_or(rest);
-    let (host, tail) = split_host(rest);
+    let stripped = rest.strip_prefix("*.");
+    let (host, tail) = split_host(stripped.unwrap_or(rest));
+    if host.contains('@') {
+        return Err(MatcherError::DomainWithUserInfo);
+    }
+    if host == "*" || (stripped.is_some() && host.is_empty()) {
+        return Err(MatcherError::DomainWildcardOnly);
+    }
     if host.is_empty() {
         return Err(MatcherError::Empty);
     }
@@ -256,6 +269,90 @@ mod tests {
             err(MatcherKind::Regex, "("),
             MatcherError::Regex(_)
         ));
+    }
+
+    #[test]
+    fn domain_rejects_user_info_and_a_bare_wildcard() {
+        let err = |pattern: &str| {
+            UrlMatcher {
+                kind: MatcherKind::Domain,
+                pattern: pattern.into(),
+            }
+            .compile()
+            .unwrap_err()
+        };
+        assert_eq!(err("user@github.com"), MatcherError::DomainWithUserInfo);
+        assert_eq!(
+            err("https://u:p@github.com/"),
+            MatcherError::DomainWithUserInfo
+        );
+        assert_eq!(err("*"), MatcherError::DomainWildcardOnly);
+        assert_eq!(err("*.*"), MatcherError::DomainWildcardOnly);
+        assert_eq!(err("*."), MatcherError::DomainWildcardOnly);
+    }
+
+    /// Review round 2: (kind, pattern, links that match, links that do not).
+    #[test]
+    fn normalisation_edge_cases() {
+        let cases: [(_, _, &[&str], &[&str]); 7] = [
+            (
+                MatcherKind::Prefix,
+                "a.example/x{1}",
+                &["a.example/x{1}", "a.example/x{1}/more"],
+                &["a.example/x{2}"],
+            ),
+            (
+                MatcherKind::Prefix,
+                "a.example/?q=it's",
+                &["a.example/?q=it's"],
+                &["a.example/?q=its"],
+            ),
+            (
+                MatcherKind::Prefix,
+                "github.com",
+                &["github.com/x", "github.com:8443/x"],
+                &[],
+            ),
+            (
+                MatcherKind::Wildcard,
+                "a.example/*{1}",
+                &["a.example/x/{1}"],
+                &[],
+            ),
+            (
+                MatcherKind::Wildcard,
+                "*README.md",
+                &["github.com/x/README.md"],
+                &["github.com/x/readme.md"],
+            ),
+            (
+                MatcherKind::Wildcard,
+                "*.Atlassian.net/browse/*",
+                &["team.atlassian.net/browse/ABC-1"],
+                &[],
+            ),
+            // The needle may span host and path; case is kept as written.
+            (
+                MatcherKind::Contains,
+                "github.com/Org",
+                &["GitHub.com/Org/x"],
+                &["github.com/org/x"],
+            ),
+        ];
+        for (kind, pattern, yes, no) in cases {
+            let m = matcher(kind, pattern);
+            for link in yes {
+                assert!(hits(&m, link), "{kind:?} {pattern} should match {link}");
+            }
+            for link in no {
+                assert!(
+                    !hits(&m, link),
+                    "{kind:?} {pattern} should not match {link}"
+                );
+            }
+        }
+        let upper = matcher(MatcherKind::Contains, "GitHub.com/Org");
+        assert!(!hits(&upper, "github.com/Org/x"));
     }
 
     #[test]

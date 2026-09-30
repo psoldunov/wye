@@ -7,7 +7,7 @@ use anyhow::bail;
 use wye_core::DesktopId;
 use wye_desktop::{
     DefaultBrowserError, WYE_DESKTOP_ID, XdgDirs, current_default, find_entry, forwards_links,
-    set_default,
+    listed_default, set_default,
 };
 
 use super::{Console, Context, wye_id};
@@ -29,8 +29,13 @@ pub fn run(
 
 fn status(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
     let wye = wye_id()?;
+    // The listed handler decides whether Wye is the default, even when Wye's
+    // entry is not visible to this process (DEF-05).
+    if listed_default(&context.xdg).as_ref() == Some(&wye) {
+        writeln!(console.out, "Wye is your default browser")?;
+        return Ok(());
+    }
     match current_default(&context.xdg) {
-        Some(id) if id == wye => writeln!(console.out, "Wye is your default browser")?,
         Some(id) => writeln!(console.out, "{id} is your default browser")?,
         None => writeln!(console.out, "No default browser is set")?,
     }
@@ -76,9 +81,10 @@ fn rememberable(xdg: &XdgDirs, id: &DesktopId, wye: &DesktopId) -> bool {
 /// Wye, which is what `unset` asks for.
 fn unset(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
     let wye = wye_id()?;
-    let current = current_default(&context.xdg);
-    if current.as_ref() != Some(&wye) {
-        match current {
+    // Wye is the default when it is the listed handler, even if its entry is
+    // not visible to this process (a different `XDG_DATA_DIRS`, say).
+    if listed_default(&context.xdg).as_ref() != Some(&wye) {
+        match current_default(&context.xdg) {
             Some(id) => writeln!(
                 console.out,
                 "Wye is not your default browser ({id} is); nothing changed"

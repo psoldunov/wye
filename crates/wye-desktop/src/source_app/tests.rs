@@ -210,3 +210,21 @@ fn ignores_wyes_own_scope_and_non_app_units() {
     );
     assert!(detect(session.path(), 900).is_unknown());
 }
+
+#[test]
+fn ignores_an_openers_scope() {
+    // A compositor started Wye as `wye`, `xdg-open` or `gio` in its own unit;
+    // that unit names the opener, not the app the link came from.
+    for unit in [
+        "app-Hyprland-wye@4321.service",
+        "app-Hyprland-xdg\\x2dopen-4321.scope",
+        "app-gnome-gio-4321.scope",
+    ] {
+        let root = proc_tree(&[Proc::new(900, 1, "systemd")]);
+        write_file(
+            &root.path().join("self/cgroup"),
+            &format!("0::/user.slice/user-1000.slice/user@1000.service/app.slice/{unit}\n"),
+        );
+        assert!(detect(root.path(), 900).is_unknown(), "{unit}");
+    }
+}

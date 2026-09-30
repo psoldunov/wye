@@ -5,6 +5,12 @@ on:
     branches: [master]
   pull_request:
 
+# The job needs no more than a read-only token. It posts no pull request
+# comment: the third-party `arthjean/rust-doctor` action that did needed
+# `pull-requests: write` while it ran `dtolnay/rust-toolchain@master`,
+# `actions/upload-artifact@v4` and an unlocked `npm install`. This workflow
+# installs the pinned CLI from crates.io with `--locked` instead and reads the
+# result from the job log and exit status.
 permissions:
   contents: read
 
@@ -13,19 +19,19 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
-      # Only for the sticky pull request comment; fork pull requests get a
-      # read-only token and a warning instead.
-      pull-requests: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          # Baseline scope compares a pull request against its base.
-          fetch-depth: 0
-      # Pull requests fail only on what they introduce; pushes to master report
-      # without failing.
-      # The action.yml exists only on main so far (no release tag carries it,
-      # and the `v0` ref the README names does not exist), so this pins main.
-      - uses: arthjean/rust-doctor@9b8c0ab7b67a4fce5c04599e050a11a4d47add2c # main
-        with:
-          blocking: warning
-          comment: "true"
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      # Scans the whole workspace and fails on any blocking warning, the same
+      # command AGENTS.md gives contributors. `--scope baseline` (fail only on
+      # what a pull request introduces) is not used: rust-doctor 0.7.0 runs
+      # `rustup show active-toolchain` in the base checkout, and the flake's
+      # dev shell has no rustup (a rustup shim would replace its cargo).
+      - name: rust-doctor
+        run: |
+          nix develop -c sh -c '
+            set -eu
+            cargo install --locked rust-doctor@0.7.0 --root "$RUNNER_TEMP/rust-doctor"
+            "$RUNNER_TEMP/rust-doctor/bin/rust-doctor" --yes --blocking warning
+          '

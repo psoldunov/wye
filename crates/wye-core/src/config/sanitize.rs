@@ -11,7 +11,8 @@ use crate::target::Target;
 
 impl Config {
     /// Returns a copy with every value that cannot apply replaced, plus a
-    /// warning for each replacement.
+    /// warning for each replacement. List positions in the warnings index the
+    /// lists of `self`; [`Config::parse`] turns them into file positions.
     #[must_use]
     pub fn sanitized(&self, known_services: &[&str]) -> (Self, Vec<ConfigWarning>) {
         let mut warnings = Vec::new();
@@ -106,7 +107,9 @@ fn is_single_key(key: &str) -> bool {
 }
 
 /// KEY-21: the three held-modifier actions need different modifier sets.
-/// Reported only; the picker resolves a clash in the order listed here.
+/// Reported only; the picker resolves a clash in the order listed here. An
+/// action with no modifiers does not clash with another one that has none:
+/// only equal, non-empty sets do.
 fn check_held_modifiers(keys: &PickerKeys, warnings: &mut Vec<ConfigWarning>) {
     let held = [
         ("picker.keys.private-modifier", keys.private_modifier),
@@ -115,7 +118,7 @@ fn check_held_modifiers(keys: &PickerKeys, warnings: &mut Vec<ConfigWarning>) {
     ];
     for (i, &(first, a)) in held.iter().enumerate() {
         for &(second, b) in held.iter().skip(i + 1) {
-            if a == b {
+            if a == b && !a.is_empty() {
                 warnings.push(ConfigWarning::ModifierClash { first, second });
             }
         }

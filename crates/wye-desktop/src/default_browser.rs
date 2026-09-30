@@ -67,6 +67,16 @@ pub fn lookup_files(xdg: &XdgDirs) -> Vec<PathBuf> {
 /// names Firefox; a file listing only missing apps defers to the next.
 #[must_use]
 pub fn default_for(xdg: &XdgDirs, mime: &str) -> Option<DesktopId> {
+    first_listed(xdg, mime, |id| find_entry(xdg, id).is_some())
+}
+
+/// The first ID valid as a desktop ID that `accept` allows, under
+/// `[Default Applications]` for `mime`, trying the files in lookup order.
+fn first_listed(
+    xdg: &XdgDirs,
+    mime: &str,
+    accept: impl Fn(&DesktopId) -> bool,
+) -> Option<DesktopId> {
     lookup_files(xdg).iter().find_map(|path| {
         let text = fs::read_to_string(path).ok()?;
         keyfile::parse(&text)
@@ -75,22 +85,41 @@ pub fn default_for(xdg: &XdgDirs, mime: &str) -> Option<DesktopId> {
             .find_map(|group| group.get(mime).map(keyfile::unescape_list))?
             .into_iter()
             .filter_map(|id| DesktopId::new(id).ok())
-            .find(|id| find_entry(xdg, id).is_some())
+            .find(|id| accept(id))
     })
 }
 
-/// The current default web browser (the `https` handler).
+/// The first ID listed as the handler for `mime`, whether or not its desktop
+/// entry is installed. This is what the desktop (and `xdg-open`) is told to
+/// use, so it answers "is Wye the default?" even when Wye's entry is not
+/// visible to this process (a different `XDG_DATA_DIRS`, say); use
+/// [`default_for`] to pick a browser that can actually be launched.
+#[must_use]
+pub fn listed_default_for(xdg: &XdgDirs, mime: &str) -> Option<DesktopId> {
+    first_listed(xdg, mime, |_| true)
+}
+
+/// The current default web browser (the `https` handler): the first
+/// installed one listed.
 #[must_use]
 pub fn current_default(xdg: &XdgDirs) -> Option<DesktopId> {
     default_for(xdg, HTTPS)
 }
 
-/// True when `id` handles both `http` and `https` links.
+/// The first ID listed as the `https` handler, installed or not. See
+/// [`listed_default_for`].
+#[must_use]
+pub fn listed_default(xdg: &XdgDirs) -> Option<DesktopId> {
+    listed_default_for(xdg, HTTPS)
+}
+
+/// True when `id` is listed as the handler for both `http` and `https`
+/// links, whether or not its desktop entry is installed.
 #[must_use]
 pub fn is_default(xdg: &XdgDirs, id: &DesktopId) -> bool {
     [HTTP, HTTPS]
         .iter()
-        .all(|mime| default_for(xdg, mime).as_ref() == Some(id))
+        .all(|mime| listed_default_for(xdg, mime).as_ref() == Some(id))
 }
 
 /// Makes `id` the default browser (DEF-02): sets `http` and `https` (plus

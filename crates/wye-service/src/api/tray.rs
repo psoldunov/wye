@@ -1,11 +1,13 @@
-//! The tray: the `Tray` property, `RegisterTray`, `ActivateTrayItem`, and the
-//! `StatusNotifierItem` shown when no tray host registered (TRAY-01 to
-//! TRAY-18, ONB-11, decision 8).
+//! The tray: the `Tray` property, `ActivateTrayItem`, the
+//! `StatusNotifierItem` that is Wye's tray on every desktop, and
+//! `RegisterTray` for external tray hosts (TRAY-01 to TRAY-18, ONB-11,
+//! decision 8).
 //!
 //! One model, `wye_core::tray::TrayMenu`, built from the configuration, the
 //! installed apps, the clipboard, the default-browser state and the history,
-//! feeds every host: the Plasma applet, the SNI tray and the `wye-ui` popup.
-//! Hosts send back the chosen item's ID; [`activate_tray_item`] does the rest.
+//! feeds every surface: the SNI tray, the `wye-ui` popup and any external
+//! host. They send back the chosen item's ID; [`activate_tray_item`] does
+//! the rest.
 
 mod action;
 mod dto;
@@ -33,7 +35,7 @@ use crate::platform::Platform;
 /// What this topic keeps between calls.
 #[derive(Debug, Default)]
 pub struct State {
-    /// Tray hosts that registered (decision 8).
+    /// External tray hosts that registered (decision 8).
     hosts: Hosts,
     /// The `StatusNotifierItem` is shown.
     sni_shown: AtomicBool,
@@ -49,8 +51,8 @@ impl State {
     }
 }
 
-/// The tray task: shows the `StatusNotifierItem` when no tray host is
-/// registered.
+/// The tray task: shows the `StatusNotifierItem` unless an external tray
+/// host is registered.
 pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
     vec![tokio::spawn(present::present(ctx.clone()))]
 }
@@ -156,7 +158,7 @@ pub async fn register_tray(ctx: &ServiceContext, caller: &Caller, kind: &str) ->
         .ok_or_else(|| Error::failed("the service is not on a bus"))?;
     tracing::info!(host = sender, kind = kind.as_str(), "tray host registered");
     if !ctx.tray().hosts.insert(&sender) {
-        // Watched already: another applet instance on the same connection.
+        // Watched already: another host instance on the same connection.
         return Ok(());
     }
     let ctx = ctx.clone();
@@ -169,8 +171,8 @@ pub async fn register_tray(ctx: &ServiceContext, caller: &Caller, kind: &str) ->
 }
 
 /// `dev.soldunov.wye1.UnregisterTray`: one of the caller's registrations
-/// ends (an applet instance was removed or disabled). When it was the last,
-/// the `StatusNotifierItem` comes back after the start-up grace.
+/// ends (a host instance was removed or disabled). When it was the last,
+/// the `StatusNotifierItem` comes back at once.
 /// Unregistering a caller that never registered changes nothing.
 ///
 /// # Errors

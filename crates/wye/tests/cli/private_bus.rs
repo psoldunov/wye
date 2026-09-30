@@ -35,7 +35,7 @@ impl PrivateBus {
         .unwrap();
         let socket = desktop.path("bus");
         let config = desktop.path("bus.conf");
-        std::fs::write(&config, config_file(&socket, &services)).unwrap();
+        std::fs::write(&config, config_file(&socket, Some(&services))).unwrap();
         let address = format!("unix:path={}", socket.display());
         // Activated services inherit this environment.
         let env: Vec<(&str, OsString)> = desktop
@@ -53,11 +53,19 @@ impl PrivateBus {
         Some(Self::spawn(command))
     }
 
-    /// A plain session bus.
-    pub fn plain() -> Option<Self> {
+    /// A plain session bus with no activatable services. Its generated
+    /// config has no `servicedir`, unlike `--session`, whose system config
+    /// lists the installed packages' service files (portals, secret
+    /// services, an installed `wye-ui`) and would start them.
+    pub fn plain(desktop: &Desktop) -> Option<Self> {
         let program = find_on_path(DAEMON)?;
+        let socket = desktop.path("bus");
+        let config = desktop.path("bus.conf");
+        std::fs::write(&config, config_file(&socket, None)).unwrap();
         let mut command = Command::new(program);
-        command.args(["--session", "--nofork", "--print-address=1"]);
+        command
+            .arg(format!("--config-file={}", config.display()))
+            .args(["--nofork", "--print-address=1"]);
         Some(Self::spawn(command))
     }
 
@@ -140,16 +148,20 @@ pub fn missing_tools() -> bool {
     !missing.is_empty()
 }
 
-fn config_file(socket: &Path, services: &Path) -> String {
+/// A session bus config listening on `socket`; `services` is its only
+/// `servicedir`, when given.
+fn config_file(socket: &Path, services: Option<&Path>) -> String {
+    let servicedir = services.map_or_else(String::new, |dir| {
+        format!("  <servicedir>{}</servicedir>\n", dir.display())
+    });
     format!(
         "<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\"\n \
          \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n\
-         <busconfig>\n  <type>session</type>\n  <listen>unix:path={}</listen>\n  \
-         <servicedir>{}</servicedir>\n  <policy context=\"default\">\n    \
+         <busconfig>\n  <type>session</type>\n  <listen>unix:path={}</listen>\n\
+         {servicedir}  <policy context=\"default\">\n    \
          <allow send_destination=\"*\" eavesdrop=\"true\"/>\n    <allow eavesdrop=\"true\"/>\n    \
          <allow own=\"*\"/>\n  </policy>\n</busconfig>\n",
-        socket.display(),
-        services.display()
+        socket.display()
     )
 }
 

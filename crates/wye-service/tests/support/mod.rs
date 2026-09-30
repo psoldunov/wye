@@ -1,5 +1,5 @@
-//! Test fixtures: a private session bus (`dbus-daemon --session --nofork
-//! --print-address=1`, killed when dropped), a throwaway desktop with two
+//! Test fixtures: a private session bus (`dbus-daemon` with a generated
+//! config that has no `servicedir`, killed when dropped), a throwaway desktop with two
 //! fake browsers, and the service running on both with fake platform
 //! integrations.
 
@@ -35,6 +35,8 @@ const PATIENCE: Duration = Duration::from_secs(5);
 pub struct PrivateBus {
     daemon: Child,
     address: String,
+    /// Holds the socket and the config; removed after the daemon stops.
+    _dir: TempDir,
 }
 
 impl PrivateBus {
@@ -45,8 +47,12 @@ impl PrivateBus {
             eprintln!("skipping: {DAEMON} is not on PATH");
             return None;
         };
+        let dir = tempfile::tempdir().expect("temp dir");
+        let config = dir.path().join("bus.conf");
+        fs::write(&config, bus_config(&dir.path().join("bus"))).expect("bus config");
         let mut daemon = Command::new(program)
-            .args(["--session", "--nofork", "--print-address=1"])
+            .arg(format!("--config-file={}", config.display()))
+            .args(["--nofork", "--print-address=1"])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -59,7 +65,11 @@ impl PrivateBus {
             .expect("dbus-daemon prints its address");
         let address = address.trim().to_owned();
         assert!(!address.is_empty(), "dbus-daemon printed no address");
-        Some(Self { daemon, address })
+        Some(Self {
+            daemon,
+            address,
+            _dir: dir,
+        })
     }
 
     /// A new connection to this bus.
@@ -78,6 +88,22 @@ impl Drop for PrivateBus {
         let _ = self.daemon.kill();
         let _ = self.daemon.wait();
     }
+}
+
+/// A session bus config with no `servicedir`. `--session` would read the
+/// system config, which on a machine with Wye, portals or a secret service
+/// installed lists their service files, so the bus would start them and
+/// they would outlive it.
+fn bus_config(socket: &Path) -> String {
+    format!(
+        "<!DOCTYPE busconfig PUBLIC \"-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN\"\n \
+         \"http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd\">\n\
+         <busconfig>\n  <type>session</type>\n  <listen>unix:path={}</listen>\n  \
+         <policy context=\"default\">\n    \
+         <allow send_destination=\"*\" eavesdrop=\"true\"/>\n    <allow eavesdrop=\"true\"/>\n    \
+         <allow own=\"*\"/>\n  </policy>\n</busconfig>\n",
+        socket.display()
+    )
 }
 
 fn find_on_path(program: &str) -> Option<PathBuf> {

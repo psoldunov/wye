@@ -1,8 +1,8 @@
 //! The tray menu as data (TRAY-02, TRAY-10 to TRAY-15, TRAY-18).
 //!
-//! One model feeds every tray surface: the Plasma applet builds its menu from
-//! it and the `StatusNotifierItem` fallback maps it to a `DBusMenu`. Item IDs are
-//! stable, so a host can tell which item was activated, and the model carries
+//! One model feeds every tray surface: the `StatusNotifierItem` maps it to a
+//! `DBusMenu` and the `wye-ui` popup draws it. Item IDs are stable, so a
+//! host can tell which item was activated, and the model carries
 //! the labels, enabled and checked state and shortcut of each item.
 //!
 //! ```text

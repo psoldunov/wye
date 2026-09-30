@@ -56,8 +56,11 @@ wire_enum! {
 }
 
 wire_enum! {
-    /// The `kind` argument of `RegisterTray`.
+    /// The `kind` argument of `RegisterTray`. Reserved for external tray
+    /// hosts: Wye's own tray is its `StatusNotifierItem`, and no host ships
+    /// with Wye any more.
     pub enum TrayHost as "tray host" {
+        /// The Plasma applet Wye used to ship (removed; still accepted).
         PlasmaApplet = "plasma-applet",
         GnomeExtension = "gnome-extension",
     }

@@ -13,14 +13,13 @@ window or desktop app, or asks with a small picker. The specification is in
 | `crates/wye-desktop` | Linux integration: desktop entries, browser discovery and profiles (including Firefox profile groups), Exec/launch, `mimeapps.list` default browser, `kdeglobals`, autostart, source-app detection, native-messaging manifests. |
 | `crates/wye-api` | The D-Bus contract: bus/interface/error names, JSON payload types (serde, camelCase), zbus proxies. See [docs/dbus-api.md](docs/dbus-api.md). |
 | `crates/wye-script` | The transform-script engine (QuickJS through `rquickjs`): global and per-rule scripts, limits, diffs. |
-| `crates/wye-service` | The session service library behind `wye service`: `bus/` interface impls delegate to one `api/<topic>.rs` per topic; `platform/` holds session integrations behind traits, with no-op and fake implementations. |
+| `crates/wye-service` | The session service library behind `wye service`: `bus/` interface impls delegate to one `api/<topic>.rs` per topic; `platform/` holds session integrations behind traits, with no-op and fake implementations; `platform/sni.rs` is the tray (a StatusNotifierItem with a DBusMenu) on every desktop. |
 | `crates/wye` | The `wye` binary and CLI. Its `tests/e2e.rs` runs the real service on a private bus. |
 | `crates/wye-native-host` | The browser extension's native-messaging host `wye-native-host` (library and binary); `wye extension install\|remove` uses its `install` module. |
 | `crates/wye-ui` | The Qt/Kirigami UI host `wye-ui` (cxx-qt): picker, tray-menu popup, Settings, script editor, onboarding, about and history windows. UI conventions: [crates/wye-ui/README.md](crates/wye-ui/README.md). |
-| `frontends/plasma/` | The Plasma 6 tray applet `dev.soldunov.wye` (pure QML) and its tests. |
 | `frontends/extension/` | The Firefox and Chromium extension (one set of files, one manifest per family). See its README. |
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`); `kwin/` the KWin query script. |
-| `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (applet and extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
+| `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `.github/workflows/` | `ci.yml` (`nix flake check`, advisories), `rust-doctor.yml`, `release.yml` (tag build, GitHub release, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
 
@@ -54,7 +53,6 @@ Run in this order. Every gate must pass before a change is ready.
 6. `nix flake check -L --keep-going`. Beyond the Rust checks (`clippy`, `test`, `fmt`, `deny`,
    `machete`) it runs `installed-desktop-entry` and `installed-dbus-files` (the installed
    files name this package's binaries), `qmllint` and `ui-selftest` (wye-ui),
-   `plasmoid-lint`, `plasmoid-loads` and `plasmoid-dbus-smoke` (the applet),
    `extension-manifests` (the browser extension), `modules-eval` (both Nix modules and both
    channels, evaluated with a fake `release.json`) and `nix-fmt`. `cargo test` includes
    `crates/wye/tests/e2e.rs`: the real `wye service` on a private `dbus-daemon`, activated

@@ -1,6 +1,7 @@
-//! Tray hosts that registered with `RegisterTray` (decision 8): while one
-//! lives, the service shows no `StatusNotifierItem`. A host is forgotten
-//! when its bus connection goes away.
+//! External tray hosts that registered with `RegisterTray` (decision 8):
+//! while one lives, the service shows no `StatusNotifierItem`. A host is
+//! forgotten when its bus connection goes away. Wye ships no such host; the
+//! call stays for compatibility with older applets and third-party hosts.
 
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -13,10 +14,10 @@ use zbus::names::BusName;
 /// One bus connection that called `RegisterTray`.
 #[derive(Debug, Clone, Copy)]
 struct Host {
-    /// `RegisterTray` calls not yet matched by `UnregisterTray`. Every
-    /// Plasma applet instance shares plasmashell's one connection, so one
-    /// instance going away must not bring the item back while another
-    /// still shows the tray (decision 8).
+    /// `RegisterTray` calls not yet matched by `UnregisterTray`. Several
+    /// instances of one host (applets in one panel process) share one
+    /// connection, so one instance going away must not bring the item back
+    /// while another still shows the tray (decision 8).
     registrations: u32,
 }
 
@@ -155,7 +156,7 @@ mod tests {
 
     #[test]
     fn decision_8_every_registration_of_one_connection_counts() {
-        // Two applet instances on plasmashell's one connection.
+        // Two host instances on one connection.
         let hosts = Hosts::default();
         assert!(hosts.insert(":1.5"));
         assert!(!hosts.insert(":1.5"), "watched already");

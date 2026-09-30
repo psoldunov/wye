@@ -64,7 +64,7 @@ fn a_second_service_exits_75() {
         return;
     }
     let desktop = Desktop::new();
-    let bus = PrivateBus::plain().expect("dbus-daemon");
+    let bus = PrivateBus::plain(&desktop).expect("dbus-daemon");
     let mut first = Command::new(env!("CARGO_BIN_EXE_wye"))
         .arg("service")
         .env_clear()

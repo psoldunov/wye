@@ -42,7 +42,7 @@ pub fn base(session: &zbus::Connection) -> Platform {
         notifier: Arc::new(DesktopNotifier::new(session.clone())),
         launcher: Arc::new(SpawnLauncher),
         scope: Arc::new(SystemdScopes::new(session.clone())),
-        sni: Arc::new(KsniNotifier::for_session()),
+        sni: Arc::new(KsniNotifier::new()),
         http: Arc::new(super::http::UreqClient::new()),
         ..Platform::unavailable()
     }

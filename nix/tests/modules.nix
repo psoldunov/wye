@@ -174,6 +174,8 @@ let
       mimeAdded = config.xdg.mimeApps.associations.added;
       unitFile = toString (file "systemd/user/wye.service").source;
       uiUnit = config.systemd.user.services.wye-ui or null;
+      activations = lib.attrNames (lib.filterAttrs (n: _: lib.hasPrefix "wye" n) config.home.activation);
+      retirePlasmoid = config.home.activation.wyeRetirePlasmoid.data or null;
     };
 
   enabled = homeFacts "enabled" {
@@ -258,6 +260,13 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
     # The UI host's unit: bus-activated, never at login.
     check ".package as \$p | .home.$name.uiUnit | .Service.Type == \"dbus\" and .Service.BusName == \"dev.soldunov.wye.Ui\" and .Service.ExecStart == [\"\(\$p)/bin/wye-ui\"] and ((.Install.WantedBy // []) == [])"
   done
+
+  # The tray is the service's StatusNotifierItem: the package ships no Plasma
+  # applet, and the module only tells a running Plasma that an older
+  # generation's applet is gone.
+  test ! -e ${package}/share/plasma
+  check '.home.minimal.activations | index("wyePlasmoid") == null and index("wyeRetirePlasmoid") != null'
+  check '.home.minimal.retirePlasmoid | contains("org.kde.plasma.kpackage.packageUninstalled") and contains("string:dev.soldunov.wye")'
 
   # GEN-01: launch at login follows the unit's WantedBy.
   check '.home.enabled.unit.Install.WantedBy == ["graphical-session.target"]'

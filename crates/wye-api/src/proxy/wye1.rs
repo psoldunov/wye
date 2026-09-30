@@ -157,12 +157,14 @@ pub trait Wye1 {
     /// Open or close the tray menu popup (TRAY-08).
     fn toggle_menu(&self) -> Result<(), Error>;
 
-    /// Announce a tray host ([`crate::actions::TrayHost`]); the service
-    /// hides its own tray icon while the caller is connected.
+    /// Announce an external tray host ([`crate::actions::TrayHost`]); the
+    /// service hides its own tray icon while the caller is connected. Wye
+    /// ships no such host: the call is kept for older applets and
+    /// third-party hosts.
     fn register_tray(&self, kind: &str) -> Result<(), Error>;
 
     /// The caller no longer shows the tray; the service's own tray icon comes
-    /// back after the start-up grace.
+    /// back at once.
     fn unregister_tray(&self) -> Result<(), Error>;
 
     /// Carry out the tray item `id` of the `Tray` model (01-tray-menu.md).

@@ -31,20 +31,6 @@ let
   '';
 
   qt = rec {
-    # Every QML module the Plasma applet and its tests import (QtQuick,
-    # libplasma's plasmoid/core/extras, Kirigami, plasma-workspace's D-Bus
-    # bindings), for qmllint and the offscreen QML runtime (nix/frontends.nix,
-    # frontends/plasma/tests/qml-env.sh).
-    plasmaQmlModules = [
-      kde.qtdeclarative
-      kde.libplasma
-      # The wrapper carries no QML modules; the unwrapped package does.
-      kde.kirigami.unwrapped
-      kde.ksvg
-      kde.kitemmodels
-      kde.plasma-workspace
-    ];
-    plasmaQmlPath = lib.makeSearchPath "lib/qt-6/qml" plasmaQmlModules;
     # cxx-qt-build reads Qt's whole layout (headers, libraries,
     # qmltyperegistrar, qmlcachegen) from one `qmake -query`. nixpkgs installs
     # every Qt module in its own store path, which cxx-qt does not support

@@ -164,3 +164,49 @@ fn strips_deleted_suffix_from_exe() {
         Some("app-bin")
     );
 }
+
+#[test]
+fn falls_back_to_own_cgroup_when_reparented() {
+    // `gio open` exited and Wye was reparented to `systemd --user`; it still
+    // sits in the source app's scope.
+    let slack_scope = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
+                       app-gnome-com.slack.Slack-4242.scope\n";
+    let root = proc_tree(&[Proc::new(900, 1, "systemd")]);
+    write_file(&root.path().join("self/cgroup"), slack_scope);
+    let source = detect(root.path(), 900);
+    assert_eq!(source.desktop_id, Some(id("com.slack.Slack")));
+    assert_eq!(source.executable, None);
+
+    // Missing parents fall back the same way.
+    assert_eq!(
+        detect(root.path(), 4321).desktop_id,
+        Some(id("com.slack.Slack"))
+    );
+
+    // A parent chain that names an app wins over the cgroup.
+    let chain = proc_tree(&[Proc::new(70, 1, "thunderbird")]);
+    write_file(&chain.path().join("self/cgroup"), slack_scope);
+    assert_eq!(
+        detect(chain.path(), 70).executable.as_deref(),
+        Some("thunderbird")
+    );
+    assert_eq!(detect(chain.path(), 70).desktop_id, None);
+}
+
+#[test]
+fn ignores_wyes_own_scope_and_non_app_units() {
+    let own = proc_tree(&[Proc::new(900, 1, "systemd")]);
+    write_file(
+        &own.path().join("self/cgroup"),
+        "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
+         app-gnome-dev.soldunov.wye-777.scope\n",
+    );
+    assert!(detect(own.path(), 900).is_unknown());
+
+    let session = proc_tree(&[Proc::new(900, 1, "systemd")]);
+    write_file(
+        &session.path().join("self/cgroup"),
+        "0::/user.slice/user-1000.slice/session-2.scope\n",
+    );
+    assert!(detect(session.path(), 900).is_unknown());
+}

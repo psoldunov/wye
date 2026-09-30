@@ -1,4 +1,10 @@
 //! Launching targets (LAUNCH-01, LAUNCH-03 to LAUNCH-05).
+//!
+//! Wye's desktop entry keeps `StartupNotify=true`: that is how launchers
+//! hand Wye the activation token it passes on (LAUNCH-03). The cost is that
+//! when Wye starts nothing that takes the token (a background launch,
+//! LAUNCH-04, or a rejected link), the launcher's startup sequence is left
+//! to time out, which on X11 shows a busy cursor for a few seconds.
 
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
@@ -8,6 +14,7 @@ use wye_core::{CustomApp, DesktopId, Target};
 use crate::discovery::{InstalledApp, Inventory, PrivateMode};
 use crate::exec::{ExecContext, ExecError, ExecTemplate};
 use crate::family::BrowserFamily;
+use crate::loop_guard;
 
 /// Wye's own desktop ID. Launching it would loop (DEF-06).
 pub const WYE_DESKTOP_ID: &str = "dev.soldunov.wye.desktop";
@@ -21,7 +28,9 @@ pub const ACTIVATION_ENV: [&str; 2] = ["XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_
 pub struct LaunchRequest<'a> {
     pub target: &'a Target,
     pub url: &'a str,
-    /// Open without taking focus (RUL-22, LAUNCH-04).
+    /// Open without taking focus (RUL-22, LAUNCH-04). The activation
+    /// variables are removed, so the launcher's startup sequence for Wye
+    /// times out instead of completing (see the module docs).
     pub background: bool,
     /// Force a new window (RUL-23, LAUNCH-05).
     pub new_window: bool,
@@ -43,6 +52,10 @@ pub enum LaunchError {
     NotConcrete(Target),
     #[error("refusing to open a link in Wye itself")]
     SelfLaunch,
+    /// The command runs Wye or a generic opener such as `xdg-open`, which
+    /// would send the link straight back to Wye (DEF-06).
+    #[error("refusing to run {0}: it would send the link back to Wye")]
+    LoopsBack(String),
     #[error("{0} is not installed")]
     NotInstalled(DesktopId),
     #[error("{0} runs in a terminal, which Wye does not launch")]
@@ -67,9 +80,10 @@ pub enum LaunchError {
 ///
 /// # Errors
 ///
-/// Returns [`LaunchError`] for Picker and Default, Wye itself, apps that
-/// are missing, run in a terminal or lack an `Exec` line, and private or
-/// profile targets the app does not support.
+/// Returns [`LaunchError`] for Picker and Default, Wye itself, commands
+/// that run Wye or a generic opener (DEF-06), apps that are missing, run in
+/// a terminal or lack an `Exec` line, and private or profile targets the app
+/// does not support.
 pub fn build_command(
     inventory: &Inventory,
     request: &LaunchRequest<'_>,
@@ -94,6 +108,13 @@ pub fn build_command(
             expand(app, entry_exec(app)?, request.url, &flags)?
         }
     };
+    if loop_guard::runs_opener(&args)
+        || loop_guard::runs_current_exe(&args, inventory.search_path())
+    {
+        return Err(LaunchError::LoopsBack(
+            args.first().cloned().unwrap_or_default(),
+        ));
+    }
     let mut args = args.into_iter();
     let program = args.next().unwrap_or_default();
     Ok(LaunchCommand {

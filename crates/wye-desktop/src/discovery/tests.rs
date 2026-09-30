@@ -176,3 +176,62 @@ fn finds_single_entries() {
     assert!(find_entry(&fx.xdg, &id("gone")).is_none());
     assert!(find_entry(&fx.xdg, &id("missing")).is_none());
 }
+
+#[test]
+fn openers_are_not_web_handlers_or_targets() {
+    // DEF-06: these would send the link straight back to Wye.
+    let fx = Fixture::new();
+    fx.system_entry("firefox.desktop", FIREFOX);
+    let web = "Type=Application\nMimeType=x-scheme-handler/http;x-scheme-handler/https;\n";
+    fx.system_entry(
+        "opener.desktop",
+        &format!("[Desktop Entry]\nName=Opener\nExec=xdg-open %u\n{web}"),
+    );
+    fx.system_entry(
+        "old-wye.desktop",
+        &format!("[Desktop Entry]\nName=Old Wye\nExec=/usr/local/bin/wye open %U\n{web}"),
+    );
+    fx.system_entry(
+        "wrapped.desktop",
+        &format!("[Desktop Entry]\nName=Wrapped\nExec=env A=1 gio open %u\n{web}"),
+    );
+    fx.program("xdg-open");
+    let inventory = Inventory::scan(&fx.xdg, &wye());
+
+    let handlers: Vec<&str> = inventory
+        .web_handlers()
+        .iter()
+        .map(|app| app.id().as_str())
+        .collect();
+    assert_eq!(handlers, vec!["firefox.desktop"]);
+    for name in ["opener", "old-wye", "wrapped"] {
+        let app = inventory.get(&id(name)).unwrap();
+        assert!(app.forwards_links && !app.handles_web, "{name}");
+        assert!(app.private.is_none() && app.profiles.is_empty(), "{name}");
+        assert!(!inventory.is_available(&Target::App(id(name))), "{name}");
+        assert!(
+            !inventory.is_available(&Target::Custom(CustomApp::Desktop(id(name)))),
+            "{name}"
+        );
+    }
+    let exe = |value: &str| Target::Custom(CustomApp::Executable(value.into()));
+    assert!(!inventory.is_available(&exe("xdg-open")));
+    let current = std::env::current_exe().unwrap();
+    assert!(!inventory.is_available(&exe(current.to_str().unwrap())));
+    assert!(!inventory.get(&id("firefox")).unwrap().forwards_links);
+}
+
+#[test]
+fn ids_never_resolve_outside_applications() {
+    let fx = Fixture::new();
+    // `sys/escape.desktop` sits beside `sys/applications`, not inside it.
+    fx.write("sys/escape.desktop", EDITOR);
+    fx.write("sys/applications/sub/ok.desktop", EDITOR);
+    fs::create_dir_all(fx.path("sys/applications/sub/nested")).unwrap();
+    assert!(find_entry(&fx.xdg, &id("..-escape")).is_none());
+    assert!(find_entry(&fx.xdg, &id("sub-..-..-escape")).is_none());
+    assert!(find_entry(&fx.xdg, &id(".-sub-ok")).is_none());
+    assert!(find_entry(&fx.xdg, &id("sub--ok")).is_none());
+    assert!(find_entry(&fx.xdg, &id("sub-nested-..-ok")).is_none());
+    assert_eq!(find_entry(&fx.xdg, &id("sub-ok")).unwrap().name, "Editor");
+}

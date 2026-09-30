@@ -56,14 +56,16 @@ impl Wrapper {
 
 fn wrapper_host_matches(host: &str, pattern: &str) -> bool {
     match pattern.strip_suffix(".*") {
-        // "google.*": google.<TLD>, optionally behind www.
+        // "google.*": google.<TLD>, optionally behind www. The TLD part has
+        // at most two labels (`com`, `co.uk`), so `google.com.evil.example`
+        // is not Google.
         Some(label) => {
             let host = host.to_ascii_lowercase();
             let host = host.strip_prefix("www.").unwrap_or(&host);
             host.strip_prefix(label)
                 .and_then(|rest| rest.strip_prefix('.'))
                 .is_some_and(|tld| {
-                    !tld.is_empty()
+                    tld.split('.').count() <= 2
                         && tld
                             .split('.')
                             .all(|l| !l.is_empty() && l.chars().all(|c| c.is_ascii_alphabetic()))
@@ -242,6 +244,16 @@ mod tests {
             )
             .is_empty()
         );
+    }
+
+    #[test]
+    fn google_lookalike_with_more_labels_is_not_a_wrapper() {
+        let settings = ExpansionSettings::default();
+        let link = |host: &str| format!("https://{host}/url?q=https://example.com/");
+        assert!(unwrap_all(&link("google.com.evil.example"), &settings).is_empty());
+        assert!(unwrap_all(&link("www.google.co.uk.evil"), &settings).is_empty());
+        assert_eq!(unwrap_all(&link("google.co.uk"), &settings).len(), 1);
+        assert_eq!(unwrap_all(&link("www.google.de"), &settings).len(), 1);
     }
 
     #[test]

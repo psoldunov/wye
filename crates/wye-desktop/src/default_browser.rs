@@ -4,13 +4,13 @@
 //! [Association between MIME types and applications]: https://specifications.freedesktop.org/mime-apps-spec/latest/
 
 use std::fs;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use wye_core::DesktopId;
 
-use crate::keyfile;
+use crate::discovery::find_entry;
 use crate::xdg::XdgDirs;
+use crate::{atomic, keyfile};
 
 const DEFAULTS_GROUP: &str = "Default Applications";
 const MIMEAPPS: &str = "mimeapps.list";
@@ -60,8 +60,11 @@ pub fn lookup_files(xdg: &XdgDirs) -> Vec<PathBuf> {
     .collect()
 }
 
-/// The default handler for `mime`: the first ID listed under
-/// `[Default Applications]` in the first file that has the key.
+/// The default handler for `mime`: the first installed ID listed under
+/// `[Default Applications]`, trying the files in lookup order. As the
+/// mime-apps specification says, an ID whose desktop entry cannot be found
+/// (or is `Hidden`) is skipped, so `removed.desktop;firefox.desktop;`
+/// names Firefox; a file listing only missing apps defers to the next.
 #[must_use]
 pub fn default_for(xdg: &XdgDirs, mime: &str) -> Option<DesktopId> {
     lookup_files(xdg).iter().find_map(|path| {
@@ -71,7 +74,8 @@ pub fn default_for(xdg: &XdgDirs, mime: &str) -> Option<DesktopId> {
             .filter(|group| group.name == DEFAULTS_GROUP)
             .find_map(|group| group.get(mime).map(keyfile::unescape_list))?
             .into_iter()
-            .find_map(|id| DesktopId::new(id).ok())
+            .filter_map(|id| DesktopId::new(id).ok())
+            .find(|id| find_entry(xdg, id).is_some())
     })
 }
 
@@ -132,7 +136,9 @@ pub fn set_default(
     for (path, keys) in edits {
         let text = read_existing(&path)?.unwrap_or_default();
         let pairs: Vec<(&str, &str)> = keys.iter().map(|mime| (*mime, id.as_str())).collect();
-        write_atomically(&path, &set_keys(&text, DEFAULTS_GROUP, &pairs))?;
+        let text = set_keys(&text, DEFAULTS_GROUP, &pairs);
+        atomic::write(&path, text.as_bytes(), Some(&path))
+            .map_err(|source| DefaultBrowserError::Io { path, source })?;
     }
     Ok(())
 }
@@ -236,36 +242,6 @@ fn ensure_writable(path: &Path) -> Result<(), DefaultBrowserError> {
             source,
         }),
     }
-}
-
-/// Writes through a temporary file in the same directory and renames it
-/// over `path`, keeping the old file's permissions.
-fn write_atomically(path: &Path, text: &str) -> Result<(), DefaultBrowserError> {
-    let io_error = |source| DefaultBrowserError::Io {
-        path: path.to_path_buf(),
-        source,
-    };
-    let dir = path.parent().unwrap_or_else(|| Path::new("."));
-    fs::create_dir_all(dir).map_err(io_error)?;
-    let file_name = path.file_name().map_or_else(
-        || MIMEAPPS.into(),
-        |name| name.to_string_lossy().into_owned(),
-    );
-    let temp = dir.join(format!(".{file_name}.wye-{}.tmp", std::process::id()));
-    let result = (|| {
-        let mut file = fs::File::create(&temp)?;
-        file.write_all(text.as_bytes())?;
-        if let Ok(meta) = fs::metadata(path) {
-            file.set_permissions(meta.permissions())?;
-        }
-        file.sync_all()?;
-        fs::rename(&temp, path)
-    })();
-    if result.is_err() {
-        // Best effort: the temp file may not exist if creating it failed.
-        let _ = fs::remove_file(&temp);
-    }
-    result.map_err(io_error)
 }
 
 #[cfg(test)]

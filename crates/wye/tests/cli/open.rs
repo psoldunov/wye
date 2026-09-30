@@ -90,6 +90,24 @@ fn a_broken_config_still_opens_links() {
 }
 
 #[test]
+fn a_broken_stderr_never_stops_a_link() {
+    // A broken config and the picker stand-in both write to stderr, which
+    // fails on /dev/full; the link still opens and the exit code is clean.
+    let desktop = Desktop::new();
+    desktop.config("[browsers\n");
+    desktop.write("state/wye/state.toml", "previous-default-browser = 3\n");
+    desktop
+        .wye_with_broken_stderr(&["open", "https://example.com/"])
+        .expect_code(0);
+    assert_eq!(desktop.wait_for_log(ONE), "https://example.com/\n");
+
+    desktop.wye_with_broken_stderr(&["open"]).expect_code(0);
+    desktop
+        .wye_with_broken_stderr(&["open", "mailto:x"])
+        .expect_code(2);
+}
+
+#[test]
 fn config_warnings_stay_quiet() {
     let desktop = Desktop::new();
     desktop.config(&format!("unknown-key = 1\n{PRIMARY_ONE}"));

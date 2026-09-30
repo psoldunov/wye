@@ -15,7 +15,7 @@ pub fn run(
     console: &mut Console<'_>,
     args: &TestArgs,
 ) -> anyhow::Result<ExitCode> {
-    let pipeline = Pipeline::with_shipped_data(context.config(console.err, true)?);
+    let pipeline = Pipeline::with_shipped_data(context.config(console.err, true));
     let inventory = context.inventory()?;
     let request = LinkRequest {
         source: args.source.clone().unwrap_or_default(),
@@ -62,7 +62,7 @@ impl Report<'_> {
         }
 
         let target = if picker_fallback::needed(resolution) {
-            let state = self.context.state_or_default(console.err)?;
+            let state = self.context.state_or_default(console.err);
             let stand_in = picker_fallback::choose(self.pipeline.config(), self.inventory, &state);
             let Some(stand_in) = stand_in else {
                 writeln!(

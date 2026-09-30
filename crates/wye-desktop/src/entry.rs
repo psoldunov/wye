@@ -17,8 +17,10 @@ const ACTION_PREFIX: &str = "Desktop Action ";
 
 /// A parsed desktop entry.
 #[derive(Debug, Clone, PartialEq, Eq)]
-// The booleans mirror the specification's keys one to one.
-#[allow(clippy::struct_excessive_bools)]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "the booleans mirror the Desktop Entry Specification's keys one to one"
+)]
 pub struct DesktopEntry {
     pub id: DesktopId,
     /// The file the entry was read from.

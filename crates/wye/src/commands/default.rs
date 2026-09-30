@@ -4,7 +4,11 @@
 use std::process::ExitCode;
 
 use anyhow::bail;
-use wye_desktop::{DefaultBrowserError, WYE_DESKTOP_ID, current_default, find_entry, set_default};
+use wye_core::DesktopId;
+use wye_desktop::{
+    DefaultBrowserError, WYE_DESKTOP_ID, XdgDirs, current_default, find_entry, forwards_links,
+    set_default,
+};
 
 use super::{Console, Context, wye_id};
 use crate::cli::DefaultAction;
@@ -43,8 +47,9 @@ fn set(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
              would fail; install Wye first"
         );
     }
-    let include_html = context.config(console.err, true)?.general.open_local_html;
-    if let Some(previous) = current_default(&context.xdg).filter(|id| *id != wye) {
+    let include_html = context.config(console.err, true).general.open_local_html;
+    let previous = current_default(&context.xdg).filter(|id| rememberable(&context.xdg, id, &wye));
+    if let Some(previous) = previous {
         // Remember it before changing anything, so `unset` can always undo.
         let state = State {
             previous_default_browser: Some(previous),
@@ -56,8 +61,35 @@ fn set(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// True when `id` may be remembered as the browser to give the default
+/// back to: not Wye, and not an app that forwards links to the default
+/// browser, which would be Wye again (DEF-06).
+fn rememberable(xdg: &XdgDirs, id: &DesktopId, wye: &DesktopId) -> bool {
+    id != wye && find_entry(xdg, id).is_none_or(|entry| !forwards_links(&entry))
+}
+
 /// DEF-05: gives the default back to the browser Wye replaced.
+///
+/// When Wye is no longer the default (the user picked another browser
+/// since), nothing is changed, the remembered browser is kept, and the
+/// command succeeds (exit 0) after saying so: the default is already not
+/// Wye, which is what `unset` asks for.
 fn unset(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
+    let wye = wye_id()?;
+    let current = current_default(&context.xdg);
+    if current.as_ref() != Some(&wye) {
+        match current {
+            Some(id) => writeln!(
+                console.out,
+                "Wye is not your default browser ({id} is); nothing changed"
+            )?,
+            None => writeln!(
+                console.out,
+                "Wye is not your default browser; nothing changed"
+            )?,
+        }
+        return Ok(());
+    }
     let state = State::load(&context.paths.state)?;
     let Some(previous) = state.previous_default_browser.clone() else {
         bail!(
@@ -71,7 +103,13 @@ fn unset(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
              choose another in your desktop's settings"
         );
     };
-    let include_html = context.config(console.err, true)?.general.open_local_html;
+    if forwards_links(&entry) {
+        bail!(
+            "{previous}, the default browser before Wye, sends links back to the default \
+             browser; choose another in your desktop's settings"
+        );
+    }
+    let include_html = context.config(console.err, true).general.open_local_html;
     set_default(&context.xdg, &previous, include_html).map_err(explain)?;
     State::default().save(&context.paths.state)?;
     writeln!(

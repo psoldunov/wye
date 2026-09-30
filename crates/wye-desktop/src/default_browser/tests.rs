@@ -11,9 +11,20 @@ fn wye() -> DesktopId {
     id("dev.soldunov.wye")
 }
 
+/// Installs a minimal desktop entry for each ID, so lookups find them.
+fn install(fx: &Fixture, ids: &[&str]) {
+    for id in ids {
+        fx.system_entry(
+            &format!("{id}.desktop"),
+            &format!("[Desktop Entry]\nType=Application\nName={id}\nExec={id} %u\n"),
+        );
+    }
+}
+
 #[test]
 fn follows_lookup_order() {
     let fx = Fixture::new();
+    install(&fx, &["chromium", "firefox", "brave", "google-chrome"]);
     fx.write(
         "sys/applications/mimeapps.list",
         "[Default Applications]\nx-scheme-handler/https=chromium.desktop\n",
@@ -49,6 +60,7 @@ fn sets_default_preserving_other_lines() {
                     [Default Applications]\n# browsers\nx-scheme-handler/http=firefox.desktop\n\
                     image/png=eog.desktop\n\n[Removed Associations]\ntext/plain=x.desktop\n";
     let path = fx.write("home/.config/mimeapps.list", original);
+    install(&fx, &["dev.soldunov.wye"]);
 
     set_default(&fx.xdg, &wye(), false).unwrap();
     let text = fs::read_to_string(&path).unwrap();
@@ -98,6 +110,7 @@ fn updates_shadowing_desktop_file() {
         "home/.config/kde-mimeapps.list",
         "[Default Applications]\nx-scheme-handler/https=konqueror.desktop\n",
     );
+    install(&fx, &["dev.soldunov.wye"]);
     set_default(&fx.xdg, &wye(), false).unwrap();
     assert_eq!(
         fs::read_to_string(&gnome).unwrap(),
@@ -146,10 +159,10 @@ fn refuses_managed_files() {
 fn keeps_permissions_and_leaves_no_temp_files() {
     let fx = Fixture::new();
     let path = fx.write("home/.config/mimeapps.list", "");
-    fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
     set_default(&fx.xdg, &wye(), false).unwrap();
     let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-    assert_eq!(mode, 0o600);
+    assert_eq!(mode, 0o640);
     let entries: Vec<_> = fs::read_dir(&fx.xdg.config_home).unwrap().collect();
     assert_eq!(entries.len(), 1);
 }
@@ -159,4 +172,25 @@ fn set_keys_handles_missing_trailing_newline() {
     assert_eq!(set_keys("[G]\na=1", "G", &[("b", "2")]), "[G]\na=1\nb=2\n");
     assert_eq!(set_keys("[G]\na=1", "G", &[("a", "2")]), "[G]\na=2");
     assert_eq!(set_keys("", "G", &[("a", "1")]), "[G]\na=1\n");
+}
+
+#[test]
+fn skips_listed_apps_that_are_not_installed() {
+    let fx = Fixture::new();
+    install(&fx, &["firefox", "chromium"]);
+    fx.user_entry("hidden.desktop", "[Desktop Entry]\nHidden=true\n");
+    fx.write(
+        "home/.config/mimeapps.list",
+        "[Default Applications]\n\
+         x-scheme-handler/https=removed.desktop;hidden.desktop;firefox.desktop;\n\
+         x-scheme-handler/http=removed.desktop;\n",
+    );
+    assert_eq!(current_default(&fx.xdg), Some(id("firefox")));
+    // Only missing apps in the first file: the next file decides.
+    assert_eq!(default_for(&fx.xdg, HTTP), None);
+    fx.write(
+        "etc/xdg/mimeapps.list",
+        "[Default Applications]\nx-scheme-handler/http=chromium.desktop\n",
+    );
+    assert_eq!(default_for(&fx.xdg, HTTP), Some(id("chromium")));
 }

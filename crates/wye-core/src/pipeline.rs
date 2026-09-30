@@ -252,15 +252,29 @@ pub struct Pipeline {
 }
 
 impl Pipeline {
-    /// Builds a pipeline. Rules that fail validation are left out; the
-    /// configuration loader has already reported them.
+    /// Builds a pipeline over the [`Config::sanitized`] copy of `config`, so
+    /// values that cannot apply (a primary browser set to Default, a mapping
+    /// for an unknown service, an out-of-range timeout) are corrected here
+    /// and routing never ends on [`Target::Default`]. Rules that fail
+    /// validation are left out. The configuration loader has already
+    /// reported both.
     #[must_use]
+    #[allow(
+        clippy::needless_pass_by_value,
+        reason = "callers hand the configuration over; taking a reference would break them"
+    )]
     pub fn new(
         config: Config,
         services: ServiceCatalogue,
         expansion: ExpansionCatalogue,
         tracking: TrackingRules,
     ) -> Self {
+        let known: Vec<&str> = services
+            .services()
+            .iter()
+            .map(|service| service.id.as_str())
+            .collect();
+        let (config, _) = config.sanitized(&known);
         let rules = config
             .rules
             .iter()
@@ -287,6 +301,7 @@ impl Pipeline {
         )
     }
 
+    /// The corrected configuration the pipeline routes with.
     #[must_use]
     pub fn config(&self) -> &Config {
         &self.config
@@ -309,12 +324,14 @@ impl Pipeline {
     ) -> Result<Resolution, Rejected> {
         let mut steps = Vec::new();
         let mut url = self.validate(&request.url)?;
+        // Expansion and cleaning only mean something for web links; the
+        // global transform (PIPE-05) also sees local HTML files (DEF-07).
         if is_web(&url) {
             url = self.expand(url, &mut steps);
             url = self.clean(url, &mut steps);
-            if self.config.advanced.transform {
-                steps.push(Step::ScriptNotRun(ScriptScope::Global));
-            }
+        }
+        if self.config.advanced.transform {
+            steps.push(Step::ScriptNotRun(ScriptScope::Global));
         }
 
         let (target, decision, options) = self.decide(&url, request, apps, &mut steps);
@@ -520,9 +537,13 @@ impl Pipeline {
         target
     }
 
-    // PIPE-11
+    /// PIPE-11. The alternative-browser key is the user's escape hatch
+    /// (PIPE-06; the BRW-02 help text in 19-help-texts.md) and works for
+    /// links from the browser extension too, so it beats the extension's forced picker
+    /// (ADV-10). An explicit `--pick` still wins.
     fn force_picker(&self, resolution: &mut Resolution, request: &LinkRequest) {
         let by_extension = request.entry == EntryPoint::Extension
+            && resolution.decision != Decision::AlternativeKey
             && self.config.advanced.force_picker_from_extension
             && !self.config.advanced.bypass_key.matches(request.held);
         if (by_extension || request.force == Force::Picker) && resolution.target != Target::Picker {

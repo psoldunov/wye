@@ -90,6 +90,17 @@
                 desktop-file-validate ${./data/applications/dev.soldunov.wye.desktop}
                 touch $out
               '';
+          # The entry the package installs, with its absolute Exec and TryExec.
+          installed-desktop-entry =
+            pkgs.runCommand "wye-installed-desktop-entry-valid"
+              { nativeBuildInputs = [ pkgs.desktop-file-utils ]; }
+              ''
+                entry=${wye.package}/share/applications/dev.soldunov.wye.desktop
+                desktop-file-validate $entry
+                grep -qxF 'Exec=${wye.package}/bin/wye open %U' $entry
+                grep -qxF 'TryExec=${wye.package}/bin/wye' $entry
+                touch $out
+              '';
           nix-fmt = pkgs.runCommand "nix-fmt-check" { nativeBuildInputs = [ pkgs.nixfmt ]; } ''
             nixfmt --check ${./flake.nix} ${./nix}/*.nix
             touch $out

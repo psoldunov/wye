@@ -4,9 +4,12 @@
 //!
 //! Nothing here reads the environment or the real filesystem implicitly:
 //! every function takes an [`XdgDirs`] value or a `/proc` root, and only
-//! [`XdgDirs::from_env`] reads the process environment. Requirement IDs such
+//! [`XdgDirs::from_env`] reads the process environment. The one exception is
+//! the loop guard, which compares commands with the running executable
+//! ([`loop_guard::runs_current_exe`]). Requirement IDs such
 //! as `DISC-05` refer to the specification in `docs/spec/`.
 
+pub mod atomic;
 pub mod default_browser;
 pub mod discovery;
 pub mod entry;
@@ -14,6 +17,7 @@ pub mod exec;
 pub mod family;
 pub mod keyfile;
 pub mod launch;
+pub mod loop_guard;
 pub mod profiles;
 pub mod source_app;
 pub mod xdg;
@@ -27,5 +31,6 @@ pub use entry::{DesktopAction, DesktopEntry, EntryError};
 pub use exec::{ExecContext, ExecError, ExecTemplate};
 pub use family::{BrowserFamily, Packaging};
 pub use launch::{LaunchCommand, LaunchError, LaunchRequest, WYE_DESKTOP_ID, build_command, spawn};
+pub use loop_guard::forwards_links;
 pub use profiles::{Profile, ProfileError};
 pub use xdg::{NoHomeError, XdgDirs};

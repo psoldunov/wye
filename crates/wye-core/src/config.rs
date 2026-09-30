@@ -3,17 +3,23 @@
 //! One TOML file under `$XDG_CONFIG_HOME/wye/`, written by the frontends and
 //! editable by hand or by a dotfile manager. Every key is optional: a missing
 //! key takes the default from the spec's "Value in design" columns. Unknown
-//! keys and values that cannot apply are reported as warnings, never as a
-//! reason to stop opening links.
+//! keys, values of the wrong type and values that cannot apply are reported
+//! as warnings, never as a reason to stop opening links. Only text that is
+//! not TOML at all is an error.
 
 use std::collections::BTreeMap;
-use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
 use crate::keys::{Modifier, Modifiers};
-use crate::rule::{Rule, RuleError};
+use crate::rule::Rule;
 use crate::target::Target;
+
+mod load;
+mod sanitize;
+mod warnings;
+
+pub use warnings::ConfigWarning;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", default)]
@@ -266,16 +272,17 @@ pub struct ExpansionSettings {
     pub disabled: Vec<String>,
     /// Short-link domains the user added (DLG-EXP-02).
     pub custom_short_links: Vec<String>,
-    /// 500 to 5000 ms (DLG-EXP-04).
-    pub timeout_ms: u16,
-    /// 1 to 10 (DLG-EXP-04).
-    pub max_redirects: u8,
+    /// 500 to 5000 ms (DLG-EXP-04). Wider than the range, so a value outside
+    /// it is clamped with a warning instead of failing to parse.
+    pub timeout_ms: u32,
+    /// 1 to 10 (DLG-EXP-04). Wider than the range, like `timeout_ms`.
+    pub max_redirects: u16,
     pub notify_on_failure: bool,
 }
 
 impl ExpansionSettings {
-    pub const TIMEOUT_RANGE: std::ops::RangeInclusive<u16> = 500..=5000;
-    pub const REDIRECT_RANGE: std::ops::RangeInclusive<u8> = 1..=10;
+    pub const TIMEOUT_RANGE: std::ops::RangeInclusive<u32> = 500..=5000;
+    pub const REDIRECT_RANGE: std::ops::RangeInclusive<u16> = 1..=10;
 
     #[must_use]
     pub fn is_enabled(&self, id: &str) -> bool {
@@ -307,114 +314,39 @@ pub struct Shortcuts {
     pub clipboard_alternative: Option<String>,
 }
 
-/// A problem with the configuration that Wye works around.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ConfigWarning {
-    UnknownKey(String),
-    /// `browsers.primary` or `browsers.alternative` is `default`, which only
-    /// means something in mappings and rules. Treated as the picker.
-    DefaultNotAllowed(&'static str),
-    /// A shown entry that is the picker or Default; dropped.
-    ShownNotConcrete(usize),
-    DuplicateHotkey(String),
-    HotkeyTakenByAction(String),
-    UnknownService(String),
-    InvalidRule {
-        index: usize,
-        name: String,
-        errors: Vec<RuleError>,
-    },
-    DuplicateRuleId(String),
-    OutOfRange {
-        key: &'static str,
-        value: String,
-        used: String,
-    },
-}
-
-impl fmt::Display for ConfigWarning {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::UnknownKey(path) => write!(f, "unknown key `{path}` is ignored"),
-            Self::DefaultNotAllowed(key) => write!(
-                f,
-                "`{key}` cannot be `default` (it only applies to web app mappings and rules); using the picker"
-            ),
-            Self::ShownNotConcrete(i) => write!(
-                f,
-                "shown browser {} is the picker or Default, which the picker cannot show; it is skipped",
-                i + 1
-            ),
-            Self::DuplicateHotkey(key) => {
-                write!(
-                    f,
-                    "picker hotkey {key:?} is assigned more than once; only the first counts"
-                )
-            }
-            Self::HotkeyTakenByAction(key) => {
-                write!(
-                    f,
-                    "picker hotkey {key:?} is already a picker action key; it is ignored"
-                )
-            }
-            Self::UnknownService(id) => {
-                write!(
-                    f,
-                    "`apps.{id}` does not name a known web app; it is ignored"
-                )
-            }
-            Self::InvalidRule {
-                index,
-                name,
-                errors,
-            } => {
-                let errors: Vec<_> = errors.iter().map(ToString::to_string).collect();
-                write!(
-                    f,
-                    "rule {} ({name:?}) is skipped: {}",
-                    index + 1,
-                    errors.join("; ")
-                )
-            }
-            Self::DuplicateRuleId(id) => write!(f, "rule ID {id:?} is used more than once"),
-            Self::OutOfRange { key, value, used } => {
-                write!(f, "`{key}` = {value} is out of range; using {used}")
-            }
-        }
-    }
-}
-
 /// A configuration file that could not be read at all.
 #[derive(Debug, thiserror::Error)]
 #[error("invalid configuration: {0}")]
 pub struct ConfigError(#[from] toml::de::Error);
 
-/// A parsed configuration, already corrected for the problems listed in
-/// `warnings`.
+/// A parsed configuration and every problem found in it.
 #[derive(Debug, Clone)]
 pub struct Loaded {
+    /// The configuration as written, minus values that could not be read.
+    /// Values that parse but cannot apply are kept, so saving it back loses
+    /// nothing; [`Pipeline::new`](crate::Pipeline::new) routes with the
+    /// [`Config::sanitized`] copy.
     pub config: Config,
     pub warnings: Vec<ConfigWarning>,
 }
 
 impl Config {
-    /// Parses a configuration file and corrects what cannot apply.
+    /// Parses a configuration file and reports what cannot apply.
     ///
-    /// `known_services` lists the web app IDs of the catalogue, to flag
-    /// mappings for services Wye does not know.
+    /// A value of the wrong type or shape is dropped with a warning and keeps
+    /// its default; a rule or shown browser that cannot be read is skipped on
+    /// its own. `known_services` lists the web app IDs of the catalogue, to
+    /// flag mappings for services Wye does not know.
     ///
     /// # Errors
     ///
-    /// Returns an error when the text is not valid TOML or a value has the
-    /// wrong type.
+    /// Returns an error only when the text is not valid TOML.
     pub fn parse(text: &str, known_services: &[&str]) -> Result<Loaded, ConfigError> {
+        let table: toml::Table = text.parse()?;
         let mut warnings = Vec::new();
-        let deserializer = toml::Deserializer::parse(text)?;
-        let config: Self = serde_ignored::deserialize(deserializer, |path| {
-            warnings.push(ConfigWarning::UnknownKey(path.to_string()));
-        })?;
-        let (config, more) = config.sanitized(known_services);
-        warnings.extend(more);
+        let config: Self = load::lenient(table, &mut warnings);
+        let (_, corrections) = config.sanitized(known_services);
+        warnings.extend(corrections);
         Ok(Loaded { config, warnings })
     }
 
@@ -426,315 +358,7 @@ impl Config {
     pub fn to_toml(&self) -> Result<String, toml::ser::Error> {
         toml::to_string(self)
     }
-
-    /// Returns a copy with every value that cannot apply replaced, plus a
-    /// warning for each replacement.
-    #[must_use]
-    pub fn sanitized(&self, known_services: &[&str]) -> (Self, Vec<ConfigWarning>) {
-        let mut warnings = Vec::new();
-        let browsers = self.browsers.sanitized(&self.picker.keys, &mut warnings);
-        let apps = self
-            .apps
-            .iter()
-            .filter(|(id, target)| {
-                let known = known_services.contains(&id.as_str());
-                if !known {
-                    warnings.push(ConfigWarning::UnknownService((*id).clone()));
-                }
-                known && **target != Target::Default
-            })
-            .map(|(id, target)| (id.clone(), target.clone()))
-            .collect();
-        check_rules(&self.rules, &mut warnings);
-        let advanced = Advanced {
-            expansion: self.advanced.expansion.sanitized(&mut warnings),
-            ..self.advanced.clone()
-        };
-        let config = Self {
-            browsers,
-            apps,
-            advanced,
-            ..self.clone()
-        };
-        (config, warnings)
-    }
-}
-
-impl Browsers {
-    fn sanitized(&self, keys: &PickerKeys, warnings: &mut Vec<ConfigWarning>) -> Self {
-        let concrete_or_picker = |target: &Target, key: &'static str, warnings: &mut Vec<_>| {
-            if *target == Target::Default {
-                warnings.push(ConfigWarning::DefaultNotAllowed(key));
-                Target::Picker
-            } else {
-                target.clone()
-            }
-        };
-        let primary = concrete_or_picker(&self.primary, "browsers.primary", warnings);
-        let alternative = concrete_or_picker(&self.alternative, "browsers.alternative", warnings);
-
-        let action_keys: Vec<String> = keys.action_keys().map(str::to_lowercase).collect();
-        let mut seen_hotkeys: Vec<String> = Vec::new();
-        let shown = self
-            .shown
-            .iter()
-            .enumerate()
-            .filter_map(|(i, entry)| {
-                if !entry.target.is_concrete() {
-                    warnings.push(ConfigWarning::ShownNotConcrete(i));
-                    return None;
-                }
-                let hotkey = entry.hotkey.as_ref().and_then(|key| {
-                    let lower = key.to_lowercase();
-                    if action_keys.contains(&lower) {
-                        warnings.push(ConfigWarning::HotkeyTakenByAction(key.clone()));
-                        None
-                    } else if seen_hotkeys.contains(&lower) {
-                        warnings.push(ConfigWarning::DuplicateHotkey(key.clone()));
-                        None
-                    } else {
-                        seen_hotkeys.push(lower);
-                        Some(key.clone())
-                    }
-                });
-                Some(ShownEntry {
-                    target: entry.target.clone(),
-                    hotkey,
-                })
-            })
-            .collect();
-        Self {
-            primary,
-            alternative,
-            alternative_key: self.alternative_key,
-            shown,
-        }
-    }
-}
-
-impl ExpansionSettings {
-    fn sanitized(&self, warnings: &mut Vec<ConfigWarning>) -> Self {
-        let timeout_ms = clamp_setting(
-            "advanced.expansion.timeout-ms",
-            self.timeout_ms,
-            &Self::TIMEOUT_RANGE,
-            warnings,
-        );
-        let max_redirects = clamp_setting(
-            "advanced.expansion.max-redirects",
-            self.max_redirects,
-            &Self::REDIRECT_RANGE,
-            warnings,
-        );
-        Self {
-            timeout_ms,
-            max_redirects,
-            ..self.clone()
-        }
-    }
-}
-
-fn clamp_setting<T: Copy + Ord + fmt::Display>(
-    key: &'static str,
-    value: T,
-    range: &std::ops::RangeInclusive<T>,
-    warnings: &mut Vec<ConfigWarning>,
-) -> T {
-    let used = value.clamp(*range.start(), *range.end());
-    if used != value {
-        warnings.push(ConfigWarning::OutOfRange {
-            key,
-            value: value.to_string(),
-            used: used.to_string(),
-        });
-    }
-    used
-}
-
-fn check_rules(rules: &[Rule], warnings: &mut Vec<ConfigWarning>) {
-    let mut ids: Vec<&str> = Vec::new();
-    for (index, rule) in rules.iter().enumerate() {
-        if let Err(errors) = rule.compile() {
-            warnings.push(ConfigWarning::InvalidRule {
-                index,
-                name: rule.name.clone(),
-                errors,
-            });
-        }
-        if let Some(id) = rule.id.as_deref() {
-            if ids.contains(&id) {
-                warnings.push(ConfigWarning::DuplicateRuleId(id.to_owned()));
-            }
-            ids.push(id);
-        }
-    }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::matcher::MatcherKind;
-    use crate::rule::RunPosition;
-    use crate::source::SourceAppSpec;
-    use crate::target::DesktopId;
-
-    const SERVICES: &[&str] = &["google-meet", "discord"];
-
-    /// The illustrative configuration in 12-data-model.md.
-    const SPEC_EXAMPLE: &str = r#"
-[browsers]
-primary = { picker = true }
-alternative = { app = "firefox.desktop" }
-alternative-key = ["Shift"]
-
-[[browsers.shown]]
-target = { app = "app.zen_browser.zen.desktop" }
-hotkey = "a"
-
-[[browsers.shown]]
-target = { profile = { app = "google-chrome.desktop", id = "Profile 1" } }
-hotkey = "c"
-
-[apps]
-google-meet = { profile = { app = "google-chrome.desktop", id = "Profile 1" } }
-
-[[rules]]
-name = "GitHub in Firefox"
-target = { app = "firefox.desktop" }
-url-matchers = [{ kind = "domain", pattern = "github.com" }]
-source-apps = ["com.slack.Slack.desktop"]
-run = "before"
-
-[picker]
-icon-size = "large"
-hotkeys = "per-target"
-
-[picker.keys]
-open = ["Return", "KP_Enter", "space"]
-cancel = ["Escape"]
-private-modifier = ["Shift"]
-"#;
-
-    fn id(s: &str) -> DesktopId {
-        DesktopId::new(s).unwrap()
-    }
-
-    #[test]
-    fn parses_the_spec_example() {
-        let loaded = Config::parse(SPEC_EXAMPLE, SERVICES).unwrap();
-        assert!(loaded.warnings.is_empty(), "{:?}", loaded.warnings);
-        let config = loaded.config;
-        assert_eq!(
-            config.browsers.alternative,
-            Target::App(id("firefox.desktop"))
-        );
-        assert_eq!(config.browsers.shown.len(), 2);
-        assert_eq!(config.browsers.shown[1].hotkey.as_deref(), Some("c"));
-        assert!(matches!(config.apps["google-meet"], Target::Profile { .. }));
-        let rule = &config.rules[0];
-        assert_eq!(rule.url_matchers[0].kind, MatcherKind::Domain);
-        assert_eq!(
-            rule.source_apps,
-            [SourceAppSpec::Desktop(id("com.slack.Slack.desktop"))]
-        );
-        assert_eq!(rule.run, RunPosition::Before);
-        assert!(rule.enabled);
-        // Keys not in the file keep their defaults.
-        assert_eq!(config.picker.keys.next, ["Right", "Tab"]);
-        assert!(config.extras.strip_tracking_on_open);
-    }
-
-    #[test]
-    fn empty_file_is_all_defaults() {
-        let loaded = Config::parse("", SERVICES).unwrap();
-        assert!(loaded.warnings.is_empty());
-        let config = loaded.config;
-        assert_eq!(config, Config::default());
-        assert_eq!(config.browsers.primary, Target::Picker);
-        assert_eq!(config.browsers.alternative_key.to_string(), "Shift");
-        assert_eq!(config.advanced.bypass_key.to_string(), "Alt");
-        assert!(config.advanced.expand_urls);
-        assert!(config.advanced.force_picker_from_extension);
-        assert!(!config.advanced.history);
-        assert!(config.general.launch_at_login);
-        assert_eq!(config.picker.icon_size, IconSize::Large);
-    }
-
-    #[test]
-    fn round_trips_through_toml() {
-        let config = Config::parse(SPEC_EXAMPLE, SERVICES).unwrap().config;
-        let text = config.to_toml().unwrap();
-        let again = Config::parse(&text, SERVICES).unwrap();
-        assert!(again.warnings.is_empty(), "{:?}\n{text}", again.warnings);
-        assert_eq!(again.config, config);
-    }
-
-    #[test]
-    fn reports_unknown_keys() {
-        let loaded =
-            Config::parse("[extras]\nforce-http = true\n[nonsense]\na = 1\n", SERVICES).unwrap();
-        let unknown: Vec<_> = loaded.warnings.iter().map(ToString::to_string).collect();
-        assert!(
-            unknown.iter().any(|w| w.contains("extras.force-http")),
-            "{unknown:?}"
-        );
-        assert!(
-            unknown.iter().any(|w| w.contains("nonsense")),
-            "{unknown:?}"
-        );
-    }
-
-    #[test]
-    fn type_errors_are_errors() {
-        assert!(Config::parse("[extras]\nforce-https = \"yes\"\n", SERVICES).is_err());
-        assert!(Config::parse("[browsers]\nalternative-key = [\"Hyper\"]\n", SERVICES).is_err());
-    }
-
-    #[test]
-    fn corrects_values_that_cannot_apply() {
-        let text = r#"
-[browsers]
-primary = { default = true }
-
-[[browsers.shown]]
-target = { picker = true }
-
-[[browsers.shown]]
-target = { app = "a.desktop" }
-hotkey = "x"
-
-[[browsers.shown]]
-target = { app = "b.desktop" }
-hotkey = "X"
-
-[[browsers.shown]]
-target = { app = "c.desktop" }
-hotkey = "Escape"
-
-[apps]
-discord = { default = true }
-myspace = { app = "a.desktop" }
-
-[[rules]]
-name = ""
-
-[advanced.expansion]
-timeout-ms = 60000
-max-redirects = 0
-"#;
-        let loaded = Config::parse(text, SERVICES).unwrap();
-        let config = &loaded.config;
-        assert_eq!(config.browsers.primary, Target::Picker);
-        assert_eq!(config.browsers.shown.len(), 3);
-        assert_eq!(config.browsers.shown[0].hotkey.as_deref(), Some("x"));
-        assert_eq!(config.browsers.shown[1].hotkey, None);
-        assert_eq!(config.browsers.shown[2].hotkey, None);
-        assert!(config.apps.is_empty());
-        assert_eq!(config.advanced.expansion.timeout_ms, 5000);
-        assert_eq!(config.advanced.expansion.max_redirects, 1);
-        // The invalid rule stays in the file; the pipeline skips it.
-        assert_eq!(config.rules.len(), 1);
-        let kinds: Vec<_> = loaded.warnings.iter().map(std::mem::discriminant).collect();
-        assert_eq!(kinds.len(), 8, "{:#?}", loaded.warnings);
-    }
-}
+mod tests;

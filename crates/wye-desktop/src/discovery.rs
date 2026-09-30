@@ -8,6 +8,7 @@ use wye_core::{Availability, CustomApp, DesktopId, Target};
 use crate::entry::{DesktopAction, DesktopEntry};
 use crate::exec::ExecTemplate;
 use crate::family::{self, BrowserFamily, Packaging};
+use crate::loop_guard;
 use crate::profiles::{self, Profile};
 use crate::xdg::{self, XdgDirs};
 
@@ -32,8 +33,13 @@ pub enum PrivateMode {
 pub struct InstalledApp {
     pub entry: DesktopEntry,
     pub family: BrowserFamily,
-    /// `MimeType` lists `x-scheme-handler/http` or `https`.
+    /// `MimeType` lists `x-scheme-handler/http` or `https`, and `Exec` does
+    /// not forward links (see `forwards_links`).
     pub handles_web: bool,
+    /// `Exec` runs Wye or a generic opener such as `xdg-open`, which would
+    /// send links straight back to Wye (DEF-06). Such an app is never a web
+    /// handler, never available as a target and never launched.
+    pub forwards_links: bool,
     /// Only web handlers get a private mode.
     pub private: Option<PrivateMode>,
     /// Only Chromium- and Firefox-family web handlers have profiles.
@@ -50,7 +56,10 @@ impl InstalledApp {
             .exec
             .as_deref()
             .and_then(|line| ExecTemplate::parse(line).ok());
-        let handles_web = entry.handles_web();
+        let forwards_links = exec
+            .as_ref()
+            .is_some_and(|exec| loop_guard::runs_opener(&exec.words()));
+        let handles_web = entry.handles_web() && !forwards_links;
         // A non-browser whose Exec happens to run a browser (a Chrome web-app
         // shortcut, say) is not treated as a browser.
         let family = if handles_web {
@@ -71,6 +80,7 @@ impl InstalledApp {
             entry,
             family,
             handles_web,
+            forwards_links,
             private,
             profiles,
         }
@@ -170,13 +180,18 @@ impl Availability for Inventory {
     fn is_available(&self, target: &Target) -> bool {
         match target {
             Target::Picker | Target::Default => true,
-            Target::App(id) | Target::Custom(CustomApp::Desktop(id)) => self.apps.contains_key(id),
+            Target::App(id) | Target::Custom(CustomApp::Desktop(id)) => {
+                self.get(id).is_some_and(|app| !app.forwards_links)
+            }
             Target::Private(id) => self.get(id).is_some_and(|app| app.private.is_some()),
             Target::Profile { app, id } => {
                 self.get(app).is_some_and(|app| app.profile(id).is_some())
             }
             Target::Custom(CustomApp::Executable(program)) => {
+                let argv = [program.clone()];
                 xdg::find_program(program, &self.search_path).is_some()
+                    && !loop_guard::runs_opener(&argv)
+                    && !loop_guard::runs_current_exe(&argv, &self.search_path)
             }
         }
     }
@@ -198,23 +213,35 @@ pub fn find_entry(xdg: &XdgDirs, id: &DesktopId) -> Option<DesktopEntry> {
 }
 
 /// Finds the file for `rest` under `dir`, where each `-` in `rest` may stand
-/// for a subdirectory separator.
+/// for a subdirectory separator. Empty, `.` and `..` segments are skipped,
+/// so an ID never resolves outside `dir`.
 fn resolve_id(dir: &Path, rest: &str, depth: usize) -> Option<PathBuf> {
-    let direct = dir.join(rest);
-    if direct.is_file() {
-        return Some(direct);
+    if is_plain_segment(rest) {
+        let direct = dir.join(rest);
+        if direct.is_file() {
+            return Some(direct);
+        }
     }
     if depth >= MAX_DEPTH {
         return None;
     }
     rest.match_indices('-').find_map(|(index, _)| {
-        let subdir = dir.join(rest.get(..index)?);
+        let segment = rest.get(..index)?;
+        if !is_plain_segment(segment) {
+            return None;
+        }
+        let subdir = dir.join(segment);
         if subdir.is_dir() {
             resolve_id(&subdir, rest.get(index + 1..)?, depth + 1)
         } else {
             None
         }
     })
+}
+
+/// A single path component that stays inside its directory.
+fn is_plain_segment(segment: &str) -> bool {
+    !segment.is_empty() && segment != "." && segment != ".." && !segment.contains('/')
 }
 
 /// Every desktop file in precedence order, first file per ID only. A

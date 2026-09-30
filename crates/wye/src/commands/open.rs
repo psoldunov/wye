@@ -1,5 +1,9 @@
 //! `wye open` (IN-01, IN-07): route each link and launch it (PIPE-01 to
 //! PIPE-15).
+//!
+//! Every message here goes to stderr best effort ([`notice`]): links
+//! clicked in apps often arrive with a closed or broken stderr, and a
+//! failed write must never stop a link opening.
 
 use std::path::Path;
 use std::process::ExitCode;
@@ -10,7 +14,7 @@ use wye_desktop::{Inventory, LaunchRequest, build_command, source_app, spawn};
 
 use super::{Console, Context, INVALID};
 use crate::cli::OpenArgs;
-use crate::{display, picker_fallback};
+use crate::{display, notice, picker_fallback};
 
 /// Opens every link. Rejected links and failed launches are reported
 /// without stopping the others; the exit code is 2 when any link was
@@ -23,12 +27,12 @@ pub fn run(
     if args.urls.is_empty() {
         // The app-menu entry runs `wye open` without a link. TODO(TRAY-05):
         // open Settings instead.
-        writeln!(console.err, "wye: no link given")?;
+        notice::write(console.err, format_args!("wye: no link given"));
         return Ok(ExitCode::SUCCESS);
     }
     // Links clicked in apps have no terminal to show warnings in.
     let debug = std::env::var_os("WYE_DEBUG").is_some();
-    let pipeline = Pipeline::with_shipped_data(context.config(console.err, debug)?);
+    let pipeline = Pipeline::with_shipped_data(context.config(console.err, debug));
     let inventory = context.inventory()?;
     let source = source_app::detect(Path::new("/proc"), std::os::unix::process::parent_id());
     let opener = Opener {
@@ -51,12 +55,12 @@ pub fn run(
             Ok(resolution) => {
                 if let Err(error) = opener.launch(console, &resolution) {
                     // TODO(LAUNCH-07): report launch failures as notifications.
-                    writeln!(console.err, "wye: {error:#}")?;
+                    notice::write(console.err, format_args!("wye: {error:#}"));
                     failed = true;
                 }
             }
             Err(error) => {
-                writeln!(console.err, "wye: {error}")?;
+                notice::write(console.err, format_args!("wye: {error}"));
                 rejected = true;
             }
         }
@@ -79,8 +83,11 @@ struct Opener<'a> {
 
 impl Opener<'_> {
     /// Launches a resolved link, standing in for the picker when needed.
+    /// The stand-in is announced only after the launch, so the notice can
+    /// never delay or stop it.
     fn launch(&self, console: &mut Console<'_>, resolution: &Resolution) -> anyhow::Result<()> {
-        let target = if picker_fallback::needed(resolution) {
+        let stand_in = picker_fallback::needed(resolution);
+        let target = if stand_in {
             self.stand_in(console)?
         } else {
             resolution.target.clone()
@@ -95,19 +102,23 @@ impl Opener<'_> {
                 new_window: resolution.options.new_window,
             },
         )?;
-        spawn(&command).with_context(|| format!("cannot start {}", command.program))
+        spawn(&command).with_context(|| format!("cannot start {}", command.program))?;
+        if stand_in {
+            notice::write(
+                console.err,
+                format_args!(
+                    "wye: the picker is not available yet; opening in {}",
+                    display::target_name(&target, self.inventory)
+                ),
+            );
+        }
+        Ok(())
     }
 
-    /// The interim picker stand-in, announced on stderr.
+    /// The interim picker stand-in.
     fn stand_in(&self, console: &mut Console<'_>) -> anyhow::Result<Target> {
-        let state = self.context.state_or_default(console.err)?;
-        let target = picker_fallback::choose(self.pipeline.config(), self.inventory, &state)
-            .context("the picker is not available yet and no web browser is installed")?;
-        writeln!(
-            console.err,
-            "wye: the picker is not available yet; opening in {}",
-            display::target_name(&target, self.inventory)
-        )?;
-        Ok(target)
+        let state = self.context.state_or_default(console.err);
+        picker_fallback::choose(self.pipeline.config(), self.inventory, &state)
+            .context("the picker is not available yet and no web browser is installed")
     }
 }

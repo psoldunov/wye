@@ -57,12 +57,17 @@ mod tests {
     }
 
     fn app(id: &str, name: &str, web: bool) -> InstalledApp {
+        app_running(id, name, web, "x")
+    }
+
+    fn app_running(id: &str, name: &str, web: bool, program: &str) -> InstalledApp {
         let mime = if web {
             "MimeType=x-scheme-handler/https;\n"
         } else {
             ""
         };
-        let text = format!("[Desktop Entry]\nType=Application\nName={name}\nExec=x %u\n{mime}");
+        let text =
+            format!("[Desktop Entry]\nType=Application\nName={name}\nExec={program} %u\n{mime}");
         let id = DesktopId::new(id).unwrap();
         let entry = DesktopEntry::parse(id, PathBuf::from("/x"), &text).unwrap();
         InstalledApp::from_entry(entry, &xdg(), &mut Vec::new())
@@ -131,6 +136,22 @@ mod tests {
     #[test]
     fn then_the_first_web_browser_by_name() {
         let chosen = choose(&Config::default(), &inventory(), &State::default());
+        assert_eq!(chosen, Some(target("zeta.desktop")));
+    }
+
+    #[test]
+    fn never_chooses_an_app_that_loops_back() {
+        // DEF-06: an entry running xdg-open or wye would send the link back.
+        let inventory = Inventory::from_apps(
+            vec![
+                app_running("aaa-opener.desktop", "Aaa", true, "xdg-open"),
+                app_running("old-wye.desktop", "Old Wye", true, "/usr/bin/wye"),
+                app("zeta.desktop", "Zeta", true),
+            ],
+            Vec::new(),
+        );
+        let config = shown(&["aaa-opener.desktop", "old-wye.desktop"]);
+        let chosen = choose(&config, &inventory, &remembered("aaa-opener.desktop"));
         assert_eq!(chosen, Some(target("zeta.desktop")));
     }
 

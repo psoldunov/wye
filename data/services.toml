@@ -12,6 +12,10 @@
 # hand-over:    "pass-through" (the https link as is), "spotify-uri"
 #               (open.spotify.com/track/<id> → spotify:track:<id>) or
 #               "steam-openurl" (steam://openurl/<link>)
+#
+# Discord, Slack, Telegram, Zoom, Signal and Element have their own URL
+# schemes in docs/spec/06-apps.md. Their "pass-through" hand-over is a
+# placeholder until each scheme is verified (06-apps.md, "verify").
 
 [[service]]
 id = "airtable"

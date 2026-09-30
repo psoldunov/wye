@@ -231,3 +231,34 @@ fn spawns_detached_processes() {
     };
     assert!(spawn(&missing).is_err());
 }
+
+#[test]
+fn refuses_commands_that_loop_back_to_wye() {
+    // DEF-06: beyond Wye's desktop ID, never run Wye or a generic opener.
+    let fx = browsers();
+    fx.system_entry(
+        "opener.desktop",
+        "[Desktop Entry]\nName=Opener\nType=Application\nExec=xdg-open %u\n\
+         MimeType=x-scheme-handler/https;\n",
+    );
+    fx.system_entry(
+        "private-opener.desktop",
+        "[Desktop Entry]\nName=Sneaky\nType=Application\nExec=firefox %u\n\
+         MimeType=x-scheme-handler/https;\nActions=private;\n\n\
+         [Desktop Action private]\nName=Private\nExec=env kde-open %u\n",
+    );
+    let current = std::env::current_exe().unwrap();
+    std::os::unix::fs::symlink(&current, fx.path("bin/renamed-wye")).unwrap();
+    let inv = inventory(&fx);
+
+    let loops = |target: &Target| matches!(build(&inv, target), Err(LaunchError::LoopsBack(_)));
+    let exe = |value: &str| Target::Custom(CustomApp::Executable(value.into()));
+    assert!(loops(&Target::App(id("opener"))));
+    assert!(loops(&Target::Custom(CustomApp::Desktop(id("opener")))));
+    assert!(loops(&Target::Private(id("private-opener"))));
+    assert!(loops(&exe("xdg-open")));
+    assert!(loops(&exe("/usr/bin/wye")));
+    assert!(loops(&exe(current.to_str().unwrap())));
+    assert!(loops(&exe("renamed-wye")));
+    assert!(build(&inv, &Target::App(id("private-opener"))).is_ok());
+}

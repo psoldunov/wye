@@ -5,7 +5,7 @@
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::{Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
 use tempfile::TempDir;
@@ -120,12 +120,33 @@ impl Desktop {
 
     /// Runs `wye` in this desktop, with nothing from the real environment.
     pub fn wye(&self, args: &[&str]) -> Run {
+        Run::from(self.command(args).output().unwrap())
+    }
+
+    /// Runs `wye` with stderr on `/dev/full`, where every write fails, as
+    /// for an app that launches Wye with a broken stderr. Returns the exit
+    /// code and stdout; stderr is lost.
+    pub fn wye_with_broken_stderr(&self, args: &[&str]) -> Run {
+        let full = fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/full")
+            .unwrap();
+        let output = self
+            .command(args)
+            .stderr(Stdio::from(full))
+            .output()
+            .unwrap();
+        Run::from(output)
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
         let path = format!(
             "{}:{}",
             self.path("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
-        let output = Command::new(env!("CARGO_BIN_EXE_wye"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_wye"));
+        command
             .args(args)
             .env_clear()
             .env("PATH", path)
@@ -135,10 +156,8 @@ impl Desktop {
             .env("XDG_DATA_HOME", self.path("data"))
             .env("XDG_DATA_DIRS", self.path("sysdata"))
             .env("XDG_STATE_HOME", self.path("state"))
-            .env("XDG_CURRENT_DESKTOP", "Test")
-            .output()
-            .unwrap();
-        Run::from(output)
+            .env("XDG_CURRENT_DESKTOP", "Test");
+        command
     }
 }
 

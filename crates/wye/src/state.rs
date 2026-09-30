@@ -32,31 +32,17 @@ impl State {
         }
     }
 
-    /// Writes the state atomically, creating its directory when needed.
+    /// Writes the state atomically, creating its directory when needed. A
+    /// symlink at `path` is left alone and reported as an error.
     ///
     /// # Errors
     ///
     /// Returns an error when the directory or file cannot be written.
     pub fn save(&self, path: &Path) -> anyhow::Result<()> {
         let text = toml::to_string(self).context("cannot serialise the state")?;
-        write_atomically(path, &text).with_context(|| format!("cannot write {}", path.display()))
+        wye_desktop::atomic::write(path, text.as_bytes(), Some(path))
+            .with_context(|| format!("cannot write {}", path.display()))
     }
-}
-
-/// Writes `text` to a temporary file beside `path` and renames it over
-/// `path`, so readers never see a half-written file.
-fn write_atomically(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let mut temp = path.as_os_str().to_owned();
-    temp.push(format!(".tmp-{}", std::process::id()));
-    let temp = Path::new(&temp);
-    std::fs::write(temp, text)?;
-    std::fs::rename(temp, path).inspect_err(|_| {
-        // Best effort: the rename error is the one worth reporting.
-        let _ = std::fs::remove_file(temp);
-    })
 }
 
 #[cfg(test)]
@@ -95,6 +81,18 @@ mod tests {
         let path = dir.path().join("state.toml");
         State::default().save(&path).unwrap();
         assert_eq!(State::load(&path).unwrap(), State::default());
+    }
+
+    #[test]
+    fn never_writes_through_a_symlink() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("elsewhere.toml");
+        std::fs::write(&target, "kept\n").unwrap();
+        let path = dir.path().join("state.toml");
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        assert!(State::default().save(&path).is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "kept\n");
+        assert!(path.symlink_metadata().unwrap().file_type().is_symlink());
     }
 
     #[test]

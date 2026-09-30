@@ -30,9 +30,16 @@ let
       cargoExtraArgs = "--locked --package wye";
       # Tests run as their own flake check.
       doCheck = false;
+      # The source entry runs `wye` from $PATH; the installed one names this
+      # package's binary, so launchers find it even when the profile's bin
+      # directory is not on their PATH, and TryExec hides the entry once the
+      # binary is gone.
       postInstall = ''
-        install -Dm644 ${../data/applications/dev.soldunov.wye.desktop} \
-          $out/share/applications/dev.soldunov.wye.desktop
+        entry=$out/share/applications/dev.soldunov.wye.desktop
+        install -Dm644 ${../data/applications/dev.soldunov.wye.desktop} $entry
+        substituteInPlace $entry \
+          --replace-fail 'Exec=wye open %U' "Exec=$out/bin/wye open %U"
+        sed -i "/^Exec=/i TryExec=$out/bin/wye" $entry
         install -Dm644 ${../data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg} \
           $out/share/icons/hicolor/scalable/apps/dev.soldunov.wye.svg
       '';

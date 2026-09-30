@@ -6,7 +6,7 @@ mod default;
 mod open;
 mod test;
 
-use std::io::{self, Write};
+use std::io::Write;
 use std::process::ExitCode;
 
 use anyhow::Context as _;
@@ -15,6 +15,7 @@ use wye_desktop::{Inventory, WYE_DESKTOP_ID, XdgDirs};
 
 use crate::cli::Command;
 use crate::config_file;
+use crate::notice;
 use crate::paths::Paths;
 use crate::state::State;
 
@@ -57,22 +58,19 @@ impl Context {
         Ok(Self { xdg, paths })
     }
 
-    /// The configuration, reporting problems to `err` (warnings only when
-    /// `warn` is set).
-    pub fn config(&self, err: &mut dyn Write, warn: bool) -> io::Result<Config> {
+    /// The configuration, reporting problems to `err` best effort
+    /// (warnings only when `warn` is set).
+    pub fn config(&self, err: &mut dyn Write, warn: bool) -> Config {
         config_file::load(&self.paths.config, err, warn)
     }
 
     /// The state, or the empty state when it cannot be read: routing must
-    /// not fail over it.
-    pub fn state_or_default(&self, err: &mut dyn Write) -> io::Result<State> {
-        match State::load(&self.paths.state) {
-            Ok(state) => Ok(state),
-            Err(error) => {
-                writeln!(err, "wye: {error:#}")?;
-                Ok(State::default())
-            }
-        }
+    /// not fail over it. The problem is reported to `err` best effort.
+    pub fn state_or_default(&self, err: &mut dyn Write) -> State {
+        State::load(&self.paths.state).unwrap_or_else(|error| {
+            notice::write(err, format_args!("wye: {error:#}"));
+            State::default()
+        })
     }
 
     /// Every installed app except Wye itself.

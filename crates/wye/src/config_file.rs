@@ -10,6 +10,8 @@ use std::path::Path;
 use wye_core::config::ConfigError;
 use wye_core::{Config, Loaded, ServiceCatalogue};
 
+use crate::notice;
+
 /// The outcome of reading the configuration file.
 #[derive(Debug)]
 pub enum Read {
@@ -47,31 +49,28 @@ fn parse(text: &str) -> Read {
 
 /// Loads the configuration for routing. Errors are reported to `err` and
 /// the defaults used instead; warnings are reported only when `warn` is set.
-///
-/// # Errors
-///
-/// Returns an error only when writing to `err` fails.
-pub fn load(path: &Path, err: &mut dyn io::Write, warn: bool) -> io::Result<Config> {
+/// Reporting is best effort: a failed write to `err` never stops loading.
+pub fn load(path: &Path, err: &mut dyn io::Write, warn: bool) -> Config {
     let shown = path.display();
-    Ok(match read(path) {
+    match read(path) {
         Read::Missing => Config::default(),
         Read::Parsed(loaded) => {
             if warn {
                 for warning in &loaded.warnings {
-                    writeln!(err, "wye: {shown}: {warning}")?;
+                    notice::write(err, format_args!("wye: {shown}: {warning}"));
                 }
             }
             loaded.config
         }
         Read::Invalid(error) => {
-            writeln!(err, "wye: {shown}: {error}; using defaults")?;
+            notice::write(err, format_args!("wye: {shown}: {error}; using defaults"));
             Config::default()
         }
         Read::Unreadable(error) => {
-            writeln!(err, "wye: {shown}: {error}; using defaults")?;
+            notice::write(err, format_args!("wye: {shown}: {error}; using defaults"));
             Config::default()
         }
-    })
+    }
 }
 
 #[cfg(test)]
@@ -79,13 +78,14 @@ mod tests {
     use wye_core::Target;
 
     use super::*;
+    use crate::notice::testing::Broken;
 
     #[test]
     fn missing_file() {
         let dir = tempfile::tempdir().unwrap();
         assert!(matches!(read(&dir.path().join("none.toml")), Read::Missing));
         let mut err = Vec::new();
-        let config = load(&dir.path().join("none.toml"), &mut err, true).unwrap();
+        let config = load(&dir.path().join("none.toml"), &mut err, true);
         assert_eq!(config, Config::default());
         assert!(err.is_empty());
     }
@@ -97,7 +97,7 @@ mod tests {
         std::fs::write(&path, "[browsers\n").unwrap();
         assert!(matches!(read(&path), Read::Invalid(_)));
         let mut err = Vec::new();
-        assert_eq!(load(&path, &mut err, false).unwrap(), Config::default());
+        assert_eq!(load(&path, &mut err, false), Config::default());
         let err = String::from_utf8(err).unwrap();
         assert!(err.ends_with("; using defaults\n"), "{err}");
     }
@@ -112,10 +112,10 @@ mod tests {
         };
         assert_eq!(loaded.warnings.len(), 1);
         let mut quiet = Vec::new();
-        load(&path, &mut quiet, false).unwrap();
+        load(&path, &mut quiet, false);
         assert!(quiet.is_empty());
         let mut loud = Vec::new();
-        load(&path, &mut loud, true).unwrap();
+        load(&path, &mut loud, true);
         assert!(String::from_utf8(loud).unwrap().contains("unknown-key"));
     }
 
@@ -124,10 +124,28 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("config.toml");
         std::fs::write(&path, "[browsers]\nprimary = { app = \"a.desktop\" }\n").unwrap();
-        let config = load(&path, &mut Vec::new(), false).unwrap();
+        let config = load(&path, &mut Vec::new(), false);
         assert_eq!(
             config.browsers.primary,
             Target::App(wye_core::DesktopId::new("a.desktop").unwrap())
         );
+    }
+
+    #[test]
+    fn a_broken_stderr_never_stops_loading() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(
+            &path,
+            "unknown-key = 1\n[browsers]\nprimary = { app = \"a.desktop\" }\n",
+        )
+        .unwrap();
+        let config = load(&path, &mut Broken, true);
+        assert_eq!(
+            config.browsers.primary,
+            Target::App(wye_core::DesktopId::new("a.desktop").unwrap())
+        );
+        std::fs::write(&path, "[browsers\n").unwrap();
+        assert_eq!(load(&path, &mut Broken, true), Config::default());
     }
 }

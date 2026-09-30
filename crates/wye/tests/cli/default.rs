@@ -1,9 +1,22 @@
 //! `wye default` (DEF-02, DEF-05).
 
-use crate::support::{Desktop, ONE, WYE, is_symlink};
+use crate::support::{Desktop, ONE, TWO, WYE, is_symlink};
 
 const MIMEAPPS: &str = "config/mimeapps.list";
 const STATE: &str = "state/wye/state.toml";
+
+/// A desktop where Wye is installed and is the default browser.
+fn with_wye_default() -> Desktop {
+    let desktop = Desktop::new();
+    desktop.install_wye();
+    desktop.write(
+        MIMEAPPS,
+        &format!(
+            "[Default Applications]\nx-scheme-handler/http={WYE}\nx-scheme-handler/https={WYE}\n"
+        ),
+    );
+    desktop
+}
 
 fn with_fake_one_default() -> Desktop {
     let desktop = Desktop::new();
@@ -97,16 +110,72 @@ fn set_reports_a_managed_mimeapps_list() {
 
 #[test]
 fn unset_needs_a_remembered_browser() {
-    let desktop = Desktop::new();
+    let desktop = with_wye_default();
     let run = desktop.wye(&["default", "unset"]).expect_code(1);
     assert!(run.stderr.contains("does not remember"), "{run:#?}");
 }
 
 #[test]
 fn unset_refuses_a_browser_that_is_gone() {
-    let desktop = Desktop::new();
+    let desktop = with_wye_default();
     desktop.write(STATE, "previous-default-browser = \"gone.desktop\"\n");
     let run = desktop.wye(&["default", "unset"]).expect_code(1);
     assert!(run.stderr.contains("no longer installed"), "{run:#?}");
     assert!(desktop.read(STATE).contains("gone.desktop"));
+}
+
+#[test]
+fn unset_keeps_a_default_the_user_changed_since() {
+    // DEF-05: Wye took over from Fake One, then the user chose Fake Two.
+    let desktop = Desktop::new();
+    desktop.install_wye();
+    desktop.write(
+        MIMEAPPS,
+        &format!(
+            "[Default Applications]\nx-scheme-handler/http={TWO}\nx-scheme-handler/https={TWO}\n"
+        ),
+    );
+    desktop.write(STATE, &format!("previous-default-browser = \"{ONE}\"\n"));
+    let before = desktop.read(MIMEAPPS);
+    let run = desktop.wye(&["default", "unset"]).expect_code(0);
+    assert_eq!(
+        run.stdout,
+        "Wye is not your default browser (fake-two.desktop is); nothing changed\n"
+    );
+    assert_eq!(desktop.read(MIMEAPPS), before);
+    assert!(desktop.read(STATE).contains(ONE));
+
+    let empty = Desktop::new();
+    let run = empty.wye(&["default", "unset"]).expect_code(0);
+    assert_eq!(
+        run.stdout,
+        "Wye is not your default browser; nothing changed\n"
+    );
+}
+
+#[test]
+fn set_never_remembers_an_opener() {
+    // DEF-06: restoring an entry that runs xdg-open would loop back to Wye.
+    let desktop = Desktop::new();
+    desktop.install_wye();
+    desktop.write(
+        "data/applications/opener.desktop",
+        "[Desktop Entry]\nType=Application\nName=Opener\nExec=xdg-open %u\n\
+         MimeType=x-scheme-handler/http;x-scheme-handler/https;\n",
+    );
+    desktop.write(
+        MIMEAPPS,
+        "[Default Applications]\nx-scheme-handler/http=opener.desktop\n\
+         x-scheme-handler/https=opener.desktop\n",
+    );
+    desktop.write(STATE, &format!("previous-default-browser = \"{ONE}\"\n"));
+    desktop.wye(&["default", "set"]).expect_code(0);
+    assert!(desktop.read(STATE).contains(ONE), "{}", desktop.read(STATE));
+
+    // A remembered opener (from an older Wye) is never restored.
+    desktop.write(STATE, "previous-default-browser = \"opener.desktop\"\n");
+    let before = desktop.read(MIMEAPPS);
+    let run = desktop.wye(&["default", "unset"]).expect_code(1);
+    assert!(run.stderr.contains("sends links back"), "{run:#?}");
+    assert_eq!(desktop.read(MIMEAPPS), before);
 }

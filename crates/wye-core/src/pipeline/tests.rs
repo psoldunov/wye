@@ -292,6 +292,31 @@ fn rule_with_default_target_opens_the_primary_browser() {
     )));
 }
 
+// A configuration built in code is sanitised too: Default never comes out.
+#[test]
+fn default_browsers_in_code_never_resolve_to_default() {
+    let mut config = Config::default();
+    config.browsers.primary = Target::Default;
+    config.browsers.alternative = Target::Default;
+    config
+        .rules
+        .push(rule("Example", domain("example.com"), Target::Default));
+    config.apps.insert("unknown-svc".into(), chromium());
+    let pipeline = pipeline(config);
+    assert_eq!(pipeline.config().browsers.primary, Target::Picker);
+    assert!(pipeline.config().apps.is_empty());
+    let mut held = request("https://example.com/");
+    held.held = keys(&[Modifier::Shift]);
+    for request in [
+        request("https://example.com/"),
+        request("https://other.example/"),
+        held,
+    ] {
+        let resolution = pipeline.resolve(&request, &Apps::default()).unwrap();
+        assert_eq!(resolution.target, Target::Picker, "{}", request.url);
+    }
+}
+
 #[test]
 fn rule_with_unavailable_target_asks_with_the_picker() {
     let mut config = config();
@@ -393,16 +418,30 @@ fn extension_links_force_the_picker() {
     )));
 }
 
+// ADV-11 and PIPE-06: the bypass key and the alternative key (the escape
+// hatch) both beat the extension's forced picker (ADV-10).
 #[test]
-fn bypass_key_stops_the_extension_from_forcing_the_picker() {
+fn bypass_and_alternative_keys_stop_the_extension_from_forcing_the_picker() {
+    for (held, expected) in [(Modifier::Alt, firefox()), (Modifier::Shift, chromium())] {
+        let mut request = LinkRequest::new("https://example.com/", EntryPoint::Extension);
+        request.held = keys(&[held]);
+        let resolution = resolve(config(), &request);
+        assert_eq!(resolution.target, expected, "{held:?}");
+        assert!(!has_step(&resolution, |s| matches!(
+            s,
+            Step::ForcedPicker { .. }
+        )));
+    }
+}
+
+#[test]
+fn explicit_pick_beats_the_alternative_key() {
     let mut request = LinkRequest::new("https://example.com/", EntryPoint::Extension);
-    request.held = keys(&[Modifier::Alt]);
+    request.held = keys(&[Modifier::Shift]);
+    request.force = Force::Picker;
     let resolution = resolve(config(), &request);
-    assert_eq!(resolution.target, firefox());
-    assert!(!has_step(&resolution, |s| matches!(
-        s,
-        Step::ForcedPicker { .. }
-    )));
+    assert_eq!(resolution.decision, Decision::AlternativeKey);
+    assert_eq!(resolution.target, Target::Picker);
 }
 
 #[test]
@@ -543,6 +582,19 @@ fn global_transform_is_reported_as_not_run() {
     let mut config = config();
     config.advanced.transform = true;
     let resolution = resolve(config, &request("https://example.com/"));
+    assert!(has_step(&resolution, |s| matches!(
+        s,
+        Step::ScriptNotRun(ScriptScope::Global)
+    )));
+}
+
+// PIPE-05 applies to local HTML files too (DEF-07).
+#[test]
+fn global_transform_is_reported_for_local_html() {
+    let mut config = config();
+    config.advanced.transform = true;
+    config.general.open_local_html = true;
+    let resolution = resolve(config, &request("file:///tmp/a.html"));
     assert!(has_step(&resolution, |s| matches!(
         s,
         Step::ScriptNotRun(ScriptScope::Global)

@@ -1,4 +1,4 @@
-//! The command line ([07-input-methods.md](../../../docs/spec/07-input-methods.md),
+//! The command line ([11-url-pipeline.md, "Entry points"](../../../docs/spec/11-url-pipeline.md#entry-points),
 //! IN-07 and IN-08).
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
@@ -112,7 +112,8 @@ pub enum DefaultAction {
     Status,
     /// Make Wye the default browser, remembering the current one.
     Set,
-    /// Give the default back to the browser Wye replaced.
+    /// Give the default back to the browser Wye replaced. Does nothing
+    /// when Wye is no longer the default.
     Unset,
 }
 

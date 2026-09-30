@@ -6,7 +6,10 @@
 use regex::{Regex, RegexBuilder};
 use serde::{Deserialize, Serialize};
 
-use crate::normalize::{MatchUrl, normalize_pattern};
+use crate::normalize::{
+    MatchUrl, normalize_contains, normalize_host, normalize_pattern, split_host, split_port,
+    strip_scheme,
+};
 
 /// Upper bound for a compiled user regex, so a pathological pattern cannot
 /// eat memory in the link handler.
@@ -56,6 +59,10 @@ pub enum MatcherError {
     Empty,
     #[error("a domain matcher takes a host name such as github.com, without a path")]
     DomainWithPath,
+    #[error(
+        "a domain matcher takes a host name such as github.com, without a port; use \"Starts with\" to match a port"
+    )]
+    DomainWithPort,
     #[error("invalid regular expression: {0}")]
     Regex(String),
 }
@@ -73,18 +80,11 @@ impl UrlMatcher {
             return Err(MatcherError::Empty);
         }
         let compiled = match self.kind {
-            MatcherKind::Domain => {
-                let host = normalize_pattern(raw);
-                let host = host.strip_suffix('/').unwrap_or(&host);
-                if host.contains(['/', '?', '#']) || host.chars().any(char::is_whitespace) {
-                    return Err(MatcherError::DomainWithPath);
-                }
-                CompiledMatcher::Domain(host.to_owned())
-            }
+            MatcherKind::Domain => CompiledMatcher::Domain(compile_domain(raw)?),
             MatcherKind::Prefix => CompiledMatcher::Prefix(normalize_pattern(raw)),
             // "Contains" often holds a path fragment such as `/pull/`, so it
-            // is taken as written: normalising would lowercase it.
-            MatcherKind::Contains => CompiledMatcher::Contains(raw.to_owned()),
+            // keeps its case.
+            MatcherKind::Contains => CompiledMatcher::Contains(normalize_contains(raw)),
             MatcherKind::Wildcard => {
                 let pattern = normalize_pattern(raw);
                 let body = pattern
@@ -98,6 +98,24 @@ impl UrlMatcher {
         };
         Ok(compiled)
     }
+}
+
+/// A domain pattern: a host, optionally behind a scheme, a leading `*.`
+/// (same meaning as the bare domain) or followed by a single `/`.
+fn compile_domain(raw: &str) -> Result<String, MatcherError> {
+    let rest = strip_scheme(raw);
+    let rest = rest.strip_prefix("*.").unwrap_or(rest);
+    let (host, tail) = split_host(rest);
+    if host.is_empty() {
+        return Err(MatcherError::Empty);
+    }
+    if !matches!(tail, "" | "/") || host.chars().any(char::is_whitespace) {
+        return Err(MatcherError::DomainWithPath);
+    }
+    if split_port(host).1.is_some() {
+        return Err(MatcherError::DomainWithPort);
+    }
+    Ok(normalize_host(host))
 }
 
 fn build_regex(pattern: &str) -> Result<Regex, MatcherError> {
@@ -238,6 +256,54 @@ mod tests {
             err(MatcherKind::Regex, "("),
             MatcherError::Regex(_)
         ));
+    }
+
+    #[test]
+    fn internationalised_patterns_match_like_links() {
+        let domain = matcher(MatcherKind::Domain, "bücher.de");
+        assert!(hits(&domain, "bücher.de/x"));
+        assert!(hits(&domain, "shop.BÜCHER.de/x"));
+        let accented = matcher(MatcherKind::Domain, "ÉXAMPLE.fr");
+        assert!(hits(&accented, "éxample.fr/"));
+        assert!(!hits(&accented, "example.fr/"));
+        let prefix = matcher(MatcherKind::Prefix, "de.wikipedia.org/wiki/Zürich");
+        assert!(hits(&prefix, "de.wikipedia.org/wiki/Zürich_(Stadt)"));
+        let contains = matcher(MatcherKind::Contains, "/wiki/Zürich");
+        assert!(hits(&contains, "de.wikipedia.org/wiki/Zürich"));
+    }
+
+    #[test]
+    fn domain_accepts_a_leading_wildcard_and_rejects_a_port() {
+        let m = matcher(MatcherKind::Domain, "*.github.com");
+        assert!(hits(&m, "github.com/x"));
+        assert!(hits(&m, "gist.github.com/x"));
+        let err = UrlMatcher {
+            kind: MatcherKind::Domain,
+            pattern: "localhost:8080".into(),
+        }
+        .compile()
+        .unwrap_err();
+        assert_eq!(err, MatcherError::DomainWithPort);
+    }
+
+    #[test]
+    fn domain_matches_a_trailing_dot_host() {
+        let m = matcher(MatcherKind::Domain, "github.com");
+        assert!(hits(&m, "github.com./x"));
+    }
+
+    #[test]
+    fn wildcard_without_a_host_keeps_its_case() {
+        let m = matcher(MatcherKind::Wildcard, "*ABC-*");
+        assert!(hits(&m, "jira.example/browse/ABC-1"));
+        assert!(!hits(&m, "jira.example/browse/abc-1"));
+    }
+
+    #[test]
+    fn contains_drops_scheme_and_www_but_keeps_case() {
+        let m = matcher(MatcherKind::Contains, "https://www.github.com/Org");
+        assert!(hits(&m, "www.github.com/Org/repo"));
+        assert!(!hits(&m, "github.com/org/repo"));
     }
 
     #[test]

@@ -8,6 +8,7 @@ mod cli;
 mod commands;
 mod config_file;
 mod display;
+mod notice;
 mod paths;
 mod picker_fallback;
 mod state;

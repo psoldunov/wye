@@ -8,6 +8,8 @@ use std::path::{Path, PathBuf};
 
 use wye_core::{DesktopId, SourceApp};
 
+use crate::launch::WYE_DESKTOP_ID;
+
 /// Processes between the source app and Wye: launch helpers and shells.
 const SKIPPED: &[&str] = &[
     "xdg-open",
@@ -35,9 +37,23 @@ const MAX_HOPS: usize = 64;
 /// Walks the parent chain starting at `start_pid` (normally Wye's parent)
 /// under `proc_root` (normally `/proc`), skipping launch helpers and shells.
 /// Stops at PID 1 or `systemd`. When the first remaining process is
-/// `xdg-desktop-portal`, or nothing could be read, the source is unknown.
+/// `xdg-desktop-portal`, or nothing could be read, the chain names no app.
+///
+/// The chain comes up empty when the helper that started Wye (`gio open`,
+/// say) has already exited and Wye was reparented to `systemd --user`. Wye
+/// still sits in the cgroup it was started in, so the app unit in
+/// `<proc_root>/self/cgroup` is used then, unless that unit is Wye's own
+/// (a launcher that started Wye in a scope of its own). Otherwise the
+/// source is unknown.
 #[must_use]
 pub fn detect(proc_root: &Path, start_pid: u32) -> SourceApp {
+    walk_parents(proc_root, start_pid)
+        .or_else(|| own_scope(proc_root))
+        .unwrap_or_default()
+}
+
+/// The source app from the parent chain, or `None` when it names none.
+fn walk_parents(proc_root: &Path, start_pid: u32) -> Option<SourceApp> {
     let mut pid = start_pid;
     for _ in 0..MAX_HOPS {
         if pid <= 1 {
@@ -58,9 +74,22 @@ pub fn detect(proc_root: &Path, start_pid: u32) -> SourceApp {
                 None => break,
             }
         }
-        return describe(proc_root, pid, comm);
+        return Some(describe(proc_root, pid, comm));
     }
-    SourceApp::default()
+    None
+}
+
+/// The app unit Wye itself runs in, unless it is Wye's own.
+fn own_scope(proc_root: &Path) -> Option<SourceApp> {
+    let text = fs::read_to_string(proc_root.join("self").join("cgroup")).ok()?;
+    let desktop_id = desktop_id_from_cgroup(&text)?;
+    if desktop_id.as_str() == WYE_DESKTOP_ID {
+        return None;
+    }
+    Some(SourceApp {
+        desktop_id: Some(desktop_id),
+        executable: None,
+    })
 }
 
 /// Parses a systemd unit named after the desktop-launcher convention:

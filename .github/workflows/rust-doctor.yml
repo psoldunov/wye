@@ -1,0 +1,27 @@
+name: rust-doctor
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+  # Only for the sticky pull request comment; fork pull requests get a
+  # read-only token and a warning instead.
+  pull-requests: write
+
+jobs:
+  rust-doctor:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Baseline scope compares a pull request against its base.
+          fetch-depth: 0
+      # Pull requests fail only on what they introduce; pushes to master report
+      # without failing.
+      - uses: arthjean/rust-doctor@v0
+        with:
+          blocking: warning
+          comment: "true"

@@ -1,0 +1,43 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/wye-core",
+  "crates/wye-desktop",
+  "crates/wye",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/psoldunov/wye"
+rust-version = "1.85"
+publish = false
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[workspace.dependencies]
+wye-core = { path = "crates/wye-core" }
+wye-desktop = { path = "crates/wye-desktop" }
+
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+toml = "1"
+url = "2"
+
+# dev
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+overflow-checks = true

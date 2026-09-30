@@ -1,0 +1,200 @@
+//! Internal state: the `Status` property and `UpdateUiState` (SET-08,
+//! BLK-09, RUL-19, ONB-06, ONB-10, ONB-11, KEY-06 capability).
+//!
+//! The state file (`$XDG_STATE_HOME/wye/state.toml`,
+//! [`wye_desktop::State`]) is shared with `wye default`, so it is read when
+//! needed rather than cached, and every change loads, edits and saves it
+//! whole.
+
+mod ui;
+
+use serde_json::Value;
+use wye_api::status::{Capabilities, ConfigStatus, Status};
+use wye_api::{Error, json};
+
+use super::Result;
+use crate::bus::Property;
+use crate::context::{ServiceContext, blocking};
+use crate::platform::Platform;
+use wye_core::config::HeldKeys;
+
+/// What this topic keeps between calls.
+#[derive(Debug, Default)]
+pub struct State {
+    /// Serialises read-modify-write cycles of the state file.
+    writing: tokio::sync::Mutex<()>,
+}
+
+impl State {
+    pub(crate) fn new(_platform: &Platform) -> Self {
+        Self::default()
+    }
+}
+
+/// The state file; the empty state when it is missing.
+///
+/// # Errors
+///
+/// `Failed` when there is no home directory or the file cannot be read.
+pub(crate) async fn load(ctx: &ServiceContext) -> Result<wye_desktop::State> {
+    let path = ctx.environment()?.state.clone();
+    blocking(move || wye_desktop::State::load(&path))
+        .await?
+        .map_err(|error| Error::failed(error.to_string()))
+}
+
+/// Load the state, change it with `change`, save it when it changed and
+/// announce `Status`. Returns the saved state.
+///
+/// # Errors
+///
+/// `Failed` when the file cannot be read or written; the error from
+/// `change`.
+pub(crate) async fn update(
+    ctx: &ServiceContext,
+    change: impl FnOnce(&wye_desktop::State) -> Result<wye_desktop::State>,
+) -> Result<wye_desktop::State> {
+    let writing = ctx.state().writing.lock().await;
+    let path = ctx.environment()?.state.clone();
+    let before = load(ctx).await.unwrap_or_else(|error| {
+        tracing::warn!(%error, "the state file is unreadable; starting over");
+        wye_desktop::State::default()
+    });
+    let after = change(&before)?;
+    if after == before {
+        return Ok(after);
+    }
+    let saved = after.clone();
+    blocking(move || saved.save(&path))
+        .await?
+        .map_err(|error| Error::failed(error.to_string()))?;
+    drop(writing);
+    super::config::effects::changed(ctx, Property::Status);
+    Ok(after)
+}
+
+/// The `Status` property as JSON.
+pub async fn status_json(ctx: &ServiceContext) -> Result<String> {
+    json::encode(&status(ctx).await)
+}
+
+/// Everything `Status` reports. Parts that cannot be read are left at their
+/// defaults and logged; the property never fails for them.
+pub(crate) async fn status(ctx: &ServiceContext) -> Status {
+    let platform = ctx.platform();
+    let state = load(ctx).await.unwrap_or_else(|error| {
+        tracing::warn!(%error, "cannot read the state file");
+        wye_desktop::State::default()
+    });
+    let held_keys = super::config::current(ctx)
+        .await
+        .map_or(HeldKeys::Auto, |current| current.config.advanced.held_keys);
+    Status {
+        default_browser: super::default_browser::status(ctx, &state).await,
+        config: config_status(ctx).await,
+        capabilities: capabilities(&platform, held_keys),
+        locked: *platform.lock.locked().borrow(),
+        login_managed: ctx.login_managed().is_some(),
+        login_managed_on: ctx.login_managed() == Some(true),
+        ui_state: ui::from_state(&state),
+    }
+}
+
+async fn config_status(ctx: &ServiceContext) -> ConfigStatus {
+    match super::config::current(ctx).await {
+        Ok(current) => ConfigStatus {
+            path: current.environment.config.display().to_string(),
+            writable: current.writable,
+            lossless: current.lossless,
+            warnings: current.warning_lines(),
+            error: current.error.clone(),
+        },
+        Err(error) => ConfigStatus {
+            error: Some(error.to_string()),
+            ..ConfigStatus::default()
+        },
+    }
+}
+
+/// What the session supports, from the platform integrations (KEY-06,
+/// DLG-ABT-02).
+/// `advanced.held-keys = "off"` makes held keys unavailable (KEY-06).
+fn capabilities(platform: &Platform, held_keys: HeldKeys) -> Capabilities {
+    let clipboard = platform.clipboard.capabilities();
+    let probe = platform
+        .modifiers
+        .mechanism()
+        .filter(|_| held_keys == HeldKeys::Auto);
+    Capabilities {
+        held_keys: probe.map(str::to_owned),
+        pointer: platform.pointer.mechanism().map(str::to_owned),
+        source_app_fallbacks: platform
+            .focus
+            .mechanism()
+            .map(str::to_owned)
+            .into_iter()
+            .collect(),
+        clipboard_read: clipboard.read.map(str::to_owned),
+        clipboard_watch: clipboard.watch.map(str::to_owned),
+        clipboard_write: clipboard.write.map(str::to_owned),
+        global_shortcuts: platform.shortcuts.mechanism().map(str::to_owned),
+        lock_detection: platform.lock.mechanism().map(str::to_owned),
+        // The held-key probe is a layer surface, so it proves the compositor
+        // offers `zwlr_layer_shell_v1`; with the probe off this reads false.
+        layer_shell: probe == Some(crate::platform::modifiers::wayland::MECHANISM),
+    }
+}
+
+/// `dev.soldunov.wye1.UpdateUiState`: merge patch of
+/// [`wye_api::status::UiState`] (SET-08, BLK-09, RUL-19, ONB-06).
+pub async fn update_ui_state(ctx: &ServiceContext, merge_patch: &str) -> Result<()> {
+    let patch: Value = serde_json::from_str(merge_patch)
+        .map_err(|error| Error::invalid_args(format!("merge patch: {error}")))?;
+    update(ctx, |state| ui::patched(state, &patch))
+        .await
+        .map(|_| ())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::link::Environment;
+    use crate::platform::fake::{FAKE, FakePlatform};
+
+    /// A context over `platform` that reads a temporary home.
+    fn context(platform: Platform, home: &std::path::Path) -> ServiceContext {
+        let ctx = ServiceContext::new(platform);
+        let home = home.to_owned();
+        let environment = Environment::from_lookup(move |name| {
+            (name == "HOME").then(|| std::ffi::OsString::from(home.clone()))
+        })
+        .expect("home");
+        ctx.set_environment(environment);
+        ctx
+    }
+
+    #[tokio::test]
+    async fn status_reports_the_platforms_capabilities() {
+        let fakes = FakePlatform::new();
+        fakes.lock.set(true);
+        let home = tempfile::tempdir().expect("temp dir");
+        let ctx = context(fakes.platform(), home.path());
+        let status: Status =
+            json::decode("status", &status_json(&ctx).await.expect("encodes")).expect("decodes");
+        assert!(status.locked);
+        assert_eq!(status.capabilities.held_keys.as_deref(), Some(FAKE));
+        assert_eq!(
+            status.capabilities.source_app_fallbacks,
+            vec![FAKE.to_owned()]
+        );
+    }
+
+    #[tokio::test]
+    async fn an_unavailable_platform_reports_nothing() {
+        let home = tempfile::tempdir().expect("temp dir");
+        let ctx = context(Platform::unavailable(), home.path());
+        let status: Status =
+            json::decode("status", &status_json(&ctx).await.expect("encodes")).expect("decodes");
+        assert_eq!(status.capabilities, Capabilities::default());
+    }
+}

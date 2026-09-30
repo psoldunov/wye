@@ -1,0 +1,1039 @@
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "light",
+        "step": 0,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": true
+            },
+            "browsers": {
+              "primary": {
+                "picker": true
+              },
+              "shown": []
+            }
+          },
+          "revision": 3,
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          },
+          "targets": {
+            "targets": [
+              {
+                "target": {
+                  "picker": true
+                },
+                "kind": "picker",
+                "name": "Picker"
+              },
+              {
+                "target": {
+                  "app": "firefox.desktop"
+                },
+                "kind": "app",
+                "name": "Firefox",
+                "icon": "firefox"
+              },
+              {
+                "target": {
+                  "app": "google-chrome.desktop"
+                },
+                "kind": "app",
+                "name": "Google Chrome",
+                "icon": "google-chrome"
+              },
+              {
+                "target": {
+                  "app": "chromium.desktop"
+                },
+                "kind": "app",
+                "name": "Chromium",
+                "icon": "chromium"
+              },
+              {
+                "target": {
+                  "app": "brave-browser.desktop"
+                },
+                "kind": "app",
+                "name": "Brave",
+                "icon": "brave-browser"
+              },
+              {
+                "target": {
+                  "app": "vivaldi-stable.desktop"
+                },
+                "kind": "app",
+                "name": "Vivaldi",
+                "icon": "vivaldi"
+              },
+              {
+                "target": {
+                  "app": "microsoft-edge.desktop"
+                },
+                "kind": "app",
+                "name": "Microsoft Edge",
+                "icon": "microsoft-edge"
+              },
+              {
+                "target": {
+                  "app": "librewolf.desktop"
+                },
+                "kind": "app",
+                "name": "LibreWolf",
+                "icon": "librewolf"
+              },
+              {
+                "target": {
+                  "app": "zen.desktop"
+                },
+                "kind": "app",
+                "name": "Zen Browser",
+                "icon": "zen-browser"
+              },
+              {
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                },
+                "kind": "app",
+                "name": "Discord",
+                "icon": "discord"
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                },
+                "kind": "profile",
+                "name": "Work (Google Chrome)",
+                "icon": "google-chrome",
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "private": "firefox.desktop"
+                },
+                "kind": "private",
+                "name": "Private (Firefox)",
+                "icon": "firefox",
+                "browser": "firefox.desktop"
+              }
+            ]
+          },
+          "services": {
+            "services": [
+              {
+                "id": "discord",
+                "name": "Discord",
+                "icon": "discord",
+                "installedApp": {
+                  "id": "com.discordapp.Discord.desktop",
+                  "name": "Discord",
+                  "icon": "discord"
+                },
+                "target": {
+                  "default": true
+                }
+              }
+            ]
+          }
+        },
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "dark",
+        "step": 0
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "dark",
+        "step": 1,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": true
+            },
+            "browsers": {
+              "primary": {
+                "picker": true
+              },
+              "shown": []
+            }
+          },
+          "revision": 3,
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          },
+          "targets": {
+            "targets": [
+              {
+                "target": {
+                  "picker": true
+                },
+                "kind": "picker",
+                "name": "Picker"
+              },
+              {
+                "target": {
+                  "app": "firefox.desktop"
+                },
+                "kind": "app",
+                "name": "Firefox",
+                "icon": "firefox"
+              },
+              {
+                "target": {
+                  "app": "google-chrome.desktop"
+                },
+                "kind": "app",
+                "name": "Google Chrome",
+                "icon": "google-chrome"
+              },
+              {
+                "target": {
+                  "app": "chromium.desktop"
+                },
+                "kind": "app",
+                "name": "Chromium",
+                "icon": "chromium"
+              },
+              {
+                "target": {
+                  "app": "brave-browser.desktop"
+                },
+                "kind": "app",
+                "name": "Brave",
+                "icon": "brave-browser"
+              },
+              {
+                "target": {
+                  "app": "vivaldi-stable.desktop"
+                },
+                "kind": "app",
+                "name": "Vivaldi",
+                "icon": "vivaldi"
+              },
+              {
+                "target": {
+                  "app": "microsoft-edge.desktop"
+                },
+                "kind": "app",
+                "name": "Microsoft Edge",
+                "icon": "microsoft-edge"
+              },
+              {
+                "target": {
+                  "app": "librewolf.desktop"
+                },
+                "kind": "app",
+                "name": "LibreWolf",
+                "icon": "librewolf"
+              },
+              {
+                "target": {
+                  "app": "zen.desktop"
+                },
+                "kind": "app",
+                "name": "Zen Browser",
+                "icon": "zen-browser"
+              },
+              {
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                },
+                "kind": "app",
+                "name": "Discord",
+                "icon": "discord"
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                },
+                "kind": "profile",
+                "name": "Work (Google Chrome)",
+                "icon": "google-chrome",
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "private": "firefox.desktop"
+                },
+                "kind": "private",
+                "name": "Private (Firefox)",
+                "icon": "firefox",
+                "browser": "firefox.desktop"
+              }
+            ]
+          },
+          "services": {
+            "services": [
+              {
+                "id": "discord",
+                "name": "Discord",
+                "icon": "discord",
+                "installedApp": {
+                  "id": "com.discordapp.Discord.desktop",
+                  "name": "Discord",
+                  "icon": "discord"
+                },
+                "target": {
+                  "default": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "light",
+        "step": 1,
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": true,
+              "previous": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "dark",
+        "step": 1,
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": false,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "light",
+        "step": 2,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": true
+            },
+            "browsers": {
+              "primary": {
+                "picker": true
+              },
+              "shown": []
+            }
+          },
+          "revision": 3,
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          },
+          "targets": {
+            "targets": [
+              {
+                "target": {
+                  "picker": true
+                },
+                "kind": "picker",
+                "name": "Picker"
+              },
+              {
+                "target": {
+                  "app": "firefox.desktop"
+                },
+                "kind": "app",
+                "name": "Firefox",
+                "icon": "firefox"
+              },
+              {
+                "target": {
+                  "app": "google-chrome.desktop"
+                },
+                "kind": "app",
+                "name": "Google Chrome",
+                "icon": "google-chrome"
+              },
+              {
+                "target": {
+                  "app": "chromium.desktop"
+                },
+                "kind": "app",
+                "name": "Chromium",
+                "icon": "chromium"
+              },
+              {
+                "target": {
+                  "app": "brave-browser.desktop"
+                },
+                "kind": "app",
+                "name": "Brave",
+                "icon": "brave-browser"
+              },
+              {
+                "target": {
+                  "app": "vivaldi-stable.desktop"
+                },
+                "kind": "app",
+                "name": "Vivaldi",
+                "icon": "vivaldi"
+              },
+              {
+                "target": {
+                  "app": "microsoft-edge.desktop"
+                },
+                "kind": "app",
+                "name": "Microsoft Edge",
+                "icon": "microsoft-edge"
+              },
+              {
+                "target": {
+                  "app": "librewolf.desktop"
+                },
+                "kind": "app",
+                "name": "LibreWolf",
+                "icon": "librewolf"
+              },
+              {
+                "target": {
+                  "app": "zen.desktop"
+                },
+                "kind": "app",
+                "name": "Zen Browser",
+                "icon": "zen-browser"
+              },
+              {
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                },
+                "kind": "app",
+                "name": "Discord",
+                "icon": "discord"
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                },
+                "kind": "profile",
+                "name": "Work (Google Chrome)",
+                "icon": "google-chrome",
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "private": "firefox.desktop"
+                },
+                "kind": "private",
+                "name": "Private (Firefox)",
+                "icon": "firefox",
+                "browser": "firefox.desktop"
+              }
+            ]
+          },
+          "services": {
+            "services": [
+              {
+                "id": "discord",
+                "name": "Discord",
+                "icon": "discord",
+                "installedApp": {
+                  "id": "com.discordapp.Discord.desktop",
+                  "name": "Discord",
+                  "icon": "discord"
+                },
+                "target": {
+                  "default": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "dark",
+        "step": 2,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": false
+            },
+            "browsers": {
+              "primary": {
+                "app": "firefox.desktop"
+              },
+              "shown": [
+                {
+                  "target": {
+                    "app": "firefox.desktop"
+                  },
+                  "hotkey": "f"
+                },
+                {
+                  "target": {
+                    "profile": {
+                      "app": "google-chrome.desktop",
+                      "id": "Profile 1"
+                    }
+                  }
+                },
+                {
+                  "target": {
+                    "app": "zen.desktop"
+                  }
+                }
+              ]
+            }
+          },
+          "revision": 3,
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          },
+          "targets": {
+            "targets": [
+              {
+                "target": {
+                  "picker": true
+                },
+                "kind": "picker",
+                "name": "Picker"
+              },
+              {
+                "target": {
+                  "app": "firefox.desktop"
+                },
+                "kind": "app",
+                "name": "Firefox",
+                "icon": "firefox"
+              },
+              {
+                "target": {
+                  "app": "google-chrome.desktop"
+                },
+                "kind": "app",
+                "name": "Google Chrome",
+                "icon": "google-chrome"
+              },
+              {
+                "target": {
+                  "app": "chromium.desktop"
+                },
+                "kind": "app",
+                "name": "Chromium",
+                "icon": "chromium"
+              },
+              {
+                "target": {
+                  "app": "brave-browser.desktop"
+                },
+                "kind": "app",
+                "name": "Brave",
+                "icon": "brave-browser"
+              },
+              {
+                "target": {
+                  "app": "vivaldi-stable.desktop"
+                },
+                "kind": "app",
+                "name": "Vivaldi",
+                "icon": "vivaldi"
+              },
+              {
+                "target": {
+                  "app": "microsoft-edge.desktop"
+                },
+                "kind": "app",
+                "name": "Microsoft Edge",
+                "icon": "microsoft-edge"
+              },
+              {
+                "target": {
+                  "app": "librewolf.desktop"
+                },
+                "kind": "app",
+                "name": "LibreWolf",
+                "icon": "librewolf"
+              },
+              {
+                "target": {
+                  "app": "zen.desktop"
+                },
+                "kind": "app",
+                "name": "Zen Browser",
+                "icon": "zen-browser"
+              },
+              {
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                },
+                "kind": "app",
+                "name": "Discord",
+                "icon": "discord"
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                },
+                "kind": "profile",
+                "name": "Work (Google Chrome)",
+                "icon": "google-chrome",
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "private": "firefox.desktop"
+                },
+                "kind": "private",
+                "name": "Private (Firefox)",
+                "icon": "firefox",
+                "browser": "firefox.desktop"
+              }
+            ]
+          },
+          "services": {
+            "services": [
+              {
+                "id": "discord",
+                "name": "Discord",
+                "icon": "discord",
+                "installedApp": {
+                  "id": "com.discordapp.Discord.desktop",
+                  "name": "Discord",
+                  "icon": "discord"
+                },
+                "target": {
+                  "default": true
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "light",
+        "step": 3,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": true
+            },
+            "browsers": {
+              "primary": {
+                "picker": true
+              },
+              "shown": []
+            }
+          },
+          "revision": 3,
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin"
+            },
+            "uiState": {
+              "onboardingDone": false
+            }
+          },
+          "targets": {
+            "targets": [
+              {
+                "target": {
+                  "picker": true
+                },
+                "kind": "picker",
+                "name": "Picker"
+              },
+              {
+                "target": {
+                  "app": "firefox.desktop"
+                },
+                "kind": "app",
+                "name": "Firefox",
+                "icon": "firefox"
+              },
+              {
+                "target": {
+                  "app": "google-chrome.desktop"
+                },
+                "kind": "app",
+                "name": "Google Chrome",
+                "icon": "google-chrome"
+              },
+              {
+                "target": {
+                  "app": "chromium.desktop"
+                },
+                "kind": "app",
+                "name": "Chromium",
+                "icon": "chromium"
+              },
+              {
+                "target": {
+                  "app": "brave-browser.desktop"
+                },
+                "kind": "app",
+                "name": "Brave",
+                "icon": "brave-browser"
+              },
+              {
+                "target": {
+                  "app": "vivaldi-stable.desktop"
+                },
+                "kind": "app",
+                "name": "Vivaldi",
+                "icon": "vivaldi"
+              },
+              {
+                "target": {
+                  "app": "microsoft-edge.desktop"
+                },
+                "kind": "app",
+                "name": "Microsoft Edge",
+                "icon": "microsoft-edge"
+              },
+              {
+                "target": {
+                  "app": "librewolf.desktop"
+                },
+                "kind": "app",
+                "name": "LibreWolf",
+                "icon": "librewolf"
+              },
+              {
+                "target": {
+                  "app": "zen.desktop"
+                },
+                "kind": "app",
+                "name": "Zen Browser",
+                "icon": "zen-browser"
+              },
+              {
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                },
+                "kind": "app",
+                "name": "Discord",
+                "icon": "discord"
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                },
+                "kind": "profile",
+                "name": "Work (Google Chrome)",
+                "icon": "google-chrome",
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "private": "firefox.desktop"
+                },
+                "kind": "private",
+                "name": "Private (Firefox)",
+                "icon": "firefox",
+                "browser": "firefox.desktop"
+              }
+            ]
+          },
+          "services": {
+            "services": [
+              {
+                "id": "discord",
+                "name": "Discord",
+                "icon": "discord",
+                "installedApp": {
+                  "id": "com.discordapp.Discord.desktop",
+                  "name": "Discord",
+                  "icon": "discord"
+                },
+                "target": {
+                  "default": true
+                }
+              }
+            ]
+          }
+        },
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "dark",
+        "step": 3,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": false
+            },
+            "browsers": {
+              "primary": {
+                "app": "firefox.desktop"
+              },
+              "shown": [
+                {
+                  "target": {
+                    "app": "firefox.desktop"
+                  },
+                  "hotkey": "f"
+                },
+                {
+                  "target": {
+                    "profile": {
+                      "app": "google-chrome.desktop",
+                      "id": "Profile 1"
+                    }
+                  }
+                },
+                {
+                  "target": {
+                    "app": "zen.desktop"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "desktop": "gnome"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "step": 3,
+        "fixture": {
+          "status": {
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true,
+            "loginManagedOn": false
+          }
+        },
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "step": 3,
+        "fixture": {
+          "status": {
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true,
+            "loginManagedOn": true
+          }
+        },
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "light",
+        "step": 4,
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "scheme": "dark",
+        "step": 4,
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": true
+            },
+            "browsers": {
+              "primary": {
+                "picker": true
+              },
+              "shown": []
+            }
+          }
+        },
+        "desktop": "other"
+      }
+    }
+  ]
+}

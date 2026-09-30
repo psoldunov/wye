@@ -13,6 +13,7 @@ sys.dont_write_bytecode = True  # keep __pycache__ out of the source tree
 from pathlib import Path  # noqa: E402
 
 import master  # noqa: E402
+import picker  # noqa: E402
 import small  # noqa: E402
 import symbolic  # noqa: E402
 
@@ -26,6 +27,7 @@ def outputs():
     for size in small.SIZES:
         yield f"{size}x{size}/apps/{ICON}.svg", small.render(size)
     yield f"symbolic/apps/{ICON}-symbolic.svg", symbolic.render()
+    yield f"symbolic/apps/{ICON}-picker-symbolic.svg", picker.render()
 
 
 def main(argv):

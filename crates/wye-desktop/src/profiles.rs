@@ -1,15 +1,22 @@
 //! Browser profiles: Chromium's `Local State` (DISC-06) and Firefox's
-//! classic `profiles.ini` (DISC-07).
+//! classic `profiles.ini` plus the profile-group store of Firefox 138+
+//! (DISC-07), each with a badge for the picker (DISC-08).
 //!
-//! Firefox 138+ can also keep profiles in a profile group: a SQLite store
-//! referenced by a `StoreID` key in `profiles.ini`. Reading it is out of
-//! scope here; profiles that only exist in a group store are not listed.
+//! [`read_firefox`] reads the classic profiles only;
+//! [`read_firefox_with_groups`] adds the group store and turns any trouble
+//! with it into a warning.
 
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
+use wye_core::target_menu::Badge;
 
 use crate::keyfile;
+
+pub mod badge;
+pub mod groups;
+
+pub use groups::GroupError;
 
 /// A browser profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +29,9 @@ pub struct Profile {
     pub name: String,
     /// The profile's picture, when one exists on disk (DISC-08).
     pub avatar: Option<PathBuf>,
+    /// What to draw on the profile's tile (DISC-08, PICK-06): the picture,
+    /// or an initial on the profile's colour.
+    pub badge: Option<Badge>,
     /// The profile's absolute directory.
     pub path: PathBuf,
 }
@@ -46,6 +56,14 @@ pub enum ProfileError {
 const LOCAL_STATE: &str = "Local State";
 const PROFILES_INI: &str = "profiles.ini";
 const CHROMIUM_AVATAR: &str = "Google Profile Picture.png";
+/// Names a Firefox profile's own picture may have in its directory.
+const FIREFOX_AVATAR_FILES: [&str; 5] = [
+    "avatar.png",
+    "avatar.jpg",
+    "avatar.jpeg",
+    "avatar.webp",
+    "avatar.svg",
+];
 
 /// Reads `profile.info_cache` from `<config_dir>/Local State`, sorted by
 /// name. A missing file yields no profiles.
@@ -69,27 +87,60 @@ pub fn read_chromium(config_dir: &Path) -> Result<Vec<Profile>, ProfileError> {
     };
     let profiles = cache
         .iter()
-        .map(|(dir, info)| {
-            let path = config_dir.join(dir);
-            let avatar = Some(path.join(CHROMIUM_AVATAR)).filter(|file| file.is_file());
-            Profile {
-                id: dir.clone(),
-                name: info
-                    .get("name")
-                    .and_then(Value::as_str)
-                    .filter(|name| !name.is_empty())
-                    .unwrap_or(dir)
-                    .to_owned(),
-                avatar,
-                path,
-            }
-        })
+        .map(|(dir, info)| chromium_profile(config_dir, dir, info))
         .collect();
     Ok(sorted(profiles))
 }
 
+/// One `info_cache` entry. The picture is `gaia_picture_file_name` in the
+/// profile directory (the signed-in account's photo), else the usual
+/// `Google Profile Picture.png`. Without a picture the badge takes
+/// `profile_highlight_color`, else `default_avatar_fill_color`.
+fn chromium_profile(config_dir: &Path, dir: &str, info: &Value) -> Profile {
+    let path = config_dir.join(dir);
+    let name = info
+        .get("name")
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+        .unwrap_or(dir)
+        .to_owned();
+    let picture_name = info
+        .get("gaia_picture_file_name")
+        .and_then(Value::as_str)
+        .filter(|file| is_plain_file_name(file))
+        .unwrap_or(CHROMIUM_AVATAR);
+    let avatar = Some(path.join(picture_name))
+        .filter(|file| file.is_file())
+        .or_else(|| Some(path.join(CHROMIUM_AVATAR)).filter(|file| file.is_file()));
+    let color = ["profile_highlight_color", "default_avatar_fill_color"]
+        .iter()
+        .find_map(|key| info.get(key).and_then(Value::as_i64))
+        .map(badge::rgb_from_argb);
+    Profile {
+        badge: Some(badge::badge(&name, avatar.as_deref(), color)),
+        id: dir.to_owned(),
+        avatar,
+        name,
+        path,
+    }
+}
+
+/// A file name that stays inside the profile directory.
+fn is_plain_file_name(name: &str) -> bool {
+    !name.is_empty() && name != ".." && name != "." && !name.contains('/')
+}
+
+/// The first picture a Firefox profile keeps in its own directory.
+pub(crate) fn avatar_file(profile_dir: &Path) -> Option<PathBuf> {
+    FIREFOX_AVATAR_FILES
+        .iter()
+        .map(|name| profile_dir.join(name))
+        .find(|file| file.is_file())
+}
+
 /// Reads the `[ProfileN]` groups of `<dir>/profiles.ini`, sorted by name.
-/// A missing file yields no profiles.
+/// A missing file yields no profiles. Profiles that only exist in a profile
+/// group store are not listed; see [`read_firefox_with_groups`].
 ///
 /// # Errors
 ///
@@ -98,7 +149,12 @@ pub fn read_firefox(dir: &Path) -> Result<Vec<Profile>, ProfileError> {
     let Some(text) = read_optional(&dir.join(PROFILES_INI))? else {
         return Ok(Vec::new());
     };
-    let profiles = keyfile::parse(&text)
+    Ok(classic_profiles(dir, &text))
+}
+
+/// The classic profiles of a `profiles.ini`.
+fn classic_profiles(dir: &Path, text: &str) -> Vec<Profile> {
+    let profiles = keyfile::parse(text)
         .iter()
         .filter(|group| is_profile_group(&group.name))
         .filter_map(|group| {
@@ -112,15 +168,76 @@ pub fn read_firefox(dir: &Path) -> Result<Vec<Profile>, ProfileError> {
             } else {
                 PathBuf::from(&id)
             };
+            let name = group.get("Name").unwrap_or(&id).to_owned();
+            // Classic profiles have no picture: an initial on a colour picked
+            // from the name (DISC-08).
             Some(Profile {
-                name: group.get("Name").unwrap_or(&id).to_owned(),
+                badge: Some(badge::badge(&name, None, None)),
+                name,
                 avatar: None,
                 path,
                 id,
             })
         })
         .collect();
-    Ok(sorted(profiles))
+    sorted(profiles)
+}
+
+/// Reads the classic profiles and, when `profiles.ini` names a profile group
+/// store (`StoreID`), the profiles in it (DISC-07).
+///
+/// A profile in both lists appears once, under the ID the classic entry
+/// has, so saved targets keep working, with the name and badge of the group.
+/// When the store cannot be read, the classic profiles are returned and the
+/// problem is added to `warnings`.
+///
+/// # Errors
+///
+/// Returns [`ProfileError::Io`] when `profiles.ini` exists but cannot be
+/// read.
+pub fn read_firefox_with_groups(
+    dir: &Path,
+    warnings: &mut Vec<String>,
+) -> Result<Vec<Profile>, ProfileError> {
+    let Some(text) = read_optional(&dir.join(PROFILES_INI))? else {
+        return Ok(Vec::new());
+    };
+    let classic = classic_profiles(dir, &text);
+    let Some(store) = groups::store_id(&text) else {
+        return Ok(classic);
+    };
+    match groups::read(dir, &store, warnings) {
+        Ok(grouped) => Ok(merge(classic, grouped)),
+        Err(error) => {
+            warnings.push(format!(
+                "{error}; showing the classic Firefox profiles only"
+            ));
+            Ok(classic)
+        }
+    }
+}
+
+/// Group profiles joined with classic ones that point at the same directory.
+fn merge(classic: Vec<Profile>, grouped: Vec<Profile>) -> Vec<Profile> {
+    let same_dir = |a: &Path, b: &Path| match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    };
+    let mut merged: Vec<Profile> = classic;
+    for profile in grouped {
+        match merged
+            .iter_mut()
+            .find(|known| same_dir(&known.path, &profile.path))
+        {
+            Some(known) => {
+                known.name = profile.name;
+                known.badge = profile.badge;
+                known.avatar = profile.avatar.or_else(|| known.avatar.take());
+            }
+            None => merged.push(profile),
+        }
+    }
+    sorted(merged)
 }
 
 fn is_profile_group(name: &str) -> bool {
@@ -148,6 +265,9 @@ fn read_optional(path: &Path) -> Result<Option<String>, ProfileError> {
         }),
     }
 }
+
+#[cfg(test)]
+mod integration_tests;
 
 #[cfg(test)]
 mod tests {

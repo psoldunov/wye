@@ -1,0 +1,20 @@
+[package]
+name = "wye-script"
+description = "Wye's transform-script engine: JavaScript over QuickJS with WHATWG URL globals"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+# QuickJS. Only the plain value and function API is used: the class derive
+# emits `unsafe impl`, which the workspace forbids, so `URL` and
+# `URLSearchParams` are a JavaScript prelude over native functions.
+rquickjs.workspace = true
+url.workspace = true
+wye-core.workspace = true
+
+[lints]
+workspace = true

@@ -1,17 +1,15 @@
 [workspace]
 resolver = "3"
-members = [
-  "crates/wye-core",
-  "crates/wye-desktop",
-  "crates/wye",
-]
+# Every crate under `crates/` is a member, so a new crate needs no edit here.
+members = ["crates/*"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/psoldunov/wye"
-rust-version = "1.85"
+# notify 8.2 needs 1.88; zbus 5.19 and rquickjs 0.14 need 1.87.
+rust-version = "1.88"
 publish = false
 
 [workspace.lints.rust]
@@ -21,10 +19,18 @@ unsafe_code = "forbid"
 pedantic = { level = "warn", priority = -1 }
 
 [workspace.dependencies]
+wye-api = { path = "crates/wye-api" }
 wye-core = { path = "crates/wye-core" }
 wye-desktop = { path = "crates/wye-desktop" }
+wye-native-host = { path = "crates/wye-native-host" }
+# Declared ahead of the crate (U12) so no unit edits this file for it; an
+# unused path entry is ignored until a crate depends on it.
+wye-script = { path = "crates/wye-script" }
+wye-service = { path = "crates/wye-service" }
 
 anyhow = "1"
+async-trait = "0.1"
+futures-lite = { version = "2", default-features = false }
 clap = { version = "4", features = ["derive"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }
@@ -32,7 +38,52 @@ serde_json = "1"
 thiserror = "2"
 toml = "1"
 tempfile = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2"
+
+# Service runtime and D-Bus.
+tokio = { version = "1.53", features = [
+  "fs",
+  "io-util",
+  "macros",
+  "net",
+  "process",
+  "rt-multi-thread",
+  "signal",
+  "sync",
+  "time",
+] }
+zbus = { version = "5.19", default-features = false, features = ["tokio"] }
+
+# Desktop integrations inside the service.
+ashpd = { version = "0.13", default-features = false, features = ["global_shortcuts", "tokio"] }
+ksni = "0.3.6"
+notify = "8.2"
+rusqlite = { version = "0.40", features = ["bundled"] }
+# rustls with the platform verifier: no OpenSSL, the system's trust store.
+ureq = { version = "3.4", default-features = false, features = ["platform-verifier", "rustls"] }
+
+# Wayland and X11 probes (held modifiers, clipboard, focus).
+smithay-client-toolkit = "0.21"
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+# `randr` names the output under the pointer (PICK-02).
+x11rb = { version = "0.14", features = ["randr", "xfixes"] }
+# Maps the held-modifier mask with the compositor's keymap (KEY-06). The
+# keymap is read from its file descriptor without mmap, so `wayland`
+# (memmap2) stays off.
+xkbcommon = { version = "0.9", default-features = false }
+
+# Transform scripts.
+rquickjs = { version = "0.14", features = ["classes", "macro", "properties"] }
+
+# The Qt UI host (`wye-ui`).
+cxx = "1.0.202"
+cxx-qt = "0.10"
+cxx-qt-build = "0.10"
+cxx-qt-lib = { version = "0.10", default-features = false, features = ["qt_gui", "qt_qml"] }
 
 [profile.release]
 lto = "thin"

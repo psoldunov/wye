@@ -30,6 +30,56 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<ConfigAction>,
     },
+    /// Run the Wye session service (DEF-04).
+    Service {
+        /// Only make sure the service runs, through D-Bus activation, and
+        /// exit (for the autostart entry, GEN-01).
+        #[arg(long)]
+        activate: bool,
+    },
+    /// Open the URL on the clipboard (IN-02 to IN-04).
+    Clipboard {
+        /// Open it in the alternative browser (IN-04).
+        #[arg(long)]
+        alternative: bool,
+    },
+    /// Open or close the tray menu (TRAY-08).
+    Menu,
+    /// Open the Settings window (SET-04).
+    Settings {
+        /// The page to show, such as `browsers` or `rules`.
+        #[arg(value_name = "PAGE")]
+        page: Option<String>,
+    },
+    /// Diagnostics for what only a real session can show.
+    Debug {
+        #[command(subcommand)]
+        action: DebugAction,
+    },
+    /// Connect the browser extension to Wye (BEXT-04).
+    Extension {
+        #[command(subcommand)]
+        action: ExtensionAction,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum ExtensionAction {
+    /// Write the native-messaging host manifest for every detected browser.
+    Install,
+    /// Delete the manifests `install` wrote.
+    Remove,
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum DebugAction {
+    /// Print the held modifiers, the pointer and the focused app, after an
+    /// optional delay to set them up.
+    Probe {
+        /// Seconds to wait first.
+        #[arg(long, value_name = "SECONDS")]
+        delay: Option<u64>,
+    },
 }
 
 /// Overrides of the normal decision, shared by `open` and `test`.
@@ -200,5 +250,22 @@ mod tests {
     fn pick_conflicts_with_alternative() {
         let result = Cli::try_parse_from(["wye", "open", "--pick", "--alternative", "x"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extension_takes_install_or_remove_bext_04() {
+        let action = |args: &[&str]| match Cli::try_parse_from(args).map(|cli| cli.command) {
+            Ok(Command::Extension { action }) => Some(action),
+            _ => None,
+        };
+        assert!(matches!(
+            action(&["wye", "extension", "install"]),
+            Some(ExtensionAction::Install)
+        ));
+        assert!(matches!(
+            action(&["wye", "extension", "remove"]),
+            Some(ExtensionAction::Remove)
+        ));
+        assert!(action(&["wye", "extension"]).is_none());
     }
 }

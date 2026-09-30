@@ -36,6 +36,9 @@ jobs:
       # what a pull request introduces) is not used: rust-doctor 0.7.0 runs
       # `rustup show active-toolchain` in the base checkout, and the flake's
       # dev shell has no rustup (a rustup shim would replace its cargo).
+      # Running inside `nix develop` also gives wye-ui's build script what
+      # it needs: Qt and KDE Frameworks, QMAKE pointing at the merged Qt
+      # prefix (set by the shell hook) and the wrapped ld.lld.
       - name: rust-doctor
         run: |
           nix develop -c sh -c '

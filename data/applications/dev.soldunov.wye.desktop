@@ -3,6 +3,10 @@ Type=Application
 Name=Wye
 GenericName=Browser Picker
 Comment=Send every link to the right browser, profile or app
+# Launchers that honour DBusActivatable hand links to the running service
+# (org.freedesktop.Application on dev.soldunov.wye, DEF-04); Exec is the
+# fallback for those that do not.
+DBusActivatable=true
 Exec=wye open %U
 Icon=dev.soldunov.wye
 Terminal=false
@@ -10,4 +14,12 @@ StartupNotify=true
 Categories=Network;WebBrowser;
 MimeType=x-scheme-handler/http;x-scheme-handler/https;
 Keywords=
-# No DBusActivatable yet: this slice has no D-Bus service (see docs/architecture.md, DEF-04).
+Actions=settings;clipboard;
+
+[Desktop Action settings]
+Name=Settings
+Exec=wye settings
+
+[Desktop Action clipboard]
+Name=Open URL from Clipboard
+Exec=wye clipboard

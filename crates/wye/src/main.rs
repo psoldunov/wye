@@ -4,13 +4,13 @@
 //! Exit codes: 0 success, 1 runtime or launch failure, 2 a rejected link or
 //! invalid input or configuration.
 
+mod bus;
 mod cli;
 mod commands;
 mod config_file;
 mod display;
 mod notice;
 mod paths;
-mod picker_fallback;
 mod state;
 
 use std::io;
@@ -23,7 +23,9 @@ use crate::commands::Console;
 fn main() -> ExitCode {
     let cli = cli::Cli::parse();
     let mut out = io::stdout().lock();
-    let mut err = io::stderr().lock();
+    // Not locked for the whole run: `wye service` logs to stderr from other
+    // threads, which would wait for this lock forever.
+    let mut err = io::stderr();
     let mut console = Console {
         out: &mut out,
         err: &mut err,

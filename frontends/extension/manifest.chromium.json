@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "Wye",
+  "version": "0.1.0",
+  "description": "Open links and pages with Wye, the browser picker.",
+  "homepage_url": "https://github.com/psoldunov/wye",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArpeVHeC72VbnzPey7z6iq90W9KCvjND5LgJo1LQmZuGs4x/+booRs7+8DTG/WZ4Fx8ee1Vu4bydso17TV0MJXq4m8sOEpt1p8lw7WgF4C05lNzj9h1o9s+7yuH5wdM40mMI+rMsTQhwypsGSzNjar7iFGY3dK2Byxn1P5J1jwOQE3LYepHYLR2WLKyxgcZwC/YFmQd6A0R6IZkG+LxYiUyFAkijcIPf7ZZpSNLEfv8Mob7mTgi+EOuQF1PPnlMIDeHgVWz9RN6vcyW63eEMSUThzYubBeDAqduWXqt7YbB4Y/RBk309yDWIG1BNLH9Tlf0k9MoyN2Gb3Tkaci3Q2bQIDAQAB",
+  "icons": {
+    "16": "icons/wye-16.png",
+    "32": "icons/wye-32.png",
+    "48": "icons/wye-48.png",
+    "128": "icons/wye-128.png"
+  },
+  "permissions": ["activeTab", "contextMenus", "nativeMessaging", "storage"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Open Page with Wye",
+    "default_icon": {
+      "16": "icons/wye-16.png",
+      "32": "icons/wye-32.png"
+    }
+  },
+  "commands": {
+    "open-page": {
+      "suggested_key": { "default": "Alt+Shift+W" },
+      "description": "Open Page with Wye"
+    }
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  }
+}

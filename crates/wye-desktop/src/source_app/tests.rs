@@ -228,3 +228,177 @@ fn ignores_an_openers_scope() {
         assert!(detect(root.path(), 900).is_unknown(), "{unit}");
     }
 }
+
+// Step 3: sandboxes and the program's own entry.
+
+fn desktop_entry(id: &str, exec: &str) -> crate::entry::DesktopEntry {
+    crate::entry::DesktopEntry::parse(
+        id_of(id),
+        PathBuf::from("/x"),
+        &format!("[Desktop Entry]\nName=X\nType=Application\nExec={exec}\n"),
+    )
+    .unwrap()
+}
+
+fn id_of(value: &str) -> DesktopId {
+    DesktopId::new(value).unwrap()
+}
+
+const SESSION_CGROUP: &str = "0::/user.slice/user-1000.slice/session-2.scope\n";
+
+#[test]
+fn a_flatpak_sandbox_names_its_app() {
+    let root = proc_tree(&[
+        Proc::new(300, 200, "xdg-open"),
+        Proc {
+            cgroup: Some(SESSION_CGROUP),
+            exe: Some("/app/bin/firefox"),
+            ..Proc::new(200, 1, "firefox")
+        },
+    ]);
+    write_file(
+        &root.path().join("200/root/.flatpak-info"),
+        "[Application]\nname=org.mozilla.firefox\n",
+    );
+    let source = detect(root.path(), 300);
+    assert_eq!(source.desktop_id, Some(id("org.mozilla.firefox")));
+    assert_eq!(source.executable.as_deref(), Some("firefox"));
+}
+
+#[test]
+fn a_snap_unit_names_its_app() {
+    let root = proc_tree(&[Proc {
+        cgroup: Some(
+            "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
+             snap.firefox.firefox-21ddf5b7-5c8d-4a8d-9e2b-0c4f9a1b2c3d.scope\n",
+        ),
+        exe: Some("/snap/firefox/4848/usr/lib/firefox/firefox"),
+        ..Proc::new(60, 1, "firefox")
+    }]);
+    assert_eq!(
+        detect(root.path(), 60).desktop_id,
+        Some(id("firefox_firefox"))
+    );
+}
+
+#[test]
+fn the_systemd_scope_and_gio_environment_beat_the_sandbox_and_program_steps() {
+    let scope = "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
+                 app-gnome-com.slack.Slack-4242.scope\n";
+    let matcher = ExecMatcher::new(
+        &[desktop_entry("other.desktop", "/usr/lib/slack/slack")],
+        &[],
+    );
+    let by_scope = proc_tree(&[Proc {
+        cgroup: Some(scope),
+        exe: Some("/usr/lib/slack/slack"),
+        ..Proc::new(10, 1, "slack")
+    }]);
+    write_file(
+        &by_scope.path().join("10/root/.flatpak-info"),
+        "[Application]\nname=not.used\n",
+    );
+    assert_eq!(
+        detect_with(by_scope.path(), 10, &matcher).desktop_id,
+        Some(id("com.slack.Slack"))
+    );
+
+    let by_env = proc_tree(&[Proc {
+        cgroup: Some(SESSION_CGROUP),
+        environ: Some(b"GIO_LAUNCHED_DESKTOP_FILE=/usr/share/applications/gio.desktop\0"),
+        exe: Some("/usr/lib/slack/slack"),
+        ..Proc::new(10, 1, "slack")
+    }]);
+    write_file(
+        &by_env.path().join("10/root/.flatpak-info"),
+        "[Application]\nname=not.used\n",
+    );
+    assert_eq!(
+        detect_with(by_env.path(), 10, &matcher).desktop_id,
+        Some(id("gio"))
+    );
+
+    // The sandbox beats the program match.
+    let by_flatpak = proc_tree(&[Proc {
+        cgroup: Some(SESSION_CGROUP),
+        exe: Some("/usr/lib/slack/slack"),
+        ..Proc::new(10, 1, "slack")
+    }]);
+    write_file(
+        &by_flatpak.path().join("10/root/.flatpak-info"),
+        "[Application]\nname=com.slack.Slack\n",
+    );
+    assert_eq!(
+        detect_with(by_flatpak.path(), 10, &matcher).desktop_id,
+        Some(id("com.slack.Slack"))
+    );
+}
+
+#[test]
+fn the_program_is_matched_against_desktop_entries_when_nothing_else_names_the_app() {
+    let matcher = ExecMatcher::new(
+        &[
+            desktop_entry("slack.desktop", "/usr/lib/slack/slack -s %U"),
+            desktop_entry("thunderbird.desktop", "thunderbird %u"),
+        ],
+        &[],
+    );
+    let root = proc_tree(&[
+        Proc::new(300, 200, "xdg-open"),
+        Proc {
+            cgroup: Some(SESSION_CGROUP),
+            exe: Some("/usr/lib/slack/slack"),
+            ..Proc::new(200, 1, "slack")
+        },
+    ]);
+    std::fs::write(
+        root.path().join("200/cmdline"),
+        b"/usr/lib/slack/slack\0--type=x\0",
+    )
+    .unwrap();
+    let source = detect_with(root.path(), 300, &matcher);
+    assert_eq!(source.desktop_id, Some(id("slack")));
+    assert_eq!(source.executable.as_deref(), Some("slack"));
+
+    // Without a matcher the ID stays unknown, as before.
+    let plain = detect(root.path(), 300);
+    assert_eq!(plain.desktop_id, None);
+    assert_eq!(plain.executable.as_deref(), Some("slack"));
+
+    // argv[0] is used when the executable is a wrapper target elsewhere.
+    let wrapped = proc_tree(&[Proc {
+        cgroup: Some(SESSION_CGROUP),
+        exe: Some("/opt/tb/thunderbird-bin"),
+        ..Proc::new(70, 1, "thunderbird-bin")
+    }]);
+    std::fs::write(wrapped.path().join("70/cmdline"), b"thunderbird\0").unwrap();
+    assert_eq!(
+        detect_with(wrapped.path(), 70, &matcher).desktop_id,
+        Some(id("thunderbird"))
+    );
+
+    // A program no entry runs stays unknown.
+    let unknown = proc_tree(&[Proc {
+        exe: Some("/usr/bin/zoom"),
+        ..Proc::new(80, 1, "zoom")
+    }]);
+    assert_eq!(detect_with(unknown.path(), 80, &matcher).desktop_id, None);
+}
+
+#[test]
+fn detect_in_uses_the_apps_of_an_inventory() {
+    let fx = crate::test_support::Fixture::new();
+    fx.system_entry(
+        "tool.desktop",
+        "[Desktop Entry]\nName=Tool\nType=Application\nExec=/usr/lib/tool/tool %u\n",
+    );
+    let inventory = Inventory::scan(&fx.xdg, &id("wye-test"));
+    let root = proc_tree(&[Proc {
+        exe: Some("/usr/lib/tool/tool"),
+        ..Proc::new(90, 1, "tool")
+    }]);
+    assert_eq!(
+        detect_in(root.path(), 90, &inventory).desktop_id,
+        Some(id("tool"))
+    );
+}

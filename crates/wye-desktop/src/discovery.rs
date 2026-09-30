@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use wye_core::target_menu::{AppEntry, HandlerEntry, ProfileEntry, TargetCatalog};
 use wye_core::{Availability, CustomApp, DesktopId, Target};
 
 use crate::entry::{DesktopAction, DesktopEntry};
@@ -10,7 +11,7 @@ use crate::exec::ExecTemplate;
 use crate::family::{self, BrowserFamily, Packaging};
 use crate::loop_guard;
 use crate::profiles::{self, Profile};
-use crate::xdg::{self, XdgDirs};
+use crate::xdg::{self, Locale, XdgDirs};
 
 /// How deep `applications` subdirectories are followed; guards against
 /// symlink loops.
@@ -91,6 +92,12 @@ impl InstalledApp {
         &self.entry.id
     }
 
+    /// The name to show for `locale` (DISC-03): the entry's localised `Name`.
+    #[must_use]
+    pub fn display_name(&self, locale: &Locale) -> String {
+        self.entry.name_in(locale)
+    }
+
     #[must_use]
     pub fn profile(&self, id: &str) -> Option<&Profile> {
         self.profiles.iter().find(|profile| profile.id == id)
@@ -162,6 +169,66 @@ impl Inventory {
             self.apps.values().filter(|app| app.handles_web).collect();
         handlers.sort_by_cached_key(|app| (app.entry.name.to_lowercase(), app.id().clone()));
         handlers
+    }
+
+    /// Apps that handle web links, sorted by their name in `locale`
+    /// (TGT-05, DISC-03), each with that name.
+    #[must_use]
+    pub fn web_handlers_in(&self, locale: &Locale) -> Vec<(&InstalledApp, String)> {
+        let mut handlers: Vec<(&InstalledApp, String)> = self
+            .apps
+            .values()
+            .filter(|app| app.handles_web)
+            .map(|app| (app, app.display_name(locale)))
+            .collect();
+        handlers.sort_by_cached_key(|(app, name)| (name.to_lowercase(), app.id().clone()));
+        handlers
+    }
+
+    /// The inventory as the menus and the picker read it (TGT-02, PICK-03):
+    /// every web handler with its name in `locale` (DISC-03), icon, private
+    /// and new-window support and profiles with their badges (DISC-08).
+    /// `extra_apps` lists installed apps to add as plain targets, such as a
+    /// service's own desktop app (APP-05); ones that are missing or already
+    /// handlers are left out. Added custom apps (TGT-06) are the caller's.
+    #[must_use]
+    pub fn catalog(&self, locale: &Locale, extra_apps: &[DesktopId]) -> TargetCatalog {
+        let handlers = self
+            .web_handlers()
+            .into_iter()
+            .map(|app| HandlerEntry {
+                app: app.id().clone(),
+                name: app.display_name(locale),
+                icon: app.entry.icon.clone(),
+                browser: app.family != BrowserFamily::Other,
+                private: app.private.is_some(),
+                new_window: app.family.new_window_flag().is_some(),
+                profiles: app
+                    .profiles
+                    .iter()
+                    .map(|profile| ProfileEntry {
+                        id: profile.id.clone(),
+                        name: profile.name.clone(),
+                        badge: profile.badge.clone(),
+                    })
+                    .collect(),
+            })
+            .collect();
+        let apps = extra_apps
+            .iter()
+            .filter_map(|id| self.get(id))
+            .filter(|app| !app.handles_web && !app.forwards_links)
+            .map(|app| AppEntry {
+                app: app.id().clone(),
+                name: app.display_name(locale),
+                icon: app.entry.icon.clone(),
+            })
+            .collect();
+        TargetCatalog {
+            handlers,
+            apps,
+            custom: Vec::new(),
+        }
     }
 
     /// Entries and profile stores that could not be read during the scan.
@@ -278,10 +345,11 @@ fn walk(dir: &Path, prefix: &str, depth: usize, found: &mut Vec<(DesktopId, Path
         };
         if meta.is_dir() && depth < MAX_DEPTH {
             walk(&path, &format!("{prefix}{name}-"), depth + 1, found);
-        } else if meta.is_file() && name.ends_with(DesktopId::SUFFIX) {
-            if let Ok(id) = DesktopId::new(format!("{prefix}{name}")) {
-                found.push((id, path));
-            }
+        } else if meta.is_file()
+            && name.ends_with(DesktopId::SUFFIX)
+            && let Ok(id) = DesktopId::new(format!("{prefix}{name}"))
+        {
+            found.push((id, path));
         }
     }
 }
@@ -321,19 +389,21 @@ fn private_mode(actions: &[DesktopAction], family: BrowserFamily) -> Option<Priv
 }
 
 /// Profiles from the first existing config directory (DISC-06, DISC-07).
+/// Firefox's profile-group store is read too; trouble with it only adds a
+/// warning and leaves the classic profiles.
 fn read_profiles(
     id: &DesktopId,
     family: BrowserFamily,
     xdg: &XdgDirs,
     warnings: &mut Vec<String>,
 ) -> Vec<Profile> {
-    let read = match family {
-        BrowserFamily::Chromium => profiles::read_chromium,
-        BrowserFamily::Firefox => profiles::read_firefox,
-        BrowserFamily::Other => return Vec::new(),
-    };
     for dir in family::config_dirs(id, xdg) {
-        match read(&dir) {
+        let read = match family {
+            BrowserFamily::Chromium => profiles::read_chromium(&dir),
+            BrowserFamily::Firefox => profiles::read_firefox_with_groups(&dir, warnings),
+            BrowserFamily::Other => return Vec::new(),
+        };
+        match read {
             Ok(found) if !found.is_empty() => return found,
             Ok(_) => {}
             Err(error) => warnings.push(error.to_string()),

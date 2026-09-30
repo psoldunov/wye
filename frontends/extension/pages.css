@@ -1,0 +1,25 @@
+/* The popup and options pages follow the browser's light or dark scheme. */
+:root {
+  color-scheme: light dark;
+  font: menu;
+}
+
+body {
+  margin: 12px;
+}
+
+body.popup {
+  width: 22em;
+}
+
+h1 {
+  font-size: 1.1em;
+  margin: 0 0 0.5em;
+}
+
+pre {
+  padding: 0.4em 0.6em;
+  border-radius: 4px;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  user-select: all;
+}

@@ -1,0 +1,28 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "69530789+psoldunov@users.noreply.github.com",
+                "Name": "Philipp Soldunov"
+            }
+        ],
+        "BugReportUrl": "https://github.com/psoldunov/wye/issues",
+        "Category": "Utilities",
+        "Description": "Choose the browser for every link",
+        "EnabledByDefault": true,
+        "FormFactors": [
+            "desktop"
+        ],
+        "Icon": "dev.soldunov.wye",
+        "Id": "dev.soldunov.wye",
+        "License": "MIT",
+        "Name": "Wye",
+        "Version": "0.1.0",
+        "Website": "https://github.com/psoldunov/wye"
+    },
+    "Keywords": "Browser;Default Browser;Links;Picker;",
+    "X-Plasma-API-Minimum-Version": "6.4",
+    "X-Plasma-NotificationArea": "true",
+    "X-Plasma-NotificationAreaCategory": "ApplicationStatus"
+}

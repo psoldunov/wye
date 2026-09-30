@@ -2,13 +2,15 @@
 //! recognising short links.
 //!
 //! Redirect wrappers are unwrapped here, locally. Short links need a network
-//! request; this crate only recognises them, and the caller decides whether
-//! and how to resolve them.
+//! request. This crate owns the policy of the redirect chain (DLG-EXP-03)
+//! and recognises the short links; a [`ShortLinkResolver`] sends the
+//! requests, one hop at a time.
 
 use serde::Deserialize;
 use url::Url;
 
 use crate::config::ExpansionSettings;
+use crate::hooks::{ResolveError, ShortLinkResolver};
 use crate::host::host_matches;
 
 const SHIPPED: &str = include_str!("../../../data/expansion.toml");
@@ -35,6 +37,13 @@ pub struct Wrapper {
 }
 
 impl Wrapper {
+    /// The host patterns the wrapper applies to, as in `data/expansion.toml`
+    /// (DLG-EXP-01).
+    #[must_use]
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
+    }
+
     fn applies_to(&self, url: &Url) -> bool {
         let host = url.host_str().unwrap_or_default();
         let path = url.path().trim_end_matches('/');
@@ -141,6 +150,122 @@ impl ExpansionCatalogue {
             .chain(&settings.custom_short_links)
             .filter(|domain| settings.is_enabled(domain))
             .any(|domain| host_matches(host, domain))
+    }
+}
+
+/// Why the redirect chain of a short link ended (DLG-EXP-03).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExpandStop {
+    /// The link is not an enabled short link, so nothing was contacted.
+    NotShortLink,
+    /// The chain reached its destination: the last link answered without
+    /// redirecting, or it is not an enabled short-link domain and was not
+    /// contacted (DLG-EXP-03).
+    Destination,
+    /// The chain used up `max_redirects` hops; the last link may redirect
+    /// further.
+    LimitReached,
+    /// The next redirect leaves the web (`intent:`, `spotify:` …); the chain
+    /// stops at the last web link.
+    NonWeb(String),
+    /// The `Location` could not be read as a link.
+    BadLocation(String),
+    /// A redirect led back to a link already visited.
+    Loop,
+    /// A request failed or timed out (PIPE-03: the pipeline continues with
+    /// the link reached so far).
+    Failed(ResolveError),
+}
+
+impl ExpandStop {
+    /// What to tell the user when the link could not be expanded fully
+    /// (DLG-EXP-04), or `None` when the chain ended normally.
+    #[must_use]
+    pub fn problem(&self) -> Option<String> {
+        match self {
+            Self::NotShortLink | Self::Destination => None,
+            Self::LimitReached => Some("too many redirects".to_owned()),
+            Self::NonWeb(scheme) => Some(format!("it redirects to a {scheme}: link")),
+            Self::BadLocation(location) => Some(format!(
+                "it redirects to something that is not a link ({location:?})"
+            )),
+            Self::Loop => Some("it redirects in a circle".to_owned()),
+            Self::Failed(error) => Some(error.to_string()),
+        }
+    }
+}
+
+/// The result of following a short link over the network.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Expanded {
+    /// Every link reached, in order, without the starting link.
+    pub hops: Vec<Url>,
+    pub stop: ExpandStop,
+}
+
+impl Expanded {
+    /// The link the chain ended on, or `None` when it never left the
+    /// starting link.
+    #[must_use]
+    pub fn last(&self) -> Option<&Url> {
+        self.hops.last()
+    }
+}
+
+impl ExpansionCatalogue {
+    /// Follows a short link's redirects (PIPE-03, DLG-EXP-03).
+    ///
+    /// Every link the resolver is asked about must be an enabled short-link
+    /// domain (DLG-EXP-03). The chain follows up to `settings.max_redirects`
+    /// redirects, each `Location` resolved against the link that sent it (it
+    /// may be relative). A `Location` on any other host is the end: it is
+    /// returned as the last hop without a request to it. It also stops at a
+    /// non-web `Location`, a loop, or a failed request.
+    pub fn expand_short_link(
+        &self,
+        start: &Url,
+        settings: &ExpansionSettings,
+        resolver: &dyn ShortLinkResolver,
+    ) -> Expanded {
+        let mut hops: Vec<Url> = Vec::new();
+        if !self.is_short_link(start, settings) {
+            return Expanded {
+                hops,
+                stop: ExpandStop::NotShortLink,
+            };
+        }
+        let mut current = start.clone();
+        let stop = loop {
+            if hops.len() >= usize::from(settings.max_redirects) {
+                break ExpandStop::LimitReached;
+            }
+            let location = match resolver.resolve(&current) {
+                Ok(Some(location)) => location,
+                Ok(None) => break ExpandStop::Destination,
+                Err(error) => break ExpandStop::Failed(error),
+            };
+            let Ok(next) = current.join(location.as_str().trim()) else {
+                break ExpandStop::BadLocation(location.as_str().to_owned());
+            };
+            if !matches!(next.scheme(), "http" | "https") {
+                break ExpandStop::NonWeb(next.scheme().to_owned());
+            }
+            if next.host().is_none() {
+                break ExpandStop::BadLocation(location.as_str().to_owned());
+            }
+            if next == *start || hops.contains(&next) {
+                break ExpandStop::Loop;
+            }
+            hops.push(next.clone());
+            // DLG-EXP-03: only enabled short-link domains are contacted. The
+            // `Location` came from the previous answer, so a host that is
+            // not enabled ends the chain here, without a request to it.
+            if !self.is_short_link(&next, settings) {
+                break ExpandStop::Destination;
+            }
+            current = next;
+        };
+        Expanded { hops, stop }
     }
 }
 
@@ -271,3 +396,6 @@ mod tests {
         assert!(!is_short("https://example.com/"));
     }
 }
+
+#[cfg(test)]
+mod chain_tests;

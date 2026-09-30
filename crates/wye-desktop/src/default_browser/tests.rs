@@ -86,7 +86,18 @@ fn creates_file_and_group() {
          x-scheme-handler/http=dev.soldunov.wye.desktop\n\
          x-scheme-handler/https=dev.soldunov.wye.desktop\n\
          text/html=dev.soldunov.wye.desktop\n\
-         application/xhtml+xml=dev.soldunov.wye.desktop\n"
+         application/xhtml+xml=dev.soldunov.wye.desktop\n\n\
+         [Added Associations]\n\
+         text/html=dev.soldunov.wye.desktop;\n\
+         application/xhtml+xml=dev.soldunov.wye.desktop;\n",
+        "DEF-07: KService needs the association too"
+    );
+    remove_html_association(&fx.xdg, &wye()).unwrap();
+    assert!(
+        !fs::read_to_string(&path)
+            .unwrap()
+            .contains("[Added Associations]\ntext/html"),
+        "removed again"
     );
 
     fs::write(&path, "[Added Associations]\ntext/html=a.desktop").unwrap();
@@ -217,4 +228,16 @@ fn listed_default_ignores_whether_the_entry_is_installed() {
         "[Default Applications]\nx-scheme-handler/https=bad id;firefox.desktop\n",
     );
     assert_eq!(listed_default(&fx.xdg), Some(id("firefox")));
+}
+
+// DEF-05, DEF-07: giving links back associates nothing new; the previous
+// browser claims HTML files in its own entry.
+#[test]
+fn another_browser_gets_no_added_association() {
+    let fx = Fixture::new();
+    let firefox = DesktopId::new("firefox.desktop").unwrap();
+    set_default(&fx.xdg, &firefox, true).unwrap();
+    let text = fs::read_to_string(fx.xdg.config_home.join("mimeapps.list")).unwrap();
+    assert!(text.contains("text/html=firefox.desktop"), "{text}");
+    assert!(!text.contains("[Added Associations]"), "{text}");
 }

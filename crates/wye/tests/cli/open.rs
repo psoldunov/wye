@@ -51,14 +51,14 @@ fn pick_conflicts_with_alternative() {
 }
 
 #[test]
-fn the_picker_falls_back_to_a_browser_for_now() {
+fn without_the_service_the_picker_falls_back_to_a_browser_pipe_13() {
     let desktop = Desktop::new();
     let run = desktop
         .wye(&["open", "https://example.com/"])
         .expect_code(0);
     assert!(
         run.stderr
-            .contains("the picker is not available yet; opening in Fake One"),
+            .contains("no picker could be shown; opened in Fake One"),
         "{run:#?}"
     );
     assert_eq!(desktop.wait_for_log(ONE), "https://example.com/\n");
@@ -74,7 +74,7 @@ fn the_fallback_prefers_the_previous_default() {
     let run = desktop
         .wye(&["open", "https://example.com/"])
         .expect_code(0);
-    assert!(run.stderr.contains("opening in Fake Two"), "{run:#?}");
+    assert!(run.stderr.contains("opened in Fake Two"), "{run:#?}");
     assert_eq!(desktop.wait_for_log(TWO), "https://example.com/\n");
 }
 

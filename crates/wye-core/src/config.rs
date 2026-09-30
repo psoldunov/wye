@@ -248,6 +248,8 @@ pub struct Advanced {
     pub history: bool,
     pub force_picker_from_extension: bool,
     pub bypass_key: Modifiers,
+    /// KEY-06: whether the service probes which modifiers are held.
+    pub held_keys: HeldKeys,
 }
 
 impl Default for Advanced {
@@ -259,8 +261,20 @@ impl Default for Advanced {
             history: false,
             force_picker_from_extension: true,
             bypass_key: Modifiers::from_slice(&[Modifier::Alt]),
+            held_keys: HeldKeys::Auto,
         }
     }
+}
+
+/// `advanced.held-keys` (KEY-06): probe held modifiers when a binding
+/// depends on them, or never.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HeldKeys {
+    #[default]
+    Auto,
+    /// Never probe; held-key bindings do not fire.
+    Off,
 }
 
 /// URL expansion sheet (DLG-EXP). Shipped wrappers and short-link domains are

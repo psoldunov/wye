@@ -136,6 +136,22 @@ pub fn build_command(
 ///
 /// Returns the error from starting the process.
 pub fn spawn(command: &LaunchCommand) -> std::io::Result<()> {
+    spawn_with_env(command, &[]).map(drop)
+}
+
+/// [`spawn`], with environment changes applied after
+/// [`LaunchCommand::remove_env`]: `Some` sets a variable, `None` removes it.
+/// Returns the child's process ID, for moving it into a systemd scope
+/// (LAUNCH-06). The session service passes the activation token it received
+/// with the link this way (LAUNCH-03).
+///
+/// # Errors
+///
+/// Returns the error from starting the process.
+pub fn spawn_with_env(
+    command: &LaunchCommand,
+    env: &[(&str, Option<&str>)],
+) -> std::io::Result<u32> {
     let mut process = Command::new(&command.program);
     process
         .args(&command.args)
@@ -146,13 +162,20 @@ pub fn spawn(command: &LaunchCommand) -> std::io::Result<()> {
     for name in &command.remove_env {
         process.env_remove(name);
     }
+    for (name, value) in env {
+        match value {
+            Some(value) => process.env(name, value),
+            None => process.env_remove(name),
+        };
+    }
     let mut child = process.spawn()?;
+    let pid = child.id();
     std::thread::spawn(move || {
         // The exit status of a launched browser is of no interest; waiting
         // only releases the process-table entry.
         let _ = child.wait();
     });
-    Ok(())
+    Ok(pid)
 }
 
 fn launchable<'a>(
@@ -243,6 +266,8 @@ fn profile_flags(app: &InstalledApp, id: &str) -> Result<Vec<String>, LaunchErro
         BrowserFamily::Other => Err(LaunchError::NoProfileSupport(app.id().clone())),
     }
 }
+
+pub mod scope;
 
 #[cfg(test)]
 mod tests;

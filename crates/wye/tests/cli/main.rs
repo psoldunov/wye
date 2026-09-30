@@ -4,5 +4,7 @@ mod browsers;
 mod config;
 mod default;
 mod open;
+mod private_bus;
+mod service;
 mod support;
 mod test;

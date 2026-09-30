@@ -8,24 +8,35 @@
 
 pub mod catalogue;
 pub mod clean;
+pub mod clipboard;
 pub mod config;
 pub mod expand;
+pub mod history;
+pub mod hooks;
 mod host;
+pub mod keybinding;
 pub mod keys;
+pub mod link_text;
 pub mod matcher;
+pub mod merge_patch;
 pub mod normalize;
+pub mod picker;
 pub mod pipeline;
 pub mod rule;
+pub mod rules_file;
 pub mod source;
 pub mod target;
+pub mod target_menu;
+pub mod tray;
 
 pub use catalogue::ServiceCatalogue;
 pub use config::{Config, ConfigWarning, Loaded};
+pub use hooks::{Hooks, ShortLinkResolver, Transformer};
 pub use keys::{Modifier, Modifiers};
 pub use matcher::{MatcherKind, UrlMatcher};
 pub use pipeline::{
-    Decision, EntryPoint, Force, LinkRequest, OpenOptions, Pipeline, Rejected, Resolution,
-    ScriptScope, Step,
+    Chosen, Decision, EntryPoint, Finished, Force, LinkRequest, OpenOptions, Pipeline, Rejected,
+    Resolution, ScriptScope, Step,
 };
 pub use rule::{Rule, RunPosition};
 pub use source::{SourceApp, SourceAppSpec};

@@ -1,0 +1,16 @@
+[Unit]
+Description=Wye picker and settings windows
+Documentation=https://github.com/psoldunov/wye
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# Started by D-Bus activation of dev.soldunov.wye.Ui (the service asks for the
+# picker, a window or the tray-menu popup); it stays resident once started.
+Type=dbus
+BusName=dev.soldunov.wye.Ui
+ExecStart=@bindir@/wye-ui
+Restart=on-failure
+RestartSec=2
+
+# No [Install] section: nothing starts the UI host at login.

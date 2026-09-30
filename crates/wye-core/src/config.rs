@@ -337,10 +337,11 @@ pub struct Loaded {
 }
 
 impl Loaded {
-    /// Whether saving [`Loaded::config`] would write back everything the file
-    /// said. False when a warning shows that something was dropped: an
+    /// Whether saving [`Loaded::config`] would write back every value the
+    /// file set. False when a warning shows that a value was dropped: an
     /// unknown key, an unreadable value or entry, or a file that could not be
-    /// combined into a configuration.
+    /// combined into a configuration. Comments and formatting are never kept,
+    /// so true does not mean the saved file equals the loaded one.
     ///
     /// A frontend must not overwrite the file when this is false.
     #[must_use]

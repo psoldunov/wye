@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::normalize::{
     MatchUrl, normalize_contains, normalize_host, normalize_pattern, split_host, split_port,
-    strip_scheme,
+    strip_scheme, wildcard_host_form,
 };
 
 /// Upper bound for a compiled user regex, so a pathological pattern cannot
@@ -92,15 +92,7 @@ impl UrlMatcher {
             // "Contains" often holds a path fragment such as `/pull/`, so it
             // keeps its case; a host part must be written in lowercase.
             MatcherKind::Contains => CompiledMatcher::Contains(normalize_contains(raw)),
-            MatcherKind::Wildcard => {
-                let pattern = normalize_pattern(raw);
-                let body = pattern
-                    .split('*')
-                    .map(regex::escape)
-                    .collect::<Vec<_>>()
-                    .join(".*");
-                CompiledMatcher::Regex(build_regex(&format!("^{body}$"))?)
-            }
+            MatcherKind::Wildcard => CompiledMatcher::Regex(build_regex(&wildcard_regex(raw))?),
             MatcherKind::Regex => CompiledMatcher::Regex(build_regex(raw)?),
         };
         Ok(compiled)
@@ -129,6 +121,27 @@ fn compile_domain(raw: &str) -> Result<String, MatcherError> {
         return Err(MatcherError::DomainWithPort);
     }
     Ok(normalize_host(host))
+}
+
+/// The regular expression for a wildcard pattern. A leading-`*` pattern
+/// without a `/` is ambiguous: `*README.md` is a name fragment that keeps its
+/// case, `*.Example.com*` starts with a host that is lowercase ASCII in the
+/// link. Such a pattern accepts either form.
+fn wildcard_regex(raw: &str) -> String {
+    let literal = normalize_pattern(raw);
+    let body = wildcard_body(&literal);
+    match wildcard_host_form(raw).filter(|host_form| *host_form != literal) {
+        Some(host_form) => format!("^(?:{body}|{})$", wildcard_body(&host_form)),
+        None => format!("^{body}$"),
+    }
+}
+
+fn wildcard_body(pattern: &str) -> String {
+    pattern
+        .split('*')
+        .map(regex::escape)
+        .collect::<Vec<_>>()
+        .join(".*")
 }
 
 fn build_regex(pattern: &str) -> Result<Regex, MatcherError> {
@@ -394,6 +407,27 @@ mod tests {
         let m = matcher(MatcherKind::Wildcard, "*ABC-*");
         assert!(hits(&m, "jira.example/browse/ABC-1"));
         assert!(!hits(&m, "jira.example/browse/abc-1"));
+    }
+
+    #[test]
+    fn wildcard_leading_star_host_fragment_matches_the_lowercase_host() {
+        let m = matcher(MatcherKind::Wildcard, "*.Example.com*");
+        assert!(hits(&m, "team.example.com/x"));
+        assert!(!hits(&m, "example.org/x"));
+    }
+
+    #[test]
+    fn wildcard_leading_star_idn_fragment_matches_the_punycode_host() {
+        let m = matcher(MatcherKind::Wildcard, "*.bücher.de*");
+        assert!(hits(&m, "shop.bücher.de/x"));
+        assert!(!hits(&m, "shop.buecher.de/x"));
+    }
+
+    #[test]
+    fn wildcard_leading_star_name_fragment_keeps_its_case() {
+        let m = matcher(MatcherKind::Wildcard, "*README.md");
+        assert!(hits(&m, "github.com/x/README.md"));
+        assert!(!hits(&m, "github.com/x/readme.md"));
     }
 
     #[test]

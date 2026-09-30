@@ -161,10 +161,28 @@ fn parsed_host(host: &str) -> Option<String> {
 /// with `*` in a pattern without a `/` is a name fragment such as
 /// `*README.md`, not a host.
 fn starts_with_host(pattern: &str, host: &str, tail: &str) -> bool {
-    let wildcard_fragment = host.starts_with('*') && !pattern.contains('/');
     !host.is_empty()
-        && !wildcard_fragment
+        && !is_wildcard_fragment(pattern, host)
         && (tail.starts_with('/') || host.contains('.') || host.starts_with('['))
+}
+
+/// Whether the first segment starts with `*` in a pattern without a `/`, so
+/// it is either a name fragment (`*README.md`) or a host (`*.Example.com*`).
+fn is_wildcard_fragment(pattern: &str, host: &str) -> bool {
+    host.starts_with('*') && !pattern.contains('/')
+}
+
+/// For a `*.`-leading pattern without a `/`, such as `*.Example.com*`, the
+/// pattern as it reads when the first segment is a host: lowercase ASCII
+/// (punycode) and no leading `www.`. [`normalize_pattern`] keeps the case of
+/// a name fragment like `*README.md`, so a wildcard matcher accepts the link
+/// against both forms. `None` for any other pattern, including a fragment
+/// whose `*` does not stand for whole labels (`*README.md`).
+pub(crate) fn wildcard_host_form(pattern: &str) -> Option<String> {
+    let rest = strip_scheme(pattern.trim());
+    let (host, tail) = split_host(rest);
+    (is_wildcard_fragment(rest, host) && host.starts_with("*."))
+        .then(|| format!("{}{}", normalize_host(host), normalize_tail(tail)))
 }
 
 /// Encodes the path, query and fragment of a pattern by making a link of
@@ -287,6 +305,22 @@ mod tests {
             normalize_pattern("*.Atlassian.net/Browse/*"),
             "*.atlassian.net/Browse/*"
         );
+    }
+
+    #[test]
+    fn a_wildcard_host_form_exists_only_for_a_star_dot_fragment() {
+        assert_eq!(
+            wildcard_host_form("*.Example.com*").as_deref(),
+            Some("*.example.com*")
+        );
+        assert_eq!(
+            wildcard_host_form("*.bücher.de*").as_deref(),
+            Some("*.xn--bcher-kva.de*")
+        );
+        assert_eq!(wildcard_host_form("*README.md"), None);
+        assert_eq!(wildcard_host_form("*ABC-*"), None);
+        assert_eq!(wildcard_host_form("*.Example.com/*"), None);
+        assert_eq!(wildcard_host_form("Example.com*"), None);
     }
 
     #[test]

@@ -18,7 +18,7 @@ let
     inherit src;
     strictDeps = true;
     pname = "wye";
-    version = (craneLib.crateNameFromCargoToml { cargoToml = ../crates/wye/Cargo.toml; }).version;
+    version = (lib.importTOML ../Cargo.toml).workspace.package.version;
   };
 
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;

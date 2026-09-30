@@ -14,17 +14,38 @@ async-trait.workspace = true
 # Already in the tree through zbus; only its `StreamExt` is used, to read
 # signal streams.
 futures-lite.workspace = true
+# File watchers (config reload, mimeapps.list, application dirs).
+notify.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 toml.workspace = true
 tracing.workspace = true
+# Short-link expansion and Songlink (PIPE-03, EXT-15): rustls, no redirects.
+ureq.workspace = true
+url.workspace = true
 wye-api.workspace = true
 wye-core.workspace = true
 wye-desktop.workspace = true
+# Transform scripts (PIPE-05, PIPE-14, SCR-01 to SCR-23).
+wye-script.workspace = true
 zbus.workspace = true
+# Session probes: held modifiers, pointer, focused window (KEY-06, PICK-02).
+wayland-client.workspace = true
+# Clipboard data control (EXT-12): ext-data-control-v1 is in `staging`.
+wayland-protocols.workspace = true
+wayland-protocols-wlr.workspace = true
+x11rb.workspace = true
+xkbcommon.workspace = true
+# The StatusNotifierItem tray when no tray host registered (TRAY-01).
+ksni.workspace = true
+# Global shortcuts through the GlobalShortcuts portal (KEY-40).
+ashpd.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+# Syntax-checks and runs the KWin query script against a stub `workspace`.
+rquickjs.workspace = true
 
 [lints]
 workspace = true

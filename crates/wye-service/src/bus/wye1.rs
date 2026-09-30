@@ -197,6 +197,10 @@ impl Wye1 {
         api::scripts::set_script(&self.ctx, scope, source).await
     }
 
+    async fn script_exists(&self, scope: &str) -> Result<bool, Error> {
+        api::scripts::script_exists(&self.ctx, scope).await
+    }
+
     async fn run_script(&self, source: &str, url: &str, context: Dict) -> Result<String, Error> {
         api::scripts::run_script(&self.ctx, source, url, &context).await
     }
@@ -247,6 +251,14 @@ impl Wye1 {
         kind: &str,
     ) -> Result<(), Error> {
         api::tray::register_tray(&self.ctx, &Caller::from_header(&header), kind).await
+    }
+
+    async fn unregister_tray(&self, #[zbus(header)] header: Header<'_>) -> Result<(), Error> {
+        api::tray::unregister_tray(&self.ctx, &Caller::from_header(&header)).await
+    }
+
+    async fn activate_tray_item(&self, id: &str) -> Result<(), Error> {
+        api::tray::activate_tray_item(&self.ctx, id).await
     }
 
     async fn get_troubleshooting(&self) -> Result<String, Error> {

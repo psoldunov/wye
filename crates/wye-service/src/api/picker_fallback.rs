@@ -20,6 +20,8 @@ pub(crate) async fn open_without_picker(
     needed: PickerNeeded,
     activation: &Activation,
 ) -> Result<()> {
+    // PIPE-14: the matched rule's script runs on the stand-in's choice too.
+    let hooks = link::hooks::LinkHooks::scripts_only(ctx);
     let plan = link::with_snapshot(ctx, move |snapshot| {
         let target = choose(
             snapshot.pipeline.config(),
@@ -30,11 +32,12 @@ pub(crate) async fn open_without_picker(
             target,
             options: OpenOptions::default(),
         };
-        Some(link::plan(
+        Some(link::plan_with(
             snapshot,
             &needed.resolution,
             &needed.request,
             Some(chosen),
+            hooks.hooks(),
         ))
     })
     .await?

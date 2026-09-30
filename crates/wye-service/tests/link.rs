@@ -185,6 +185,8 @@ async fn a_failed_launch_offers_other_browsers() {
         "[Desktop Entry]\nType=Application\nName=Term Browser\nExec=term %u\nTerminal=true\n\
          MimeType=x-scheme-handler/https;\n",
     );
+    // The service keeps its inventory; a new entry needs a rescan.
+    wye(&service).await.rescan().await.expect("rescanned");
     let error = wye(&service)
         .await
         .open_link(URL, cli())

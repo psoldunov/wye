@@ -16,21 +16,26 @@ pub mod kwin;
 pub mod lock;
 pub mod modifiers;
 pub mod notify;
+pub mod probe;
 pub mod scope;
 pub mod shortcuts;
+pub mod sni;
 pub mod types;
 pub mod x11;
 
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, watch};
 use wye_api::context::Modifier;
 use wye_api::picker::Placement;
+use wye_api::tray::TrayMenu;
 
 pub use types::{
     BoundShortcut, ClipboardCapabilities, FocusedApp, HttpMethod, HttpRequest, HttpResponse,
-    LaunchCommand, Notification, NotificationAction, PlatformError,
+    LaunchCommand, Notification, NotificationAction, PlatformError, TrayEvent,
 };
 
 /// Modifiers held right now (BRW-03, RUL-27, KEY-06).
@@ -132,6 +137,23 @@ pub trait HttpClient: Send + Sync {
     fn send(&self, request: &HttpRequest) -> Result<HttpResponse, PlatformError>;
 }
 
+/// The `StatusNotifierItem` tray (TRAY-01 to TRAY-18 on hosts without the
+/// Plasma applet): one item whose `DBusMenu` renders the `Tray` model.
+#[async_trait]
+pub trait StatusNotifier: Send + Sync {
+    /// Show the item with `menu`, or update the one shown.
+    async fn show(&self, menu: &TrayMenu) -> Result<(), PlatformError>;
+    /// Remove the item; nothing happens when none is shown.
+    async fn hide(&self);
+    /// What the user did with the item.
+    fn events(&self) -> broadcast::Receiver<TrayEvent>;
+    /// How long the service waits after starting for a tray host to
+    /// register before it shows the item (decision 8: 5 s on KDE).
+    fn grace(&self) -> Duration;
+    /// How the item is shown.
+    fn mechanism(&self) -> Option<&'static str>;
+}
+
 /// One implementation of every platform trait.
 #[derive(Clone)]
 pub struct Platform {
@@ -145,6 +167,11 @@ pub struct Platform {
     pub clipboard: Arc<dyn ClipboardProvider>,
     pub shortcuts: Arc<dyn ShortcutProvider>,
     pub http: Arc<dyn HttpClient>,
+    /// The `StatusNotifierItem` shown when no tray host registered (TRAY-01).
+    pub sni: Arc<dyn StatusNotifier>,
+    /// `KWin` queries waiting for their `KWin1.Report`; shared by the
+    /// pointer and focus helper and the bus object that receives.
+    pub kwin_reports: kwin::Reports,
 }
 
 impl Platform {
@@ -164,6 +191,37 @@ impl Platform {
             clipboard: Arc::new(clipboard::NoClipboard),
             shortcuts: Arc::new(shortcuts::NoShortcuts::new()),
             http: Arc::new(http::NoHttp),
+            sni: Arc::new(sni::NoStatusNotifier::new()),
+            kwin_reports: kwin::Reports::new(),
+        }
+    }
+
+    /// `self` with the session probes this session supports, each found by
+    /// a start-up self-check (KEY-06): held modifiers (obeying
+    /// `advanced.held-keys` in `config` when given), the pointer and the
+    /// focused app. `KWin` scripts answer to `connection`, which must serve
+    /// [`crate::bus::KWin1`].
+    pub async fn with_session_probes(
+        self,
+        connection: &zbus::Connection,
+        config: Option<&Path>,
+    ) -> Self {
+        let modifiers = match config {
+            Some(config) => modifiers::detect_configured(config).await,
+            None => modifiers::detect().await,
+        };
+        let (pointer, focus) = focus::detect(connection, &self.kwin_reports).await;
+        tracing::info!(
+            held_keys = modifiers.mechanism(),
+            pointer = pointer.mechanism(),
+            focus = focus.mechanism(),
+            "session probes"
+        );
+        Self {
+            modifiers,
+            pointer,
+            focus,
+            ..self
         }
     }
 

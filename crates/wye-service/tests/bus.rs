@@ -25,12 +25,14 @@ async fn harness() -> Option<Service> {
     Service::start("").await
 }
 
-/// A real reply, `NotImplemented`, or `Unavailable` (no UI host on the
-/// private bus); anything else fails the test.
+/// A real reply or any error of the contract (`docs/dbus-api.md`): the
+/// member exists and answered. Called with fixture-free arguments, some
+/// members refuse (`MakeDefault` without Wye's desktop entry: `Failed`;
+/// `ImportRules("")`: `InvalidArgs`; an unknown history entry: `NotFound`).
+/// Only a transport error or a name outside the contract fails the test.
 fn answered<T: Debug>(member: &str, reply: Result<T, Error>) {
-    match reply {
-        Ok(_) | Err(Error::NotImplemented(_) | Error::Unavailable(_)) => {}
-        Err(other) => panic!("{member} answered {other}"),
+    if let Err(Error::Bus(error)) = reply {
+        panic!("{member} answered outside the contract: {error}");
     }
 }
 
@@ -103,18 +105,6 @@ async fn every_wye1_method_answers() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_stub_answers_with_the_not_implemented_error() {
-    let Some(harness) = harness().await else {
-        return;
-    };
-    let wye = Wye1Proxy::new(&harness.client).await.expect("proxy");
-    match wye.get_history().await {
-        Err(Error::NotImplemented(message)) => assert!(message.contains("GetHistory"), "{message}"),
-        other => panic!("expected NotImplemented, got {other:?}"),
-    }
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn properties_answer_with_valid_payloads() {
     let Some(harness) = harness().await else {
         return;
@@ -126,16 +116,18 @@ async fn properties_answer_with_valid_payloads() {
         env!("CARGO_PKG_VERSION")
     );
     let tray: TrayMenu = json::decode("Tray", &wye.tray().await.expect("Tray")).expect("TrayMenu");
-    assert_eq!(tray, TrayMenu::default());
+    // The menu of the default configuration (01-tray-menu.md).
+    assert!(tray.visible);
+    assert!(tray.items.iter().any(|item| item.id == "primary:picker"));
+    assert!(tray.items.iter().any(|item| item.id == "quit"));
     let status: Status =
         json::decode("Status", &wye.status().await.expect("Status")).expect("Status JSON");
     assert_eq!(status.capabilities.held_keys.as_deref(), Some("fake"));
-    assert_eq!(wye.config_revision().await.expect("ConfigRevision"), 0);
-    assert_eq!(wye.history_revision().await.expect("HistoryRevision"), 0);
-    assert_eq!(
-        wye.inventory_revision().await.expect("InventoryRevision"),
-        0
-    );
+    // Revisions start at 1 once the file or scan is read; 0 means "skip the
+    // check" in UpdateConfig and is never reported.
+    assert!(wye.config_revision().await.expect("ConfigRevision") >= 1);
+    assert!(wye.history_revision().await.expect("HistoryRevision") >= 1);
+    assert!(wye.inventory_revision().await.expect("InventoryRevision") >= 1);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

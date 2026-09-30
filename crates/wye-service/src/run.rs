@@ -19,6 +19,7 @@ use crate::platform::Platform;
 use crate::platform::lock::SessionLockMonitor;
 use crate::platform::notify::DesktopNotifier;
 use crate::platform::scope::{SpawnLauncher, SystemdScopes};
+use crate::platform::sni::KsniNotifier;
 use crate::{api, bus, watch};
 
 /// Another process already owns [`BUS_NAME`].
@@ -89,6 +90,9 @@ pub async fn start(
     Ok(watch::spawn(ctx)
         .into_iter()
         .chain(api::link::spawn_tasks(ctx))
+        .chain(api::tray::spawn_tasks(ctx))
+        .chain(api::scripts::spawn_tasks(ctx))
+        .chain(api::shortcuts::spawn_tasks(ctx))
         .collect())
 }
 
@@ -100,19 +104,32 @@ pub fn use_environment(ctx: &ServiceContext, environment: Environment) {
 
 /// The integrations this session supports: notifications, launching,
 /// systemd scopes and lock state over `session` (and the system bus for
-/// logind), the rest from [`Platform::detect`].
+/// logind), the session probes (held modifiers, pointer, focused app;
+/// KEY-06), global shortcuts on a connection of their own (KEY-40), the rest
+/// from [`Platform::detect`].
 pub async fn session_platform(session: &zbus::Connection) -> Platform {
     let system = zbus::Connection::system()
         .await
         .inspect_err(|error| tracing::info!(%error, "no system bus"))
         .ok();
+    let config = Environment::from_env()
+        .inspect_err(|error| tracing::warn!(%error, "no configuration file for advanced.held-keys"))
+        .ok()
+        .map(|environment| environment.config);
     Platform {
         notifier: Arc::new(DesktopNotifier::new(session.clone())),
         launcher: Arc::new(SpawnLauncher),
         scope: Arc::new(SystemdScopes::new(session.clone())),
         lock: Arc::new(SessionLockMonitor::start(session, system.as_ref()).await),
+        sni: Arc::new(KsniNotifier::for_session()),
+        clipboard: crate::platform::clipboard::detect(session).await,
+        http: Arc::new(crate::platform::http::UreqClient::new()),
         ..Platform::detect()
     }
+    .with_session_probes(session, config.as_deref())
+    .await
+    .with_global_shortcuts(config.as_deref())
+    .await
 }
 
 /// Ask for [`BUS_NAME`]; refuse to run beside another service.

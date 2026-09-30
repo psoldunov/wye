@@ -4,18 +4,23 @@
 //! "session" reports and read back what the service asked of it.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, watch};
 use wye_api::context::Modifier;
 use wye_api::picker::Placement;
+use wye_api::tray::TrayMenu;
 
+use super::kwin::scripting::ScriptHost;
+use super::kwin::{KWinReport, Reports, script};
 use super::{
     BoundShortcut, ClipboardCapabilities, ClipboardProvider, FocusSource, FocusedApp, HttpClient,
     HttpRequest, HttpResponse, LaunchCommand, Launcher, LockMonitor, ModifierSource, Notification,
     NotificationAction, Notifier, Platform, PlatformError, PointerSource, ScopeManager,
-    ShortcutProvider,
+    ShortcutProvider, StatusNotifier, TrayEvent,
 };
 
 /// Mechanism name every fake reports.
@@ -49,6 +54,7 @@ pub struct FakePlatform {
     pub clipboard: Arc<FakeClipboard>,
     pub shortcuts: Arc<FakeShortcuts>,
     pub http: Arc<FakeHttp>,
+    pub sni: Arc<FakeStatusNotifier>,
 }
 
 impl FakePlatform {
@@ -72,7 +78,167 @@ impl FakePlatform {
             clipboard: Arc::clone(&self.clipboard) as _,
             shortcuts: Arc::clone(&self.shortcuts) as _,
             http: Arc::clone(&self.http) as _,
+            sni: Arc::clone(&self.sni) as _,
+            kwin_reports: Reports::new(),
         }
+    }
+}
+
+/// A tray item that records what it was asked to show; tests send its
+/// events.
+#[derive(Debug)]
+pub struct FakeStatusNotifier {
+    /// Each call in order: `Some(menu)` for `show`, `None` for `hide`.
+    calls: Mutex<Vec<Option<TrayMenu>>>,
+    events: broadcast::Sender<TrayEvent>,
+    grace: Mutex<Duration>,
+}
+
+impl Default for FakeStatusNotifier {
+    fn default() -> Self {
+        Self {
+            calls: Mutex::default(),
+            events: broadcast::channel(BUFFER).0,
+            grace: Mutex::new(Duration::ZERO),
+        }
+    }
+}
+
+impl FakeStatusNotifier {
+    /// The menu shown now; `None` while hidden or never shown.
+    pub fn shown(&self) -> Option<TrayMenu> {
+        lock(&self.calls).last().cloned().flatten()
+    }
+
+    /// Every `show` (`Some`) and `hide` (`None`) so far.
+    pub fn calls(&self) -> Vec<Option<TrayMenu>> {
+        lock(&self.calls).clone()
+    }
+
+    /// What the user does with the item.
+    pub fn send(&self, event: TrayEvent) {
+        // No receiver yet is fine: the tray task has not started.
+        let _ = self.events.send(event);
+    }
+
+    /// The start-up wait for a tray host.
+    pub fn set_grace(&self, grace: Duration) {
+        *lock(&self.grace) = grace;
+    }
+}
+
+#[async_trait]
+impl StatusNotifier for FakeStatusNotifier {
+    async fn show(&self, menu: &TrayMenu) -> Result<(), PlatformError> {
+        lock(&self.calls).push(Some(menu.clone()));
+        Ok(())
+    }
+
+    async fn hide(&self) {
+        let mut calls = lock(&self.calls);
+        if calls.last().is_some_and(Option::is_some) {
+            calls.push(None);
+        }
+    }
+
+    fn events(&self) -> broadcast::Receiver<TrayEvent> {
+        self.events.subscribe()
+    }
+
+    fn grace(&self) -> Duration {
+        *lock(&self.grace)
+    }
+
+    fn mechanism(&self) -> Option<&'static str> {
+        Some(FAKE)
+    }
+}
+
+/// What [`FakeScriptHost`] was asked to do.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScriptCalls {
+    /// Each loaded script: its name and its text as it was on disk.
+    pub loaded: Vec<(String, String)>,
+    /// How often `start` was called.
+    pub started: u32,
+    /// Each unloaded script's name.
+    pub unloaded: Vec<String>,
+}
+
+/// A `KWin` that answers each started script from `owner` with `answer`
+/// (its nonce taken from the script's name), or stays silent.
+#[derive(Debug, Default)]
+pub struct FakeScriptHost {
+    owner: Option<String>,
+    reply: Option<(Reports, KWinReport)>,
+    calls: Mutex<ScriptCalls>,
+}
+
+impl FakeScriptHost {
+    /// A compositor on the bus as `owner` that loads scripts but never
+    /// answers.
+    #[must_use]
+    pub fn silent(owner: &str) -> Self {
+        Self {
+            owner: Some(owner.to_owned()),
+            ..Self::default()
+        }
+    }
+
+    /// A compositor that answers every started script with `answer`
+    /// through `reports`.
+    #[must_use]
+    pub fn answering(owner: &str, reports: Reports, answer: KWinReport) -> Self {
+        Self {
+            owner: Some(owner.to_owned()),
+            reply: Some((reports, answer)),
+            calls: Mutex::default(),
+        }
+    }
+
+    /// What it was asked so far.
+    pub fn calls(&self) -> ScriptCalls {
+        lock(&self.calls).clone()
+    }
+}
+
+#[async_trait]
+impl ScriptHost for FakeScriptHost {
+    async fn owner(&self) -> Option<String> {
+        self.owner.clone()
+    }
+
+    async fn load(&self, path: &Path, name: &str) -> Result<(), PlatformError> {
+        let text = std::fs::read_to_string(path)
+            .map_err(|error| PlatformError::Failed(format!("{}: {error}", path.display())))?;
+        lock(&self.calls).loaded.push((name.to_owned(), text));
+        Ok(())
+    }
+
+    async fn start(&self) -> Result<(), PlatformError> {
+        let last = {
+            let mut calls = lock(&self.calls);
+            calls.started += 1;
+            calls.loaded.last().map(|(name, _)| name.clone())
+        };
+        let nonce = last
+            .as_deref()
+            .and_then(|name| name.strip_prefix(script::NAME_PREFIX));
+        if let (Some(nonce), Some((reports, answer))) = (nonce, &self.reply) {
+            let report = KWinReport {
+                nonce: nonce.to_owned(),
+                ..answer.clone()
+            };
+            reports
+                .deliver(self.owner.as_deref(), report)
+                .map_err(|error| PlatformError::Failed(error.to_string()))?;
+        }
+        Ok(())
+    }
+
+    async fn unload(&self, name: &str) -> Result<(), PlatformError> {
+        lock(&self.calls).unloaded.push(name.to_owned());
+        Ok(())
     }
 }
 

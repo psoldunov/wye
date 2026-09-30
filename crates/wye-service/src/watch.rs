@@ -1,16 +1,190 @@
-//! File watchers: the configuration directory (reload, SET-06), `mimeapps.list`
-//! and `kdeglobals` (DEF-03), application directories and browser profile
-//! files (DISC-02).
+//! File watchers: the configuration directory (reload, SET-06),
+//! `mimeapps.list` and `kdeglobals` (DEF-03), application directories and
+//! browser profile files (DISC-02).
 //!
-//! Planned with notify 8.2, debounced (100 ms for the configuration, 500 ms
-//! for the inventory). Until then nothing is watched.
+//! One notify watcher per environment, rebuilt when the environment
+//! changes, a watched directory appears or a profile symlink moves. Events
+//! are debounced per kind: 100 ms for the configuration, 500 ms for the
+//! rest, so an editor's save or a package switch is handled once.
 
+mod plan;
+
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
+use notify::{RecommendedWatcher, RecursiveMode, Watcher as _};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 
+use self::plan::{Kind, Plan};
+use crate::api;
+use crate::api::link::Environment;
 use crate::context::ServiceContext;
 
-/// Start every watcher; the service aborts the handles on shutdown.
+/// Quiet time before the configuration is reloaded.
+const CONFIG_DEBOUNCE: Duration = Duration::from_millis(100);
+/// Quiet time before apps are rescanned or the registration is checked.
+const INVENTORY_DEBOUNCE: Duration = Duration::from_millis(500);
+
+/// Start every watcher and the tasks that answer their notifications; the
+/// service aborts the handles on shutdown.
 #[must_use]
-pub fn spawn(_ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
-    Vec::new()
+pub fn spawn(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
+    std::iter::once(tokio::spawn(run(ctx.clone())))
+        .chain(api::default_browser::spawn_tasks(ctx))
+        .chain(api::clipboard::spawn_tasks(ctx))
+        .collect()
+}
+
+/// Watch the current environment until it changes, then start over.
+async fn run(ctx: ServiceContext) {
+    let mut environments = ctx.environment_changes();
+    loop {
+        let environment = environments.borrow_and_update().clone();
+        let watching = async {
+            match environment {
+                Some(environment) => watch(&ctx, environment).await,
+                None => std::future::pending().await,
+            }
+        };
+        tokio::select! {
+            changed = environments.changed() => {
+                if changed.is_err() {
+                    return;
+                }
+            }
+            () = watching => return,
+        }
+    }
+}
+
+/// Watch `environment` for good, re-arming as needed.
+async fn watch(ctx: &ServiceContext, environment: Arc<Environment>) {
+    loop {
+        // Scanning here also warms the inventory before the first link.
+        let plan = Plan::new(&environment, &browser_dirs(ctx, &environment).await);
+        let (sender, mut events) = mpsc::unbounded_channel();
+        let Some(_watcher) = start(&plan, sender) else {
+            // Nothing can be watched; Rescan and the next start still work.
+            return std::future::pending().await;
+        };
+        catch_up(ctx).await;
+        let mut pending: BTreeMap<Kind, Instant> = BTreeMap::new();
+        loop {
+            let next = pending.values().min().copied();
+            let sleep = async {
+                match next {
+                    Some(deadline) => tokio::time::sleep_until(deadline).await,
+                    None => std::future::pending().await,
+                }
+            };
+            tokio::select! {
+                path = events.recv() => {
+                    let Some(path) = path else { return };
+                    for kind in plan.classify(&path) {
+                        pending.entry(kind).or_insert_with(|| Instant::now() + debounce(kind));
+                    }
+                }
+                () = sleep => {
+                    let now = Instant::now();
+                    let due: Vec<Kind> = pending
+                        .iter()
+                        .filter(|(_, deadline)| **deadline <= now)
+                        .map(|(kind, _)| *kind)
+                        .collect();
+                    pending.retain(|_, deadline| *deadline > now);
+                    if handle(ctx, &due).await {
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+const fn debounce(kind: Kind) -> Duration {
+    match kind {
+        Kind::Config => CONFIG_DEBOUNCE,
+        Kind::Registration | Kind::Inventory | Kind::Rearm => INVENTORY_DEBOUNCE,
+    }
+}
+
+/// Act on the kinds whose quiet time passed; true when the watchers must
+/// be rebuilt.
+async fn handle(ctx: &ServiceContext, due: &[Kind]) -> bool {
+    let mut rearm = due.contains(&Kind::Rearm);
+    for kind in due {
+        match kind {
+            Kind::Config => {
+                if let Err(error) = api::config::reload(ctx).await {
+                    tracing::warn!(%error, "cannot reload the configuration");
+                }
+            }
+            Kind::Registration => api::default_browser::check_takeover(ctx).await,
+            Kind::Inventory => {
+                let before = api::inventory::revision(ctx).await;
+                match api::inventory::scan(ctx).await {
+                    // New browsers bring new profile files to watch.
+                    Ok(scan) => rearm |= scan.revision != before,
+                    Err(error) => tracing::warn!(%error, "cannot rescan the apps"),
+                }
+            }
+            Kind::Rearm => {}
+        }
+    }
+    rearm
+}
+
+/// Read what may have changed while no watcher was armed (at start and
+/// between two watchers). The first time this also loads the configuration
+/// and remembers the default-browser registration later changes are
+/// compared with.
+async fn catch_up(ctx: &ServiceContext) {
+    if let Err(error) = api::config::reload(ctx).await {
+        tracing::warn!(%error, "cannot read the configuration");
+    }
+    api::default_browser::check_takeover(ctx).await;
+}
+
+/// The config directories of the installed web browsers, whose profile
+/// files are watched (DISC-02).
+async fn browser_dirs(ctx: &ServiceContext, environment: &Environment) -> Vec<PathBuf> {
+    let Ok(scan) = api::inventory::current(ctx).await else {
+        return Vec::new();
+    };
+    scan.inventory
+        .web_handlers()
+        .into_iter()
+        .flat_map(|app| wye_desktop::family::config_dirs(app.id(), &environment.xdg))
+        .collect()
+}
+
+/// A notify watcher over `plan`'s directories that forwards changed paths
+/// to `sender`, or `None` when notify is unavailable.
+fn start(plan: &Plan, sender: mpsc::UnboundedSender<PathBuf>) -> Option<RecommendedWatcher> {
+    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+        match event {
+            // Reading a file or listing a directory is not a change, and
+            // Wye's own reads would otherwise trigger themselves.
+            Ok(event) if matches!(event.kind, notify::EventKind::Access(_)) => {}
+            Ok(event) => {
+                for path in event.paths {
+                    // The receiver is gone once the watcher is being rebuilt.
+                    let _ = sender.send(path);
+                }
+            }
+            Err(error) => tracing::debug!(%error, "file watcher error"),
+        }
+    })
+    .inspect_err(|error| tracing::warn!(%error, "cannot watch files"))
+    .ok()?;
+    for dir in &plan.dirs {
+        if let Err(error) = watcher.watch(dir, RecursiveMode::NonRecursive) {
+            tracing::debug!(dir = %dir.display(), %error, "cannot watch a directory");
+        }
+    }
+    Some(watcher)
 }

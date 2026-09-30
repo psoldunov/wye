@@ -195,24 +195,7 @@ impl Service {
     /// Start one with `config` as `config.toml`, or `None` without
     /// `dbus-daemon`.
     pub async fn start(config: &str) -> Option<Self> {
-        let bus = PrivateBus::start()?;
-        let desktop = Desktop::new();
-        desktop.config(config);
-        let fakes = FakePlatform::new();
-        let ctx = ServiceContext::new(fakes.platform());
-        run::use_environment(&ctx, desktop.environment());
-        let connection = bus.connect().await;
-        run::start(&connection, &ctx)
-            .await
-            .expect("service started");
-        let client = bus.connect().await;
-        Some(Self {
-            ctx,
-            fakes,
-            client,
-            desktop,
-            bus,
-        })
+        Self::start_with(config, |_| {}).await
     }
 
     /// Every launched command line, oldest first.
@@ -236,4 +219,87 @@ pub async fn eventually<F: Future<Output = bool>>(what: &str, check: impl Fn() -
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     panic!("timed out waiting for {what}");
+}
+
+// Configuration, state, inventory and history tests (U07).
+
+/// Wye's own desktop ID.
+pub const WYE: &str = "dev.soldunov.wye.desktop";
+
+impl Desktop {
+    /// The service's view of this desktop on `desktop`
+    /// (`XDG_CURRENT_DESKTOP`), for example `KDE`.
+    pub fn environment_on(&self, desktop: &str) -> Environment {
+        let environment = self.environment();
+        Environment {
+            xdg: wye_desktop::XdgDirs {
+                current_desktops: vec![desktop.to_owned()],
+                ..environment.xdg.clone()
+            },
+            ..environment
+        }
+    }
+
+    /// Install Wye's own desktop entry, which `MakeDefault` needs.
+    pub fn install_wye(&self) {
+        self.app(WYE, "Wye", "wye open %u", true);
+    }
+
+    /// A file's text, or empty when it is missing.
+    pub fn read(&self, relative: &str) -> String {
+        fs::read_to_string(self.path(relative)).unwrap_or_default()
+    }
+
+    /// Replace a file the way editors do: write a temporary file next to it
+    /// and rename it over.
+    pub fn replace(&self, relative: &str, text: &str) {
+        let path = self.path(relative);
+        let temp = path.with_extension("tmp-save");
+        fs::write(&temp, text).expect("written");
+        fs::rename(&temp, &path).expect("renamed");
+    }
+}
+
+impl Service {
+    /// A `dev.soldunov.wye1` proxy for the client.
+    pub async fn wye(&self) -> wye_api::proxy::Wye1Proxy<'static> {
+        wye_api::proxy::Wye1Proxy::new(&self.client)
+            .await
+            .expect("proxy")
+    }
+
+    /// The `Status` property, decoded.
+    pub async fn status(&self) -> wye_api::status::Status {
+        let text = self.wye().await.status().await.expect("Status");
+        wye_api::json::decode("Status", &text).expect("Status JSON")
+    }
+}
+
+// Files a test needs before the service starts (history race fix, U13).
+
+impl Service {
+    /// Like [`Service::start`], with `prepare` run on the desktop first:
+    /// for files the service reads once, such as the history, which a
+    /// startup task may load before a test could write it.
+    pub async fn start_with(config: &str, prepare: impl FnOnce(&Desktop)) -> Option<Self> {
+        let bus = PrivateBus::start()?;
+        let desktop = Desktop::new();
+        desktop.config(config);
+        prepare(&desktop);
+        let fakes = FakePlatform::new();
+        let ctx = ServiceContext::new(fakes.platform());
+        run::use_environment(&ctx, desktop.environment());
+        let connection = bus.connect().await;
+        run::start(&connection, &ctx)
+            .await
+            .expect("service started");
+        let client = bus.connect().await;
+        Some(Self {
+            ctx,
+            fakes,
+            client,
+            desktop,
+            bus,
+        })
+    }
 }

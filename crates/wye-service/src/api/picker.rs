@@ -1,73 +1,313 @@
 //! The picker broker: `PreviewPicker`, `PickerChose`, `PickerCancelled`,
 //! `PickerAction` (PICK-01 to PICK-33, PIPE-13, PKS-06, PKS-07, IN-06).
 //!
-//! The service sends `PickerHost1.ShowPicker` to the UI host and waits for
-//! one of these calls back. A new link supersedes a pending request
-//! (PICK-27).
+//! A link that resolves to the Picker becomes a `PickerRequest`, sent with
+//! `PickerHost1.ShowPicker` to the UI host (bus-activating it). The UI
+//! answers with one of the members here, naming the request. A new link
+//! supersedes the pending one (PICK-27). When the UI cannot be reached the
+//! link opens through the stand-in and a notification says so.
 
+mod activation;
+mod choice;
+mod host;
+mod pending;
+mod request;
+
+use tokio::task::JoinHandle;
+use url::Url;
 use wye_api::Error;
+use wye_api::actions::{PickerAction, Window};
+use wye_core::picker::SourceLabel;
+use wye_core::{Modifiers, SourceApp};
+use wye_desktop::Locale;
 
+use self::pending::{Pending, PendingLink, Registry};
+use super::link::{self, Activation, PickerNeeded, Snapshot};
 use super::{Caller, Dict, Result};
 use crate::context::ServiceContext;
-use crate::platform::Platform;
+use crate::platform::{Notification, Platform};
 
-/// State this topic keeps. Empty until the topic is implemented.
+/// The sample link Preview Picker shows (PKS-06).
+const PREVIEW_LINK: &str = "https://example.com/articles/preview?from=wye";
+
+/// State this topic keeps: the request the picker shows.
 #[derive(Debug, Default)]
-pub struct State;
+pub struct State {
+    pending: Registry,
+}
 
 impl State {
     pub(crate) fn new(_platform: &Platform) -> Self {
-        Self
+        Self::default()
     }
 }
 
-/// `dev.soldunov.wye1.PreviewPicker` (IN-06, PKS-06).
-#[allow(
-    clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
-)]
-pub async fn preview_picker(_ctx: &ServiceContext) -> Result<()> {
-    Err(Error::not_implemented("PreviewPicker"))
-}
-
-/// `dev.soldunov.wye1.PickerChose` (PIPE-13).
-#[allow(
-    clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
-)]
-pub async fn picker_chose(
-    _ctx: &ServiceContext,
-    _caller: &Caller,
-    _request_id: &str,
-    _target: &str,
-    _options: &Dict,
+/// Show the picker for a link (PIPE-13). Falls back to the stand-in, with a
+/// notification, when the UI host cannot show it.
+pub(crate) async fn show_link(
+    ctx: &ServiceContext,
+    needed: PickerNeeded,
+    activation: Activation,
 ) -> Result<()> {
-    Err(Error::not_implemented("PickerChose"))
+    let placement = ctx.platform().pointer.pointer().await;
+    let locale = locale(ctx)?;
+    let for_request = needed.clone();
+    let text = link::with_snapshot(ctx, move |snapshot| {
+        let input = request::Input {
+            config: snapshot.pipeline.config(),
+            catalog: &catalog(snapshot, &locale),
+            url: &for_request.resolution.url,
+            source: source_label(snapshot, &locale, &for_request.request.source),
+            held: for_request.request.held,
+            placement,
+            preview: false,
+        };
+        wye_api::json::encode(&request::build(&input))
+    })
+    .await??;
+    let (id, superseded) = ctx
+        .picker()
+        .pending
+        .open(Some(PendingLink { needed, activation }));
+    if let Some(old) = superseded {
+        tracing::info!(
+            old = old.id,
+            new = id,
+            "a new link replaces the pending one"
+        );
+    }
+    let Err(error) = host::show_picker(ctx, &id, &text).await else {
+        return Ok(());
+    };
+    tracing::warn!(%error, "cannot show the picker");
+    // Only this request falls back; a newer one already replaced it.
+    match ctx
+        .picker()
+        .pending
+        .take(&id)
+        .and_then(|pending| pending.link)
+    {
+        Some(pending) => stand_in(ctx, pending, &error).await,
+        None => Ok(()),
+    }
 }
 
-/// `dev.soldunov.wye1.PickerCancelled` (PICK-23).
+/// The stand-in opens the link and a notification says why (PIPE-13).
+async fn stand_in(ctx: &ServiceContext, pending: PendingLink, error: &Error) -> Result<()> {
+    let notification = Notification {
+        summary: "Wye couldn't show the picker".to_owned(),
+        body: format!(
+            "The link opened in your likeliest browser instead.\n{}",
+            pending.needed.resolution.url
+        ),
+        ..Notification::default()
+    };
+    if let Err(notify_error) = ctx.platform().notifier.notify(&notification).await {
+        tracing::warn!(%notify_error, %error, "cannot say the picker is unavailable");
+    }
+    super::picker_fallback::open_without_picker(ctx, pending.needed, &pending.activation).await
+}
+
+/// `dev.soldunov.wye1.PreviewPicker` (IN-06, PKS-06): the picker with a
+/// sample link; choosing opens nothing.
+pub async fn preview_picker(ctx: &ServiceContext) -> Result<()> {
+    let url = Url::parse(PREVIEW_LINK).map_err(|error| Error::failed(error.to_string()))?;
+    let placement = ctx.platform().pointer.pointer().await;
+    let locale = locale(ctx)?;
+    let text = link::with_snapshot(ctx, move |snapshot| {
+        let input = request::Input {
+            config: snapshot.pipeline.config(),
+            catalog: &catalog(snapshot, &locale),
+            url: &url,
+            source: None,
+            held: Modifiers::NONE,
+            placement,
+            preview: true,
+        };
+        wye_api::json::encode(&request::build(&input))
+    })
+    .await??;
+    let (id, _) = ctx.picker().pending.open(None);
+    let shown = host::show_picker(ctx, &id, &text).await;
+    if shown.is_err() {
+        ctx.picker().pending.take(&id);
+    }
+    shown
+}
+
+/// `dev.soldunov.wye1.PickerChose` (PIPE-13, PICK-20, PICK-21, PICK-29,
+/// PICK-32, PICK-33).
+pub async fn picker_chose(
+    ctx: &ServiceContext,
+    _caller: &Caller,
+    request_id: &str,
+    target: &str,
+    options: &Dict,
+) -> Result<()> {
+    // Validated before the request is taken, so bad input loses nothing.
+    let choice = choice::parse(target, options)?;
+    let Some(link) = take(ctx, request_id)?.link else {
+        // PKS-06: a preview opens nothing.
+        return Ok(());
+    };
+    let activation = choice.token.map_or(link.activation, |token| Activation {
+        token: Some(token),
+        startup_id: None,
+    });
+    let needed = link.needed;
+    let chosen = choice.chosen;
+    // PIPE-14: the matched rule's script runs on the chosen link.
+    let hooks = link::hooks::LinkHooks::scripts_only(ctx);
+    let plan = link::with_snapshot(ctx, move |snapshot| {
+        link::plan_with(
+            snapshot,
+            &needed.resolution,
+            &needed.request,
+            Some(chosen),
+            hooks.hooks(),
+        )
+    })
+    .await?;
+    // The plan carries its history entry; `open_plan` records it once the
+    // browser started (PIPE-16).
+    link::open_plan(ctx, plan, &activation).await
+}
+
+/// `dev.soldunov.wye1.PickerCancelled` (PICK-23): the link is dropped.
 #[allow(
     clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
+    reason = "the bus layer awaits every topic function"
 )]
 pub async fn picker_cancelled(
-    _ctx: &ServiceContext,
+    ctx: &ServiceContext,
     _caller: &Caller,
-    _request_id: &str,
+    request_id: &str,
 ) -> Result<()> {
-    Err(Error::not_implemented("PickerCancelled"))
+    take(ctx, request_id).map(|pending| {
+        tracing::info!(id = pending.id, "the picker was cancelled");
+    })
 }
 
-/// `dev.soldunov.wye1.PickerAction` ([`wye_api::actions::PickerAction`]).
-#[allow(
-    clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
-)]
+/// `dev.soldunov.wye1.PickerAction`: `copy-link` (KEY-22) or `create-rule`
+/// (PICK-31). Either ends the request without opening the link.
 pub async fn picker_action(
-    _ctx: &ServiceContext,
+    ctx: &ServiceContext,
     _caller: &Caller,
-    _request_id: &str,
-    _action: &str,
+    request_id: &str,
+    action: &str,
 ) -> Result<()> {
-    Err(Error::not_implemented("PickerAction"))
+    let action: PickerAction = action
+        .parse()
+        .map_err(|error: wye_api::UnknownValue| Error::invalid_args(error.to_string()))?;
+    let pending = take(ctx, request_id)?;
+    let url = pending.link.as_ref().map_or_else(
+        || PREVIEW_LINK.to_owned(),
+        |link| link.needed.resolution.url.to_string(),
+    );
+    match action {
+        PickerAction::CopyLink => ctx
+            .platform()
+            .clipboard
+            .write(&url)
+            .await
+            .map_err(|error| Error::failed(error.to_string())),
+        PickerAction::CreateRule => {
+            let prefill = rule_prefill(pending.link.as_ref(), &url);
+            host::show_window(ctx, Window::RuleEditor, &prefill).await
+        }
+    }
+}
+
+/// PICK-31: the rule editor's prefill, a Domain matcher for the link's host
+/// and the source app when known: `{"domain": …, "sourceApp": …}`.
+fn rule_prefill(link: Option<&PendingLink>, url: &str) -> String {
+    let host = Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned));
+    let source = link
+        .and_then(|link| link.needed.request.source.desktop_id.as_ref())
+        .map(ToString::to_string);
+    serde_json::json!({ "domain": host, "sourceApp": source }).to_string()
+}
+
+fn take(ctx: &ServiceContext, request_id: &str) -> Result<Pending> {
+    ctx.picker()
+        .pending
+        .take(request_id)
+        .ok_or_else(|| Error::NotFound(format!("no picker request {request_id:?} is pending")))
+}
+
+/// Background work of this topic, started with the service: start the UI
+/// host when a route can end on the picker (decision 2), and close the
+/// picker when the screen locks.
+pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
+    vec![
+        tokio::spawn(activate_ahead(ctx.clone())),
+        tokio::spawn(close_on_lock(ctx.clone())),
+    ]
+}
+
+async fn activate_ahead(ctx: ServiceContext) {
+    let needed = link::with_snapshot(&ctx, |snapshot| {
+        activation::can_end_on_picker(snapshot.pipeline.config())
+    })
+    .await;
+    match needed {
+        Ok(true) => {
+            if let Err(error) = host::activate(&ctx).await {
+                tracing::info!(%error, "cannot start the UI host ahead of time");
+            }
+        }
+        Ok(false) => {}
+        Err(error) => tracing::warn!(%error, "cannot read the configuration"),
+    }
+}
+
+/// PKS-07: a picker showing when the screen locks closes, and its link
+/// waits for the unlock instead of being lost.
+async fn close_on_lock(ctx: ServiceContext) {
+    let mut locked = ctx.platform().lock.locked();
+    while locked.changed().await.is_ok() {
+        if !*locked.borrow_and_update() {
+            continue;
+        }
+        let Some(pending) = ctx.picker().pending.take_current() else {
+            continue;
+        };
+        if let Err(error) = host::close_picker(&ctx, &pending.id).await {
+            tracing::warn!(%error, "cannot close the picker");
+        }
+        if let Some(link) = pending.link {
+            tracing::info!("screen locked; the picker's link waits for the unlock");
+            link::hold_for_unlock(&ctx, link.needed, link.activation);
+        }
+    }
+}
+
+/// The session's message locale, for app names (DISC-03).
+fn locale(ctx: &ServiceContext) -> Result<Locale> {
+    Ok(ctx.link().environment()?.xdg.locale.clone())
+}
+
+fn catalog(snapshot: &Snapshot, locale: &Locale) -> wye_core::target_menu::TargetCatalog {
+    snapshot.inventory.catalog(locale, &[])
+}
+
+/// The source app as the URL line shows it (PICK-09).
+fn source_label(snapshot: &Snapshot, locale: &Locale, source: &SourceApp) -> Option<SourceLabel> {
+    let installed = source
+        .desktop_id
+        .as_ref()
+        .and_then(|id| snapshot.inventory.get(id));
+    match (installed, &source.executable) {
+        (Some(app), _) => Some(SourceLabel {
+            name: app.display_name(locale),
+            icon: app.entry.icon.clone(),
+        }),
+        (None, Some(executable)) => Some(SourceLabel {
+            name: executable.clone(),
+            icon: None,
+        }),
+        (None, None) => None,
+    }
 }

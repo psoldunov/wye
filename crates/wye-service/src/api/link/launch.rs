@@ -30,6 +30,10 @@ pub(crate) async fn open(ctx: &ServiceContext, plan: Plan, activation: &Activati
                 tracing::info!(%error, pid, "launched app stays in Wye's own unit");
             }
             tracing::info!(target = %plan.target, url = %plan.url, pid, "opened");
+            // PIPE-16: only a link that opened is recorded.
+            if let Some(entry) = plan.history {
+                crate::api::history::record_entry(ctx, entry).await;
+            }
             Ok(())
         }
         Err(error) => failed(ctx, plan, error.to_string(), activation).await,
@@ -138,6 +142,7 @@ mod tests {
                 remove_env: Vec::new(),
             }),
             alternatives: Vec::new(),
+            history: None,
         }
     }
 

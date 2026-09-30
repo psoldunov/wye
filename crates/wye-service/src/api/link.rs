@@ -9,6 +9,7 @@
 //! picker broker plugs in.
 
 mod environment;
+pub(crate) mod hooks;
 mod incoming;
 mod launch;
 mod route;
@@ -24,7 +25,7 @@ use wye_core::{LinkRequest, Modifiers, SourceApp, Target};
 pub use environment::Environment;
 pub(crate) use environment::Snapshot;
 pub(crate) use incoming::Activation;
-pub(crate) use route::{PickerNeeded, Plan, plan, plan_for};
+pub(crate) use route::{PickerNeeded, Plan, plan_for, plan_with};
 
 use self::incoming::Incoming;
 use self::route::Routed;
@@ -83,7 +84,7 @@ impl State {
             .unwrap_or_else(PoisonError::into_inner) = Some(Arc::new(environment));
     }
 
-    fn environment(&self) -> Result<Arc<Environment>> {
+    pub(crate) fn environment(&self) -> Result<Arc<Environment>> {
         self.environment
             .read()
             .unwrap_or_else(PoisonError::into_inner)
@@ -150,12 +151,16 @@ pub async fn open_uris(
 }
 
 /// Background work of this topic, started with the service: release held
-/// links on unlock, and answer launch-failure buttons.
+/// links on unlock, answer launch-failure buttons, and the picker broker's
+/// own tasks.
 pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
-    vec![
+    [
         tokio::spawn(release_on_unlock(ctx.clone())),
         tokio::spawn(answer_failure_buttons(ctx.clone())),
     ]
+    .into_iter()
+    .chain(super::picker::spawn_tasks(ctx))
+    .collect()
 }
 
 /// What is known about a link's source before the apps are read.
@@ -175,31 +180,49 @@ async fn open_one(
     hint: SourceHint,
 ) -> Result<()> {
     let environment = ctx.link().environment()?;
-    let (snapshot, detected) = blocking(move || {
-        let snapshot = Snapshot::load(&environment);
-        let detected = match hint {
-            SourceHint::Known(source) => Some(source),
-            SourceHint::Pid { pid, fallback } => {
-                source::from_pid(&environment.proc_root, pid, &snapshot.inventory).map(|found| {
-                    if found == SourceApp::default() {
-                        fallback
-                    } else {
-                        found
-                    }
-                })
-            }
+    let snapshot = super::config::snapshot(ctx).await?;
+    // BRW-03, RUL-27, ADV-11: probe only when a binding reads held keys,
+    // and start the probe first, alongside source detection (which may ask
+    // KWin), so a quickly released Shift is still seen.
+    let probe = incoming.held.is_none()
+        && crate::platform::modifiers::bindings_need_modifiers(
+            snapshot.pipeline.config(),
+            incoming.entry,
+        );
+    let held = async {
+        match incoming.held {
+            Some(held) => held,
+            None if probe => probe_modifiers(ctx.platform()).await,
+            None => Modifiers::NONE,
+        }
+    };
+    let detection = async {
+        let (snapshot, detected) = blocking(move || {
+            let detected = match hint {
+                SourceHint::Known(source) => Some(source),
+                SourceHint::Pid { pid, fallback } => {
+                    source::from_pid(&environment.proc_root, pid, &snapshot.inventory).map(
+                        |found| {
+                            if found == SourceApp::default() {
+                                fallback
+                            } else {
+                                found
+                            }
+                        },
+                    )
+                }
+            };
+            (snapshot, detected)
+        })
+        .await?;
+        let source = match detected {
+            Some(source) => source,
+            None => source::from_focus(ctx.platform().focus.as_ref()).await,
         };
-        (snapshot, detected)
-    })
-    .await?;
-    let source = match detected {
-        Some(source) => source,
-        None => source::from_focus(ctx.platform().focus.as_ref()).await,
+        Ok::<_, Error>((snapshot, source))
     };
-    let held = match incoming.held {
-        Some(held) => held,
-        None => probe_modifiers(ctx.platform()).await,
-    };
+    let (held, detection) = tokio::join!(held, detection);
+    let (snapshot, source) = detection?;
     let request = LinkRequest {
         source,
         held,
@@ -207,7 +230,22 @@ async fn open_one(
         force: incoming.force,
         ..LinkRequest::new(url, incoming.entry)
     };
-    let routed = blocking(move || route::route(&snapshot, &request)).await?;
+    let notify_expansion = snapshot
+        .pipeline
+        .config()
+        .advanced
+        .expansion
+        .notify_on_failure;
+    let hooks = hooks::LinkHooks::new(ctx, snapshot.pipeline.config());
+    let routed = blocking(move || route::route(&snapshot, &request, hooks.hooks())).await?;
+    let routed = routed.map(|(routed, steps)| {
+        // DLG-EXP-04; the link carries on either way (PIPE-03).
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            super::expansion::notify_failures(&ctx, notify_expansion, &steps).await;
+        });
+        routed
+    });
     match routed {
         Err(rejected) => {
             launch::notify_rejected(ctx, url, &rejected).await;
@@ -226,17 +264,20 @@ async fn open_one(
     }
 }
 
-/// Where a link that needs the picker goes (PIPE-13).
-///
-/// Seam for the picker broker: once `api::picker` can show the picker,
-/// hand `needed` to it here and keep the stand-in for when the UI host
-/// cannot be reached.
+/// Where a link that needs the picker goes (PIPE-13): the picker broker,
+/// which falls back to the stand-in when the UI host cannot be reached.
 async fn to_picker(
     ctx: &ServiceContext,
     needed: PickerNeeded,
     activation: Activation,
 ) -> Result<()> {
-    super::picker_fallback::open_without_picker(ctx, needed, &activation).await
+    super::picker::show_link(ctx, needed, activation).await
+}
+
+/// PKS-07: keep `needed` until the screen unlocks, then show the picker
+/// (for a picker that was showing when the screen locked).
+pub(crate) fn hold_for_unlock(ctx: &ServiceContext, needed: PickerNeeded, activation: Activation) {
+    ctx.link().hold(Held { needed, activation });
 }
 
 /// Start `plan` (for topics that route links of their own).
@@ -253,8 +294,8 @@ pub(crate) async fn with_snapshot<T: Send + 'static>(
     ctx: &ServiceContext,
     work: impl FnOnce(&Snapshot) -> T + Send + 'static,
 ) -> Result<T> {
-    let environment = ctx.link().environment()?;
-    blocking(move || work(&Snapshot::load(&environment))).await
+    let snapshot = super::config::snapshot(ctx).await?;
+    blocking(move || work(&snapshot)).await
 }
 
 async fn blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Result<T> {

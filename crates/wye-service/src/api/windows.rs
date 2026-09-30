@@ -33,14 +33,25 @@ impl State {
 /// `org.freedesktop.Application.Activate`: Wye started without a link
 /// (TRAY-05).
 ///
-/// Settings opens while no tray icon can bring the user back in. The
-/// first-run window and "tray icon shown" come with onboarding state (U07)
-/// and the tray (U08); until then there is never a tray, so Settings always
-/// opens. A UI host that cannot be reached is logged, not returned: a
-/// launcher has nobody to show the error to.
+/// The first-run window while onboarding is not done (ONB-06); otherwise
+/// Settings while no tray icon is on screen, so the user can always get back
+/// in; otherwise nothing, since the tray icon is the way in. A UI host that
+/// cannot be reached is logged, not returned: a launcher has nobody to show
+/// the error to.
 pub async fn activate(ctx: &ServiceContext, _caller: &Caller, _platform_data: &Dict) -> Result<()> {
-    if let Err(error) = show(ctx, Window::Settings, "").await {
-        tracing::warn!(%error, "cannot open Settings");
+    let onboarded = super::state::load(ctx)
+        .await
+        .inspect_err(|error| tracing::warn!(%error, "cannot read the onboarding state"))
+        .is_ok_and(|state| state.onboarding_done);
+    let window = if !onboarded {
+        Window::FirstRun
+    } else if !super::tray::icon_on_screen(ctx).await {
+        Window::Settings
+    } else {
+        return Ok(());
+    };
+    if let Err(error) = show(ctx, window, "").await {
+        tracing::warn!(%error, window = window.as_str(), "cannot open the window");
     }
     Ok(())
 }

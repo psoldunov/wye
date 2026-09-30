@@ -36,6 +36,15 @@ pub struct FocusedApp {
     pub resource_class: Option<String>,
 }
 
+/// What the user did with the `StatusNotifierItem`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TrayEvent {
+    /// A menu item with this ID was chosen.
+    Activated(String),
+    /// The menu is about to open (TRAY-10: refresh the clipboard item).
+    AboutToShow,
+}
+
 /// A desktop notification.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Notification {

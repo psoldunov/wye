@@ -1,18 +1,11 @@
 //! Where the service reads the configuration, the state and the installed
-//! apps from, and reading them for one link.
-//!
-//! Read per request for now; a cached, watched configuration and inventory
-//! replace [`Snapshot::load`] later (U07), which is why everything goes
-//! through it.
+//! apps from, and what one link is routed with.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use wye_core::{Config, DesktopId, Pipeline, ServiceCatalogue};
-use wye_desktop::{Inventory, WYE_DESKTOP_ID, XdgDirs};
-
-/// The key in `state.toml` naming the browser Wye replaced as the default.
-const PREVIOUS_DEFAULT: &str = "previous-default-browser";
+use wye_core::{DesktopId, Pipeline};
+use wye_desktop::{Inventory, XdgDirs};
 
 /// The files and directories the service works with.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,7 +52,8 @@ impl Environment {
     }
 }
 
-/// Everything one link is routed with.
+/// Everything one link is routed with, from the service's cached
+/// configuration and inventory (`api::config::snapshot`).
 pub(crate) struct Snapshot {
     pub pipeline: Pipeline,
     pub inventory: Inventory,
@@ -67,65 +61,10 @@ pub(crate) struct Snapshot {
     pub previous_default: Option<DesktopId>,
 }
 
-impl Snapshot {
-    /// Read the configuration, the state and the installed apps. A missing
-    /// or broken file never stops a link: it is logged and the defaults are
-    /// used.
-    pub fn load(environment: &Environment) -> Self {
-        let wye = DesktopId::new(WYE_DESKTOP_ID).ok();
-        let inventory = match &wye {
-            Some(wye) => Inventory::scan(&environment.xdg, wye),
-            None => Inventory::from_apps(Vec::new(), Vec::new()),
-        };
-        Self {
-            pipeline: Pipeline::with_shipped_data(load_config(&environment.config)),
-            inventory,
-            previous_default: previous_default(&environment.state),
-        }
-    }
-}
-
-fn load_config(path: &Path) -> Config {
-    let text = match std::fs::read_to_string(path) {
-        Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Config::default(),
-        Err(error) => {
-            tracing::warn!(path = %path.display(), %error, "cannot read the configuration; using defaults");
-            return Config::default();
-        }
-    };
-    let catalogue = ServiceCatalogue::shipped();
-    let known: Vec<&str> = catalogue
-        .services()
-        .iter()
-        .map(|service| service.id.as_str())
-        .collect();
-    match Config::parse(&text, &known) {
-        Ok(loaded) => {
-            for warning in &loaded.warnings {
-                tracing::info!(path = %path.display(), %warning, "configuration warning");
-            }
-            loaded.config
-        }
-        Err(error) => {
-            tracing::warn!(path = %path.display(), %error, "invalid configuration; using defaults");
-            Config::default()
-        }
-    }
-}
-
-/// `previous-default-browser` from `state.toml`, if readable.
-fn previous_default(path: &Path) -> Option<DesktopId> {
-    let text = std::fs::read_to_string(path).ok()?;
-    let table: toml::Table = toml::from_str(&text)
-        .inspect_err(|error| tracing::warn!(path = %path.display(), %error, "invalid state file"))
-        .ok()?;
-    let id = table.get(PREVIOUS_DEFAULT)?.as_str()?;
-    DesktopId::new(id).ok()
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     fn lookup(vars: &[(&'static str, &'static str)]) -> impl Fn(&str) -> Option<OsString> {
@@ -158,27 +97,5 @@ mod tests {
             environment.state,
             Path::new("/home/u/.local/state/wye/state.toml")
         );
-    }
-
-    #[test]
-    fn broken_files_fall_back_to_defaults() {
-        let dir = tempfile::tempdir().expect("temp dir");
-        let config = dir.path().join("config.toml");
-        std::fs::write(&config, "[browsers\n").expect("written");
-        assert_eq!(load_config(&config), Config::default());
-        assert_eq!(
-            load_config(&dir.path().join("none.toml")),
-            Config::default()
-        );
-
-        let state = dir.path().join("state.toml");
-        std::fs::write(&state, "previous-default-browser = \"firefox.desktop\"\n")
-            .expect("written");
-        assert_eq!(
-            previous_default(&state),
-            DesktopId::new("firefox.desktop").ok()
-        );
-        std::fs::write(&state, "not toml [").expect("written");
-        assert_eq!(previous_default(&state), None);
     }
 }

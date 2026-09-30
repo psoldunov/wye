@@ -1,0 +1,18 @@
+[package]
+name = "wye-desktop"
+description = "Wye's Linux desktop integration: desktop entries, browser profiles, launching and the default-browser setting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde_json.workspace = true
+tempfile.workspace = true
+thiserror.workspace = true
+wye-core.workspace = true
+
+[lints]
+workspace = true

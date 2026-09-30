@@ -1,2 +1,6 @@
 # Ensemblr attachments (screenshots and other pasted files); never commit them.
 .context/
+/target
+/result
+/result-*
+/.direnv

@@ -1,0 +1,48 @@
+# Tracking query parameters Wye removes when "Remove tracking parameters" is on
+# (EXT-10). Shipped as data so the list can change without code changes
+# (EXT-11). A maintained upstream dataset such as ClearURLs may replace or
+# extend it once its licence is confirmed (docs/spec/14-open-questions.md #11).
+
+# Removed from every link. Names compare case-insensitively.
+global = [
+  "fbclid",
+  "gclid",
+  "dclid",
+  "gbraid",
+  "wbraid",
+  "msclkid",
+  "mc_cid",
+  "mc_eid",
+  "igshid",
+  "yclid",
+  "twclid",
+  "ttclid",
+  "_hsenc",
+  "_hsmi",
+  "mkt_tok",
+]
+
+# Every parameter starting with one of these is removed.
+prefixes = ["utm_"]
+
+# Parameters removed only on some sites, because elsewhere they carry meaning.
+# Hosts match the host and its subdomains.
+[[site]]
+name = "YouTube"
+hosts = ["youtube.com", "youtu.be"]
+params = ["si", "feature"]
+
+[[site]]
+name = "Spotify"
+hosts = ["open.spotify.com"]
+params = ["si"]
+
+[[site]]
+name = "Instagram"
+hosts = ["instagram.com"]
+params = ["igsh"]
+
+[[site]]
+name = "Amazon"
+hosts = ["amazon.com", "amazon.co.uk", "amazon.de", "amazon.fr", "amazon.it", "amazon.es", "amazon.ca", "amazon.co.jp"]
+params = ["ref_", "pd_rd_r", "pd_rd_w", "pd_rd_wg", "pf_rd_p", "pf_rd_r", "content-id"]

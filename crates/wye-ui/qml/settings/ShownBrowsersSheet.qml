@@ -18,7 +18,7 @@ WyeSheet {
 
     note: rows.length === 0 ? qsTr("No browsers found. Click Rescan on the Browsers page.") : ""
     primaryText: qsTr("Done")
-    sheetWidth: Kirigami.Units.gridUnit * 21
+    sheetWidth: Kirigami.Units.gridUnit * 26
     title: qsTr("Shown Browsers")
 
     function showChooser() {
@@ -38,20 +38,21 @@ WyeSheet {
         target: SettingsBackend
     }
 
-    // SHOWN-05: "+" at the bottom left adds any app through the app chooser.
-    footerLeading: QQC2.ToolButton {
-        display: QQC2.AbstractButton.IconOnly
+    // SHOWN-05: "+ Add App…" at the bottom left adds any app through the app chooser.
+    footerLeading: QQC2.Button {
+        Accessible.name: text
         enabled: SettingsBackend.writable
         icon.name: "list-add"
-        text: qsTr("Add App")
-        QQC2.ToolTip.text: text
-        QQC2.ToolTip.visible: hovered
+        text: qsTr("Add App…")
 
         onClicked: sheet.showChooser()
     }
 
     WyeChecklist {
         Layout.fillWidth: true
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        Layout.rightMargin: Kirigami.Units.largeSpacing
+        Layout.topMargin: Kirigami.Units.smallSpacing
         Layout.preferredHeight: implicitHeight
         enabled: SettingsBackend.writable
         rows: sheet.rows

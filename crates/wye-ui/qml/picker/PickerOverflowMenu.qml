@@ -2,6 +2,9 @@ pragma ComponentBehavior: Bound
 
 // The "⋯" menu (PICK-08): Open In › every target that is not a tile
 // (PICK-28), Copy Link, Create Rule… (PICK-31), Settings….
+//
+// Item popups, like PickerTileMenu: a menu window would take the focus the
+// picker cancels without (PICK-23).
 import QtQuick
 import QtQuick.Controls as QQC2
 
@@ -15,15 +18,21 @@ QQC2.Menu {
     signal openIn(int group, int item)
     signal action(string name)
 
+    popupType: QQC2.Popup.Item
+
     QQC2.Menu {
         id: openInMenu
 
         title: qsTr("Open In")
+        icon.name: "document-open"
         enabled: menu.entries.length > 0
+        popupType: QQC2.Popup.Item
 
         Instantiator {
             model: menu.entries
 
+            // A group's label is a section heading, as in the target menu
+            // (TGT-02): bold and not choosable.
             delegate: QQC2.MenuItem {
                 required property var modelData
 

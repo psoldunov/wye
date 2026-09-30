@@ -517,6 +517,701 @@
   },
   {
    "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "config": {
+      "general": {
+       "launch-at-login": true,
+       "tray-icon": "primary-browser",
+       "show-tray-icon": true,
+       "open-local-html": false
+      },
+      "browsers": {
+       "primary": {
+        "picker": true
+       },
+       "alternative": {
+        "app": "firefox.desktop"
+       },
+       "alternative-key": [
+        "Shift"
+       ],
+       "shown": [
+        {
+         "target": {
+          "app": "firefox.desktop"
+         },
+         "hotkey": "f"
+        },
+        {
+         "target": {
+          "profile": {
+           "app": "google-chrome.desktop",
+           "id": "Profile 1"
+          }
+         },
+         "hotkey": "c"
+        },
+        {
+         "target": {
+          "app": "org.kde.konsole.desktop"
+         }
+        }
+       ]
+      },
+      "apps": {
+       "discord": {
+        "app": "com.discordapp.Discord.desktop"
+       },
+       "google-meet": {
+        "profile": {
+         "app": "google-chrome.desktop",
+         "id": "Profile 1"
+        }
+       },
+       "linear": {
+        "app": "gone.desktop"
+       },
+       "figma": {
+        "private": "firefox.desktop"
+       }
+      },
+      "picker": {
+       "hotkeys": "per-target",
+       "icon-size": "medium",
+       "skip-when-locked": true,
+       "keys": {
+        "open": [
+         "Return",
+         "KP_Enter",
+         "space"
+        ],
+        "cancel": [
+         "Escape"
+        ],
+        "next": [
+         "Right",
+         "Tab"
+        ],
+        "previous": [
+         "Left",
+         "Shift+Tab"
+        ],
+        "first": [
+         "Home"
+        ],
+        "last": [
+         "End"
+        ],
+        "copy-link": [
+         "Ctrl+c"
+        ],
+        "more": [
+         "Menu"
+        ],
+        "create-rule": [
+         "Ctrl+r"
+        ],
+        "private-modifier": [
+         "Shift"
+        ],
+        "background-modifier": [
+         "Ctrl"
+        ],
+        "new-window-modifier": [
+         "Alt"
+        ]
+       }
+      },
+      "advanced": {
+       "history": true,
+       "force-picker-from-extension": true,
+       "bypass-key": [
+        "Alt"
+       ],
+       "expansion": {
+        "disabled": [
+         "t.co"
+        ],
+        "custom-short-links": [
+         "mine.link"
+        ],
+        "timeout-ms": 2000,
+        "max-redirects": 5,
+        "notify-on-failure": false
+       }
+      },
+      "shortcuts": {
+       "toggle-menu": "Ctrl+Alt+o"
+      },
+      "extras": {
+       "strip-tracking-on-open": true,
+       "strip-tracking-on-copy": true,
+       "force-https": false
+      },
+      "rules": [
+       {
+        "id": "rule-1",
+        "name": "GitHub in Firefox",
+        "target": {
+         "app": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "github.com"
+         },
+         {
+          "kind": "domain",
+          "pattern": "gitlab.com"
+         }
+        ]
+       },
+       {
+        "id": "rule-2",
+        "name": "Slack links to Chrome",
+        "target": {
+         "app": "google-chrome.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/spreadsheets"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop"
+        ],
+        "held-keys": [
+         "Ctrl"
+        ],
+        "open-in-background": true,
+        "run": "after",
+        "transform": true
+       },
+       {
+        "id": "rule-3",
+        "name": "Meet (off)",
+        "enabled": false,
+        "target": {
+         "default": true
+        },
+        "url-matchers": [
+         {
+          "kind": "regex",
+          "pattern": "^meet\\.google\\.com/[a-z]{3}-"
+         }
+        ]
+       },
+       {
+        "id": "rule-4",
+        "name": "Work documents, spreadsheets and slides in the Work profile of Google Chrome",
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 1"
+         }
+        },
+        "url-matchers": [
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/document"
+         },
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/spreadsheets"
+         },
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/presentation"
+         },
+         {
+          "kind": "domain",
+          "pattern": "drive.google.com"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop",
+         "thunderbird.desktop"
+        ],
+        "held-keys": [
+         "Ctrl",
+         "Alt"
+        ]
+       },
+       {
+        "id": "rule-5",
+        "name": "Banking",
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "wildcard",
+          "pattern": "*.bank.example/*"
+         }
+        ],
+        "force-new-window": true
+       },
+       {
+        "id": "rule-6",
+        "name": "Pull requests",
+        "target": {
+         "app": "app.zen_browser.zen.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "contains",
+          "pattern": "/pull/"
+         }
+        ]
+       },
+       {
+        "id": "rule-7",
+        "name": "Old tool (app removed)",
+        "target": {
+         "app": "gone.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "tool.example.org"
+         }
+        ]
+       },
+       {
+        "id": "rule-8",
+        "name": "Everything from Thunderbird",
+        "enabled": false,
+        "target": {
+         "custom": "/opt/tool/bin/tool"
+        },
+        "source-apps": [
+         "thunderbird.desktop"
+        ]
+       },
+       {
+        "id": "rule-9",
+        "name": "Shift-click to the picker",
+        "target": {
+         "picker": true
+        },
+        "held-keys": [
+         "Shift"
+        ]
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "status": {
+      "defaultBrowser": {
+       "isDefault": false,
+       "current": {
+        "id": "firefox.desktop",
+        "name": "Firefox",
+        "icon": "firefox"
+       }
+      },
+      "config": {
+       "path": "/home/user/.config/wye/config.toml",
+       "writable": false,
+       "lossless": true,
+       "warnings": []
+      },
+      "capabilities": {
+       "heldKeys": "wayland-layer-shell",
+       "pointer": "kwin",
+       "clipboardRead": "wayland-ext-data-control",
+       "clipboardWatch": "wayland-ext-data-control",
+       "clipboardWrite": "wayland-ext-data-control",
+       "globalShortcuts": "portal"
+      },
+      "uiState": {
+       "onboardingDone": true,
+       "dismissedCallouts": [],
+       "lastPage": "apps"
+      }
+     }
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "status": {
+      "defaultBrowser": {
+       "isDefault": false,
+       "current": {
+        "id": "firefox.desktop",
+        "name": "Firefox",
+        "icon": "firefox"
+       }
+      },
+      "config": {
+       "path": "/home/user/.config/wye/config.toml",
+       "writable": true,
+       "lossless": true,
+       "warnings": []
+      },
+      "capabilities": {
+       "heldKeys": "wayland-layer-shell",
+       "pointer": "kwin",
+       "clipboardRead": "wayland-ext-data-control",
+       "clipboardWatch": "wayland-ext-data-control",
+       "clipboardWrite": "wayland-ext-data-control",
+       "globalShortcuts": "portal"
+      },
+      "uiState": {
+       "onboardingDone": true,
+       "dismissedCallouts": [],
+       "lastPage": "apps"
+      }
+     },
+     "config": {
+      "general": {
+       "launch-at-login": true,
+       "tray-icon": "primary-browser",
+       "show-tray-icon": true,
+       "open-local-html": false
+      },
+      "browsers": {
+       "primary": {
+        "picker": true
+       },
+       "alternative": {
+        "app": "firefox.desktop"
+       },
+       "alternative-key": [
+        "Shift"
+       ],
+       "shown": [
+        {
+         "target": {
+          "app": "firefox.desktop"
+         },
+         "hotkey": "f"
+        },
+        {
+         "target": {
+          "profile": {
+           "app": "google-chrome.desktop",
+           "id": "Profile 1"
+          }
+         },
+         "hotkey": "c"
+        },
+        {
+         "target": {
+          "app": "org.kde.konsole.desktop"
+         }
+        }
+       ]
+      },
+      "apps": {
+       "discord": {
+        "app": "com.discordapp.Discord.desktop"
+       },
+       "google-meet": {
+        "profile": {
+         "app": "google-chrome.desktop",
+         "id": "Profile 1"
+        }
+       },
+       "linear": {
+        "app": "gone.desktop"
+       },
+       "figma": {
+        "private": "firefox.desktop"
+       }
+      },
+      "picker": {
+       "hotkeys": "per-target",
+       "icon-size": "medium",
+       "skip-when-locked": true,
+       "keys": {
+        "open": [
+         "Return",
+         "KP_Enter",
+         "space"
+        ],
+        "cancel": [
+         "Escape"
+        ],
+        "next": [
+         "Right",
+         "Tab"
+        ],
+        "previous": [
+         "Left",
+         "Shift+Tab"
+        ],
+        "first": [
+         "Home"
+        ],
+        "last": [
+         "End"
+        ],
+        "copy-link": [
+         "Ctrl+c"
+        ],
+        "more": [
+         "Menu"
+        ],
+        "create-rule": [
+         "Ctrl+r"
+        ],
+        "private-modifier": [
+         "Shift"
+        ],
+        "background-modifier": [
+         "Ctrl"
+        ],
+        "new-window-modifier": [
+         "Alt"
+        ]
+       }
+      },
+      "advanced": {
+       "history": true,
+       "force-picker-from-extension": true,
+       "bypass-key": [
+        "Alt"
+       ],
+       "expansion": {
+        "disabled": [
+         "t.co"
+        ],
+        "custom-short-links": [
+         "mine.link"
+        ],
+        "timeout-ms": 2000,
+        "max-redirects": 5,
+        "notify-on-failure": false
+       }
+      },
+      "shortcuts": {
+       "toggle-menu": "Ctrl+Alt+o"
+      },
+      "extras": {
+       "strip-tracking-on-open": true,
+       "strip-tracking-on-copy": true,
+       "force-https": false
+      },
+      "rules": []
+     }
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "config": {
+      "general": {
+       "launch-at-login": true,
+       "tray-icon": "primary-browser",
+       "show-tray-icon": true,
+       "open-local-html": false
+      },
+      "browsers": {
+       "primary": {
+        "picker": true
+       },
+       "alternative": {
+        "app": "firefox.desktop"
+       },
+       "alternative-key": [
+        "Shift"
+       ],
+       "shown": [
+        {
+         "target": {
+          "app": "firefox.desktop"
+         },
+         "hotkey": "f"
+        },
+        {
+         "target": {
+          "profile": {
+           "app": "google-chrome.desktop",
+           "id": "Profile 1"
+          }
+         },
+         "hotkey": "c"
+        },
+        {
+         "target": {
+          "app": "org.kde.konsole.desktop"
+         }
+        }
+       ]
+      },
+      "apps": {
+       "discord": {
+        "app": "com.discordapp.Discord.desktop"
+       },
+       "google-meet": {
+        "profile": {
+         "app": "google-chrome.desktop",
+         "id": "Profile 1"
+        }
+       },
+       "linear": {
+        "app": "gone.desktop"
+       },
+       "figma": {
+        "private": "firefox.desktop"
+       }
+      },
+      "picker": {
+       "hotkeys": "per-target",
+       "icon-size": "medium",
+       "skip-when-locked": true,
+       "keys": {
+        "open": [
+         "Return",
+         "KP_Enter",
+         "space"
+        ],
+        "cancel": [
+         "Escape"
+        ],
+        "next": [
+         "Right",
+         "Tab"
+        ],
+        "previous": [
+         "Left",
+         "Shift+Tab"
+        ],
+        "first": [
+         "Home"
+        ],
+        "last": [
+         "End"
+        ],
+        "copy-link": [
+         "Ctrl+c"
+        ],
+        "more": [
+         "Menu"
+        ],
+        "create-rule": [
+         "Ctrl+r"
+        ],
+        "private-modifier": [
+         "Shift"
+        ],
+        "background-modifier": [
+         "Ctrl"
+        ],
+        "new-window-modifier": [
+         "Alt"
+        ]
+       }
+      },
+      "advanced": {
+       "history": true,
+       "force-picker-from-extension": true,
+       "bypass-key": [
+        "Alt"
+       ],
+       "expansion": {
+        "disabled": [
+         "t.co"
+        ],
+        "custom-short-links": [
+         "mine.link"
+        ],
+        "timeout-ms": 2000,
+        "max-redirects": 5,
+        "notify-on-failure": false
+       }
+      },
+      "shortcuts": {
+       "toggle-menu": "Ctrl+Alt+o"
+      },
+      "extras": {
+       "strip-tracking-on-open": true,
+       "strip-tracking-on-copy": true,
+       "force-https": false
+      },
+      "rules": [
+       {
+        "id": "rule-1",
+        "name": "GitHub in Firefox",
+        "target": {
+         "app": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "github.com"
+         },
+         {
+          "kind": "domain",
+          "pattern": "gitlab.com"
+         }
+        ]
+       },
+       {
+        "id": "rule-2",
+        "name": "Slack links to Chrome",
+        "target": {
+         "app": "google-chrome.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/spreadsheets"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop"
+        ],
+        "held-keys": [
+         "Ctrl"
+        ],
+        "open-in-background": true,
+        "run": "after",
+        "transform": true
+       },
+       {
+        "id": "rule-3",
+        "name": "Meet (off)",
+        "enabled": false,
+        "target": {
+         "default": true
+        },
+        "url-matchers": [
+         {
+          "kind": "regex",
+          "pattern": "^meet\\.google\\.com/[a-z]{3}-"
+         }
+        ]
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "action": "show",
    "key": "rule-editor",
    "argument": {
     "domain": "github.com",
@@ -794,6 +1489,653 @@
    "argument": {
     "page": "rules",
     "sheet": "rule-editor"
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "config": {
+      "general": {
+       "launch-at-login": true,
+       "tray-icon": "primary-browser",
+       "show-tray-icon": true,
+       "open-local-html": false
+      },
+      "browsers": {
+       "primary": {
+        "picker": true
+       },
+       "alternative": {
+        "app": "firefox.desktop"
+       },
+       "alternative-key": [
+        "Shift"
+       ],
+       "shown": [
+        {
+         "target": {
+          "app": "firefox.desktop"
+         },
+         "hotkey": "f"
+        },
+        {
+         "target": {
+          "profile": {
+           "app": "google-chrome.desktop",
+           "id": "Profile 1"
+          }
+         },
+         "hotkey": "c"
+        },
+        {
+         "target": {
+          "app": "org.kde.konsole.desktop"
+         }
+        }
+       ]
+      },
+      "apps": {
+       "discord": {
+        "app": "com.discordapp.Discord.desktop"
+       },
+       "google-meet": {
+        "profile": {
+         "app": "google-chrome.desktop",
+         "id": "Profile 1"
+        }
+       },
+       "linear": {
+        "app": "gone.desktop"
+       },
+       "figma": {
+        "private": "firefox.desktop"
+       }
+      },
+      "picker": {
+       "hotkeys": "per-target",
+       "icon-size": "medium",
+       "skip-when-locked": true,
+       "keys": {
+        "open": [
+         "Return",
+         "KP_Enter",
+         "space"
+        ],
+        "cancel": [
+         "Escape"
+        ],
+        "next": [
+         "Right",
+         "Tab"
+        ],
+        "previous": [
+         "Left",
+         "Shift+Tab"
+        ],
+        "first": [
+         "Home"
+        ],
+        "last": [
+         "End"
+        ],
+        "copy-link": [
+         "Ctrl+c"
+        ],
+        "more": [
+         "Menu"
+        ],
+        "create-rule": [
+         "Ctrl+r"
+        ],
+        "private-modifier": [
+         "Shift"
+        ],
+        "background-modifier": [
+         "Ctrl"
+        ],
+        "new-window-modifier": [
+         "Alt"
+        ]
+       }
+      },
+      "advanced": {
+       "history": true,
+       "force-picker-from-extension": true,
+       "bypass-key": [
+        "Alt"
+       ],
+       "expansion": {
+        "disabled": [
+         "t.co"
+        ],
+        "custom-short-links": [
+         "mine.link"
+        ],
+        "timeout-ms": 2000,
+        "max-redirects": 5,
+        "notify-on-failure": false
+       }
+      },
+      "shortcuts": {
+       "toggle-menu": "Ctrl+Alt+o"
+      },
+      "extras": {
+       "strip-tracking-on-open": true,
+       "strip-tracking-on-copy": true,
+       "force-https": false
+      },
+      "rules": [
+       {
+        "id": "rule-1",
+        "name": "GitHub in Firefox",
+        "target": {
+         "app": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "github.com"
+         },
+         {
+          "kind": "domain",
+          "pattern": "gitlab.com"
+         }
+        ]
+       },
+       {
+        "id": "rule-2",
+        "name": "Slack links to Chrome",
+        "target": {
+         "app": "google-chrome.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/spreadsheets"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop"
+        ],
+        "held-keys": [
+         "Ctrl"
+        ],
+        "open-in-background": true,
+        "run": "after",
+        "transform": true
+       },
+       {
+        "id": "rule-3",
+        "name": "Meet (off)",
+        "enabled": false,
+        "target": {
+         "default": true
+        },
+        "url-matchers": [
+         {
+          "kind": "regex",
+          "pattern": "^meet\\.google\\.com/[a-z]{3}-"
+         }
+        ]
+       },
+       {
+        "id": "rule-4",
+        "name": "Work documents, spreadsheets and slides in the Work profile of Google Chrome",
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 1"
+         }
+        },
+        "url-matchers": [
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/document"
+         },
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/spreadsheets"
+         },
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/presentation"
+         },
+         {
+          "kind": "domain",
+          "pattern": "drive.google.com"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop",
+         "thunderbird.desktop"
+        ],
+        "held-keys": [
+         "Ctrl",
+         "Alt"
+        ]
+       },
+       {
+        "id": "rule-5",
+        "name": "Banking",
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "wildcard",
+          "pattern": "*.bank.example/*"
+         }
+        ],
+        "force-new-window": true
+       },
+       {
+        "id": "rule-6",
+        "name": "Pull requests",
+        "target": {
+         "app": "app.zen_browser.zen.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "contains",
+          "pattern": "/pull/"
+         }
+        ]
+       },
+       {
+        "id": "rule-7",
+        "name": "Old tool (app removed)",
+        "target": {
+         "app": "gone.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "tool.example.org"
+         }
+        ]
+       },
+       {
+        "id": "rule-8",
+        "name": "Everything from Thunderbird",
+        "enabled": false,
+        "target": {
+         "custom": "/opt/tool/bin/tool"
+        },
+        "source-apps": [
+         "thunderbird.desktop"
+        ]
+       },
+       {
+        "id": "rule-9",
+        "name": "Shift-click to the picker",
+        "target": {
+         "picker": true
+        },
+        "held-keys": [
+         "Shift"
+        ]
+       },
+       {
+        "id": "rule-10",
+        "name": "Several matchers",
+        "target": {
+         "app": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "example.com"
+         },
+         {
+          "kind": "wildcard",
+          "pattern": "*.example.org/app/*"
+         },
+         {
+          "kind": "regex",
+          "pattern": "^meet\\.google\\.com/([a-z"
+         },
+         {
+          "kind": "contains",
+          "pattern": "/review/"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop",
+         "thunderbird.desktop",
+         "snap-tool_tool.desktop"
+        ],
+        "held-keys": [
+         "Shift"
+        ]
+       }
+      ]
+     },
+     "status": {
+      "defaultBrowser": {
+       "isDefault": false,
+       "current": {
+        "id": "firefox.desktop",
+        "name": "Firefox",
+        "icon": "firefox"
+       }
+      },
+      "config": {
+       "path": "/home/user/.config/wye/config.toml",
+       "writable": true,
+       "lossless": true,
+       "warnings": []
+      },
+      "capabilities": {
+       "heldKeys": "wayland-layer-shell",
+       "pointer": "kwin",
+       "clipboardRead": "wayland-ext-data-control",
+       "clipboardWatch": "wayland-ext-data-control",
+       "clipboardWrite": "wayland-ext-data-control",
+       "globalShortcuts": "portal"
+      },
+      "uiState": {
+       "onboardingDone": true,
+       "dismissedCallouts": [
+        "rules-order"
+       ],
+       "lastPage": "apps"
+      }
+     }
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "rule-editor",
+   "argument": {
+    "index": 9
+   }
+  },
+  {
+   "action": "show",
+   "key": "rule-editor",
+   "argument": {
+    "index": 3
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "status": {
+      "defaultBrowser": {
+       "isDefault": false,
+       "current": {
+        "id": "firefox.desktop",
+        "name": "Firefox",
+        "icon": "firefox"
+       }
+      },
+      "config": {
+       "path": "/home/user/.config/wye/config.toml",
+       "writable": false,
+       "lossless": true,
+       "warnings": []
+      },
+      "capabilities": {
+       "heldKeys": "wayland-layer-shell",
+       "pointer": "kwin",
+       "clipboardRead": "wayland-ext-data-control",
+       "clipboardWatch": "wayland-ext-data-control",
+       "clipboardWrite": "wayland-ext-data-control",
+       "globalShortcuts": "portal"
+      },
+      "uiState": {
+       "onboardingDone": true,
+       "dismissedCallouts": [],
+       "lastPage": "apps"
+      }
+     }
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "rule-editor",
+   "argument": {
+    "index": 1
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "sheet": "rules-help"
+   }
+  },
+  {
+   "action": "show",
+   "key": "settings",
+   "argument": {
+    "page": "rules",
+    "fixture": {
+     "status": {
+      "defaultBrowser": {
+       "isDefault": false,
+       "current": {
+        "id": "firefox.desktop",
+        "name": "Firefox",
+        "icon": "firefox"
+       }
+      },
+      "config": {
+       "path": "/home/user/.config/wye/config.toml",
+       "writable": true,
+       "lossless": true,
+       "warnings": []
+      },
+      "capabilities": {
+       "heldKeys": "wayland-layer-shell",
+       "pointer": "kwin",
+       "clipboardRead": "wayland-ext-data-control",
+       "clipboardWatch": "wayland-ext-data-control",
+       "clipboardWrite": "wayland-ext-data-control",
+       "globalShortcuts": "portal"
+      },
+      "uiState": {
+       "onboardingDone": true,
+       "dismissedCallouts": [],
+       "lastPage": "apps"
+      }
+     },
+     "config": {
+      "general": {
+       "launch-at-login": true,
+       "tray-icon": "primary-browser",
+       "show-tray-icon": true,
+       "open-local-html": false
+      },
+      "browsers": {
+       "primary": {
+        "picker": true
+       },
+       "alternative": {
+        "app": "firefox.desktop"
+       },
+       "alternative-key": [
+        "Shift"
+       ],
+       "shown": [
+        {
+         "target": {
+          "app": "firefox.desktop"
+         },
+         "hotkey": "f"
+        },
+        {
+         "target": {
+          "profile": {
+           "app": "google-chrome.desktop",
+           "id": "Profile 1"
+          }
+         },
+         "hotkey": "c"
+        },
+        {
+         "target": {
+          "app": "org.kde.konsole.desktop"
+         }
+        }
+       ]
+      },
+      "apps": {
+       "discord": {
+        "app": "com.discordapp.Discord.desktop"
+       },
+       "google-meet": {
+        "profile": {
+         "app": "google-chrome.desktop",
+         "id": "Profile 1"
+        }
+       },
+       "linear": {
+        "app": "gone.desktop"
+       },
+       "figma": {
+        "private": "firefox.desktop"
+       }
+      },
+      "picker": {
+       "hotkeys": "per-target",
+       "icon-size": "medium",
+       "skip-when-locked": true,
+       "keys": {
+        "open": [
+         "Return",
+         "KP_Enter",
+         "space"
+        ],
+        "cancel": [
+         "Escape"
+        ],
+        "next": [
+         "Right",
+         "Tab"
+        ],
+        "previous": [
+         "Left",
+         "Shift+Tab"
+        ],
+        "first": [
+         "Home"
+        ],
+        "last": [
+         "End"
+        ],
+        "copy-link": [
+         "Ctrl+c"
+        ],
+        "more": [
+         "Menu"
+        ],
+        "create-rule": [
+         "Ctrl+r"
+        ],
+        "private-modifier": [
+         "Shift"
+        ],
+        "background-modifier": [
+         "Ctrl"
+        ],
+        "new-window-modifier": [
+         "Alt"
+        ]
+       }
+      },
+      "advanced": {
+       "history": true,
+       "force-picker-from-extension": true,
+       "bypass-key": [
+        "Alt"
+       ],
+       "expansion": {
+        "disabled": [
+         "t.co"
+        ],
+        "custom-short-links": [
+         "mine.link"
+        ],
+        "timeout-ms": 2000,
+        "max-redirects": 5,
+        "notify-on-failure": false
+       }
+      },
+      "shortcuts": {
+       "toggle-menu": "Ctrl+Alt+o"
+      },
+      "extras": {
+       "strip-tracking-on-open": true,
+       "strip-tracking-on-copy": true,
+       "force-https": false
+      },
+      "rules": [
+       {
+        "id": "rule-1",
+        "name": "GitHub in Firefox",
+        "target": {
+         "app": "firefox.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "domain",
+          "pattern": "github.com"
+         },
+         {
+          "kind": "domain",
+          "pattern": "gitlab.com"
+         }
+        ]
+       },
+       {
+        "id": "rule-2",
+        "name": "Slack links to Chrome",
+        "target": {
+         "app": "google-chrome.desktop"
+        },
+        "url-matchers": [
+         {
+          "kind": "prefix",
+          "pattern": "docs.google.com/spreadsheets"
+         }
+        ],
+        "source-apps": [
+         "com.slack.Slack.desktop"
+        ],
+        "held-keys": [
+         "Ctrl"
+        ],
+        "open-in-background": true,
+        "run": "after",
+        "transform": true
+       },
+       {
+        "id": "rule-3",
+        "name": "Meet (off)",
+        "enabled": false,
+        "target": {
+         "default": true
+        },
+        "url-matchers": [
+         {
+          "kind": "regex",
+          "pattern": "^meet\\.google\\.com/[a-z]{3}-"
+         }
+        ]
+       }
+      ]
+     }
+    }
    }
   }
  ]

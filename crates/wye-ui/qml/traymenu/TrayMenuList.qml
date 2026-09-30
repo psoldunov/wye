@@ -2,10 +2,14 @@ pragma ComponentBehavior: Bound
 
 // A panel of tray-menu rows (TRAY-08): the menu itself, or the submenu
 // beside it (TRAY-15). Only interactive rows take the highlight.
+//
+// Drawn as a Plasma menu (qqc2-desktop-style's Menu): the Window colours, a
+// rounded frame in the theme's frame contrast, a soft shadow, and as wide as
+// its widest row, within a minimum and a maximum.
 import QtQuick
 import org.kde.kirigami as Kirigami
 
-Rectangle {
+Item {
     id: list
 
     // Rows of TrayMenuBackend.rows.
@@ -13,6 +17,19 @@ Rectangle {
     property int currentIndex: -1
     readonly property int padding: Kirigami.Units.smallSpacing
     readonly property var currentEntry: currentIndex >= 0 && currentIndex < entries.length ? entries[currentIndex] : null
+    // Whether a row has a check mark: then every row keeps the check column.
+    readonly property bool hasChecks: entries.some(entry => entry.kind === "radio" || entry.checked)
+    // The widest row's content, so the menu fits it (as QMenu does).
+    readonly property real widestRow: {
+        let widest = 0;
+        for (let i = 0; i < rows.count; ++i) {
+            const item = rows.itemAt(i) as TrayMenuRow;
+            if (item) {
+                widest = Math.max(widest, item.contentWidth);
+            }
+        }
+        return widest;
+    }
 
     // The pointer or the keyboard moved onto a row.
     signal pointed(int index)
@@ -40,14 +57,22 @@ Rectangle {
         return item ? item.y + padding : 0;
     }
 
-    Kirigami.Theme.colorSet: Kirigami.Theme.View
-    Kirigami.Theme.inherit: false
-    width: Kirigami.Units.gridUnit * 18
+    Accessible.role: Accessible.PopupMenu
+    // Plus a grid unit of air at the right, as a QMenu leaves after its longest label.
+    width: Math.round(Math.min(Kirigami.Units.gridUnit * 24, Math.max(Kirigami.Units.gridUnit * 12, widestRow + padding * 2 + Kirigami.Units.gridUnit)))
     height: column.implicitHeight + padding * 2
-    radius: Kirigami.Units.cornerRadius
-    color: Kirigami.Theme.backgroundColor
-    border.width: 1
-    border.color: Qt.alpha(Kirigami.Theme.textColor, 0.15)
+
+    Kirigami.ShadowedRectangle {
+        anchors.fill: parent
+        radius: Kirigami.Units.cornerRadius
+        color: Kirigami.Theme.backgroundColor
+        border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+        border.width: 1
+        shadow.xOffset: 0
+        shadow.yOffset: 2
+        shadow.color: Qt.rgba(0, 0, 0, 0.3)
+        shadow.size: Kirigami.Units.smallSpacing * 2
+    }
 
     // Clicks between rows do not close the menu.
     MouseArea {
@@ -73,6 +98,7 @@ Rectangle {
 
                 width: column.width
                 entry: modelData
+                checkColumn: list.hasChecks
                 current: index === list.currentIndex
                 onPointed: {
                     list.currentIndex = index;

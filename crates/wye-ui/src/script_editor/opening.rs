@@ -40,6 +40,18 @@ pub struct Fixture {
     /// Source apps for the popup (SCR-04): desktop ID and name.
     #[serde(default)]
     pub apps: Vec<(String, String)>,
+    /// Open the Reference as well (SCR-06). Only the window reads it, from
+    /// the argument's JSON; it is here so the argument still parses.
+    #[serde(default)]
+    pub reference: bool,
+    /// Text the window types over the loaded source, as the user would, to
+    /// show unsaved changes. Only the window reads it, as `reference`.
+    #[serde(default)]
+    pub edit: Option<String>,
+    /// Close the window once it is opened and edited, to show the question
+    /// about unsaved changes (SCR-10). Only the window reads it, as `reference`.
+    #[serde(default)]
+    pub confirm_close: bool,
 }
 
 #[derive(Debug, Deserialize)]

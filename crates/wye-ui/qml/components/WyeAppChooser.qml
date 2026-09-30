@@ -54,6 +54,7 @@ WyeSheet {
         return app === undefined ? "" : app.id;
     }
 
+    sheetWidth: Kirigami.Units.gridUnit * 26
     title: qsTr("Choose App")
     primaryEnabled: selected.length > 0
     primaryText: multiple ? qsTr("Add") : ""
@@ -109,6 +110,13 @@ WyeSheet {
         Layout.fillWidth: true
         Layout.margins: Kirigami.Units.largeSpacing
         placeholderText: qsTr("Search apps")
+        Accessible.name: qsTr("Search apps")
+
+        // Down from the search field goes into the list.
+        Keys.onDownPressed: {
+            list.forceActiveFocus();
+            list.currentIndex = chooser.rows.findIndex(row => row.kind === "app");
+        }
 
         onAccepted: {
             if (!chooser.multiple && chooser.firstApp() !== "") {
@@ -131,11 +139,20 @@ WyeSheet {
         id: list
 
         Layout.fillWidth: true
-        Layout.preferredHeight: Kirigami.Units.gridUnit * 20
+        // As tall as the sheet allows next to its search field and buttons, so only the list scrolls, not the sheet too.
+        Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 6, Math.min(Kirigami.Units.gridUnit * 20, chooser.available - Kirigami.Units.gridUnit * 9))
+        Layout.bottomMargin: Kirigami.Units.smallSpacing
         clip: true
+        keyNavigationEnabled: true
         model: chooser.rows
 
-        QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
+        // Enter or Space on the current row does what a click does.
+        Keys.onReturnPressed: (list.currentItem as QQC2.ItemDelegate)?.click()
+        Keys.onSpacePressed: (list.currentItem as QQC2.ItemDelegate)?.click()
+
+        QQC2.ScrollBar.vertical: QQC2.ScrollBar {
+            id: listScroll
+        }
 
         delegate: QQC2.ItemDelegate {
             id: entry
@@ -147,7 +164,13 @@ WyeSheet {
             width: ListView.view.width
             enabled: !isHeader
             hoverEnabled: !isHeader
-            padding: Kirigami.Units.smallSpacing
+            leftPadding: Kirigami.Units.largeSpacing
+            // Clear of the scroll bar, so the packaging badge is never under it.
+            rightPadding: Kirigami.Units.largeSpacing + (listScroll.visible ? listScroll.width : 0)
+            topPadding: isHeader ? Kirigami.Units.largeSpacing : Kirigami.Units.smallSpacing
+            bottomPadding: Kirigami.Units.smallSpacing
+            Accessible.name: modelData.label
+            highlighted: ListView.isCurrentItem && list.activeFocus
 
             onClicked: {
                 if (chooser.multiple) {
@@ -160,10 +183,11 @@ WyeSheet {
             contentItem: RowLayout {
                 spacing: Kirigami.Units.smallSpacing
 
-                QQC2.Label {
+                // A section title, as Kirigami draws list sections.
+                Kirigami.Heading {
                     Layout.fillWidth: true
                     color: Kirigami.Theme.disabledTextColor
-                    font.weight: Font.DemiBold
+                    level: 5
                     text: entry.modelData.label
                     visible: entry.isHeader
                 }
@@ -177,6 +201,7 @@ WyeSheet {
                 Kirigami.Icon {
                     Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
                     Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                    fallback: "application-x-executable"
                     source: entry.modelData.icon !== "" ? entry.modelData.icon : "application-x-executable"
                     visible: !entry.isHeader
                 }

@@ -45,6 +45,8 @@ WyePage {
         const request = parse(text);
         const argument = parse(request.argument ?? "");
         if (request.key === "rule-editor") {
+            // The editor replaces the tester, as the tester's own "Edit Rule…" does (DLG-TST-03).
+            tester.close();
             if (argument.index !== undefined) {
                 editor.openRule(argument.index);
             } else {
@@ -70,7 +72,8 @@ WyePage {
         }
 
         function onImported(count) {
-            page.transferText = qsTr("Imported %n rule(s)", "", count);
+            // No translations ship, so each English form is its own string (a `%n` string would print "rule(s)").
+            page.transferText = count === 1 ? qsTr("Imported 1 rule") : qsTr("Imported %1 rules").arg(count);
             SettingsBackend.refresh();
         }
 
@@ -87,6 +90,10 @@ WyePage {
                 editor.openNew("");
             } else if (name === "tester") {
                 tester.openWith("", "");
+            } else if (name === "rules-help") {
+                // The self-test's view of the rules help (RUL-19), over the editor it belongs to.
+                editor.openNew("");
+                editor.showHelp();
             }
         }
 
@@ -104,7 +111,7 @@ WyePage {
 
     Connections {
         function onUndoArmed(count, name) {
-            page.undoText = count === 1 ? qsTr("Deleted \u201c%1\u201d").arg(name) : qsTr("Deleted %n rule(s)", "", count);
+            page.undoText = count === 1 ? qsTr("Deleted \u201c%1\u201d").arg(name) : qsTr("Deleted %1 rules").arg(count);
             undoTimer.restart();
         }
 
@@ -164,16 +171,30 @@ WyePage {
     }
 
     WyeGroupCard {
-        // RUL-01
+        // RUL-01: the empty state, with the action it asks for. The usage hint ("Click a rule to edit it…") only makes
+        // sense once there are rules, so it sits under the card then.
+        // The message sits in a plain item that takes the card's width: laid out by the card itself, its wrapped text
+        // and the card's width chase each other and the layout never settles.
         Item {
             Layout.fillWidth: true
-            implicitHeight: Kirigami.Units.gridUnit * 9
+            implicitHeight: emptyMessage.implicitHeight + Kirigami.Units.gridUnit * 3
             visible: page.rows.length === 0
 
-            WyeEmptyState {
-                title: qsTr("No Rules")
+            Kirigami.PlaceholderMessage {
+                id: emptyMessage
+
+                x: Kirigami.Units.gridUnit
+                y: Kirigami.Units.gridUnit * 1.5
+                width: parent.width - Kirigami.Units.gridUnit * 2
+                icon.name: "vcs-branch-symbolic"
+                text: qsTr("No Rules")
                 explanation: qsTr("A rule lets you open a specific app based on the URL and source app")
-                hint: qsTr("Click a rule to edit it. Drag to reorder.")
+                helpfulAction: Kirigami.Action {
+                    enabled: page.editable
+                    icon.name: "list-add-symbolic"
+                    text: qsTr("Add Rule…")
+                    onTriggered: editor.openNew("")
+                }
             }
         }
 
@@ -191,38 +212,110 @@ WyePage {
             onMoved: (from, to) => page.save(RulesBackend.movePatch(SettingsBackend.configJson, from, to))
         }
 
-        // RUL-02
-        WyeListToolbar {
-            addText: qsTr("Add Rule")
-            addEnabled: page.editable
+        // RUL-02: the list toolbar (BLK-13) at the bottom of the card: add at the left, the "⋯" menu at the right. Both
+        // carry their words, as KDE's list toolbars do; the menu button's are in its tooltip.
+        QQC2.ToolBar {
+            Layout.fillWidth: true
+            position: QQC2.ToolBar.Footer
 
-            onAddTriggered: editor.openNew("")
+            RowLayout {
+                anchors.fill: parent
+                spacing: Kirigami.Units.smallSpacing
 
-            QQC2.MenuItem {
-                icon.name: "system-run"
-                text: qsTr("Test Rules…")
-                onTriggered: tester.openWith("", "")
+                QQC2.ToolButton {
+                    enabled: page.editable
+                    icon.name: "list-add-symbolic"
+                    text: qsTr("Add Rule…")
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    QQC2.ToolTip.text: qsTr("Add a rule at the end of the list")
+                    QQC2.ToolTip.visible: hovered
+                    onClicked: editor.openNew("")
+                }
+
+                QQC2.ToolButton {
+                    icon.name: "system-run-symbolic"
+                    text: qsTr("Test Rules…")
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    QQC2.ToolTip.text: qsTr("See which rule a link matches, without opening it")
+                    QQC2.ToolTip.visible: hovered
+                    onClicked: tester.openWith("", "")
+                }
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                QQC2.ToolButton {
+                    id: moreButton
+
+                    display: QQC2.AbstractButton.IconOnly
+                    icon.name: "overflow-menu"
+                    text: qsTr("More Actions")
+                    Accessible.role: Accessible.ButtonMenu
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    QQC2.ToolTip.text: text
+                    QQC2.ToolTip.visible: hovered && !moreMenu.visible
+                    down: pressed || moreMenu.visible
+                    // RUL-02: the button toggles its menu. A press on the button does not count as a press outside the
+                    // menu (its parent), so it reaches the button, which then closes the menu instead of opening it again.
+                    onPressed: moreMenu.visible ? moreMenu.close() : moreMenu.popup(moreButton, 0, moreButton.height)
+
+                    QQC2.Menu {
+                        id: moreMenu
+
+                        closePolicy: QQC2.Popup.CloseOnEscape | QQC2.Popup.CloseOnPressOutsideParent
+
+                        QQC2.MenuItem {
+                            icon.name: "system-run-symbolic"
+                            text: qsTr("Test Rules…")
+                            onTriggered: tester.openWith("", "")
+                        }
+                        QQC2.MenuSeparator {}
+                        QQC2.MenuItem {
+                            enabled: page.editable && !RulesBackend.busy
+                            icon.name: "document-import-symbolic"
+                            text: qsTr("Import Rules…")
+                            onTriggered: importDialog.open()
+                        }
+                        QQC2.MenuItem {
+                            enabled: page.rows.length > 0 && !RulesBackend.busy
+                            icon.name: "document-export-symbolic"
+                            text: qsTr("Export Rules…")
+                            onTriggered: exportDialog.open()
+                        }
+                        QQC2.MenuSeparator {}
+                        QQC2.MenuItem {
+                            enabled: page.editable && page.rows.length > 0
+                            icon.name: "edit-delete-symbolic"
+                            text: qsTr("Delete All Rules…")
+                            onTriggered: deleteAll.open()
+                        }
+                    }
+                }
             }
-            QQC2.MenuSeparator {}
-            QQC2.MenuItem {
-                enabled: page.editable && !RulesBackend.busy
-                icon.name: "document-import"
-                text: qsTr("Import Rules…")
-                onTriggered: importDialog.open()
+        }
+    }
+
+    // RUL-01's usage hint, under the list it explains. The label sits in a plain item: as a layout child its width and
+    // the page's never settle.
+    Item {
+        Layout.fillWidth: true
+        implicitHeight: usageHint.implicitHeight
+        visible: page.rows.length > 0
+
+        QQC2.Label {
+            id: usageHint
+
+            anchors {
+                left: parent.left
+                right: parent.right
+                leftMargin: Kirigami.Units.largeSpacing * 2
+                rightMargin: Kirigami.Units.largeSpacing * 2
             }
-            QQC2.MenuItem {
-                enabled: page.rows.length > 0 && !RulesBackend.busy
-                icon.name: "document-export"
-                text: qsTr("Export Rules…")
-                onTriggered: exportDialog.open()
-            }
-            QQC2.MenuSeparator {}
-            QQC2.MenuItem {
-                enabled: page.editable && page.rows.length > 0
-                icon.name: "edit-delete"
-                text: qsTr("Delete All Rules…")
-                onTriggered: deleteAll.open()
-            }
+            color: Kirigami.Theme.disabledTextColor
+            font: Kirigami.Theme.smallFont
+            text: qsTr("Click a rule to edit it. Drag to reorder.")
+            wrapMode: Text.Wrap
         }
     }
 

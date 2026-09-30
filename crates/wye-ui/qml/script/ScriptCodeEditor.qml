@@ -1,6 +1,9 @@
 // The code area of the script editor (SCR-02, SCR-05): monospace text with
 // JavaScript highlighting (KSyntaxHighlighting), line numbers, auto-indent,
 // bracket matching, undo/redo (TextArea's own), and the error line marked.
+// It is drawn as a text field is: the View colours, a rounded frame that
+// turns to the focus colour while the text has focus, and a gutter in the
+// same colour as the text, set off by a hairline.
 pragma ComponentBehavior: Bound
 
 import QtQuick
@@ -17,6 +20,8 @@ QQC2.Frame {
     // The line to mark, counted from 1; 0 for none.
     property int errorLine: 0
     readonly property alias text: area.text
+    readonly property alias canUndo: area.canUndo
+    readonly property alias canRedo: area.canRedo
 
     // The user changed the text.
     signal edited(string text)
@@ -29,9 +34,36 @@ QQC2.Frame {
         loading = false;
     }
 
+    // Replace the text as the user would; reported as an edit (the self-test's unsaved state).
+    function type(text: string) {
+        area.text = text;
+    }
+
+    function undo() {
+        area.undo();
+        area.forceActiveFocus();
+    }
+
+    function redo() {
+        area.redo();
+        area.forceActiveFocus();
+    }
+
     property bool loading: false
     readonly property real lineHeight: area.lineCount > 0 ? area.contentHeight / area.lineCount : metrics.height
-    readonly property real gutterWidth: metrics.advanceWidth * Math.max(2, String(area.lineCount).length) + Kirigami.Units.largeSpacing
+    readonly property real gutterWidth: metrics.advanceWidth * Math.max(2, String(area.lineCount).length) + Kirigami.Units.largeSpacing * 2
+    // The line the cursor is on, counted from 1.
+    readonly property int cursorLine: Math.floor(area.positionToRectangle(area.cursorPosition).y / Math.max(1, lineHeight)) + 1
+
+    Kirigami.Theme.colorSet: Kirigami.Theme.View
+    Kirigami.Theme.inherit: false
+
+    background: Rectangle {
+        color: Kirigami.Theme.backgroundColor
+        radius: Kirigami.Units.cornerRadius
+        border.width: 1
+        border.color: area.activeFocus ? Kirigami.Theme.focusColor : Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, Kirigami.Theme.frameContrast)
+    }
 
     // UTF-16 offset of the start of `line` (from 1) in `text`.
     function lineStart(text: string, line: int): int {
@@ -46,7 +78,8 @@ QQC2.Frame {
         return position;
     }
 
-    padding: 0
+    // Inside the frame's border.
+    padding: 1
 
     TextMetrics {
         id: metrics
@@ -141,14 +174,14 @@ QQC2.Frame {
         }
     }
 
-    // Line numbers, scrolled with the text.
-    Rectangle {
+    // Line numbers, scrolled with the text: dimmed, the cursor's line in the
+    // text colour, the error line in the negative colour.
+    Item {
         x: 0
         y: 0
         width: root.gutterWidth
         height: flick.height
         clip: true
-        color: Kirigami.Theme.alternateBackgroundColor
 
         Column {
             y: area.topPadding - flick.contentY
@@ -159,15 +192,21 @@ QQC2.Frame {
                 delegate: QQC2.Label {
                     required property int index
 
-                    width: root.gutterWidth - Kirigami.Units.smallSpacing
+                    width: root.gutterWidth - Kirigami.Units.largeSpacing
                     height: root.lineHeight
                     horizontalAlignment: Text.AlignRight
                     verticalAlignment: Text.AlignVCenter
                     font: Kirigami.Theme.fixedWidthFont
                     text: index + 1
-                    color: index + 1 === root.errorLine ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.disabledTextColor
+                    color: index + 1 === root.errorLine ? Kirigami.Theme.negativeTextColor : index + 1 === root.cursorLine && area.activeFocus ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
                 }
             }
+        }
+
+        Kirigami.Separator {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
         }
     }
 

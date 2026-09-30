@@ -2,9 +2,6 @@
 // PKS-01 to PKS-09.
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Controls as QQC2
-import QtQuick.Layouts
-import org.kde.kirigami as Kirigami
 import dev.soldunov.wye.ui
 
 WyePage {
@@ -28,6 +25,8 @@ WyePage {
     }
 
     WyeGroupCard {
+        title: qsTr("Appearance")
+
         // PKS-01
         WyeRadioRow {
             choices: [
@@ -69,6 +68,11 @@ WyePage {
             path: "picker.show-profile-badge"
             title: qsTr("Show profile badge")
         }
+
+    }
+
+    WyeGroupCard {
+        title: qsTr("Behaviour")
 
         // PKS-05, PKS-07: a link that needs the picker is held until the screen unlocks; the service does that.
         WyeSwitchRow {
@@ -119,13 +123,18 @@ WyePage {
         }
     }
 
-    // PKS-06: left-aligned below the last card; choosing a target in the preview opens nothing.
-    QQC2.Button {
-        Layout.leftMargin: Kirigami.Units.largeSpacing
-        icon.name: "view-preview"
-        text: qsTr("Preview Picker")
+    // PKS-06: Preview Picker, in a card of its own below the others rather than a loose button under them; choosing a
+    // target in the preview opens nothing.
+    WyeGroupCard {
+        WyeButtonRow {
+            buttonIcon: "view-preview"
+            buttonText: qsTr("Preview Picker")
+            needsConfig: false
+            subtitle: qsTr("See the picker as it looks now. Choosing a target in it opens nothing.")
+            title: qsTr("Preview")
 
-        onClicked: SettingsBackend.previewPicker()
+            onActivated: SettingsBackend.previewPicker()
+        }
     }
 
     overlays: [

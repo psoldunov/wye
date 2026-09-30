@@ -6,6 +6,7 @@
 // `HistoryBackend` (crates/wye-ui/src/bridge/history.rs).
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 import dev.soldunov.wye.ui
@@ -50,8 +51,8 @@ Kirigami.ApplicationWindow {
             Qt.styleHints.colorScheme = request.scheme === "dark" ? Qt.Dark : Qt.Light;
         }
         if (request.query !== undefined) {
-            page.searching = true;
             searchField.text = request.query;
+            page.searching = request.query !== "";
         }
         backend.refresh();
         show();
@@ -111,6 +112,7 @@ Kirigami.ApplicationWindow {
     }
 
     Shortcut {
+        enabled: page.hasHistory
         sequence: "Ctrl+F"
 
         onActivated: page.searching = !page.searching
@@ -147,30 +149,19 @@ Kirigami.ApplicationWindow {
         id: page
 
         property bool searching: false
+        // Whether there is anything to search or clear.
+        readonly property bool hasHistory: window.view.total > 0
 
         title: window.title
+        globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
         padding: 0
 
-        // DLG-HIS-01: title, search toggle, Clear History.
-        actions: [
-            Kirigami.Action {
-                checkable: true
-                checked: page.searching
-                enabled: window.view.total > 0
-                icon.name: "edit-find"
-                text: qsTr("Search")
-
-                onTriggered: page.searching = checked
-            },
-            Kirigami.Action {
-                enabled: window.view.total > 0
-                icon.name: "edit-clear-history"
-                text: qsTr("Clear History")
-
-                onTriggered: clearDialog.open()
+        // History cleared or turned off while searching: the search field goes with the actions.
+        onHasHistoryChanged: {
+            if (!hasHistory) {
+                searching = false;
             }
-        ]
-
+        }
         onSearchingChanged: {
             if (searching) {
                 searchField.forceActiveFocus();
@@ -182,12 +173,61 @@ Kirigami.ApplicationWindow {
         header: ColumnLayout {
             spacing: 0
 
+            // DLG-HIS-01: title, search toggle, Clear History. With nothing to search or clear the buttons are hidden
+            // rather than greyed out: the placeholder below says why the list is empty. (Plain tool buttons, not page
+            // actions: Kirigami's action tool bar warns when an action's visibility flips while it builds its buttons.)
+            QQC2.ToolBar {
+                Layout.fillWidth: true
+                position: QQC2.ToolBar.Header
+
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Heading {
+                        Layout.fillWidth: true
+                        Layout.leftMargin: Kirigami.Units.smallSpacing
+                        elide: Text.ElideRight
+                        level: 1
+                        text: page.title
+                    }
+
+                    QQC2.ToolButton {
+                        checkable: true
+                        checked: page.searching
+                        display: QQC2.AbstractButton.TextBesideIcon
+                        icon.name: "edit-find"
+                        text: qsTr("Search")
+                        visible: page.hasHistory
+                        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                        QQC2.ToolTip.text: qsTr("Search the history (Ctrl+F)")
+                        QQC2.ToolTip.visible: hovered
+
+                        onToggled: page.searching = checked
+                    }
+
+                    QQC2.ToolButton {
+                        display: QQC2.AbstractButton.TextBesideIcon
+                        icon.name: "edit-clear-history"
+                        text: qsTr("Clear History")
+                        visible: page.hasHistory
+                        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                        QQC2.ToolTip.text: qsTr("Forget every link in the history")
+                        QQC2.ToolTip.visible: hovered
+
+                        onClicked: clearDialog.open()
+                    }
+                }
+            }
+
             Kirigami.SearchField {
                 id: searchField
 
+                Accessible.name: qsTr("Search the history")
                 Layout.fillWidth: true
-                Layout.margins: Kirigami.Units.smallSpacing
-                visible: page.searching
+                Layout.margins: Kirigami.Units.largeSpacing
+                Layout.bottomMargin: Kirigami.Units.smallSpacing
+                placeholderText: qsTr("Search links, apps and browsers…")
+                visible: page.searching && page.hasHistory
 
                 onTextChanged: backend.search(text)
                 Keys.onEscapePressed: page.searching = false
@@ -230,11 +270,11 @@ Kirigami.ApplicationWindow {
             Kirigami.PlaceholderMessage {
                 anchors.centerIn: parent
                 helpfulAction: Kirigami.Action {
-                    icon.name: "list-add"
                     text: qsTr("Turn On")
 
                     onTriggered: backend.turnOn()
                 }
+                icon.name: "view-history-symbolic"
                 text: qsTr("History Is Off")
                 explanation: qsTr("Wye does not keep the links you open.")
                 visible: backend.loaded && !window.view.enabled
@@ -244,6 +284,7 @@ Kirigami.ApplicationWindow {
             Kirigami.PlaceholderMessage {
                 anchors.centerIn: parent
                 explanation: qsTr("Links you open appear here.")
+                icon.name: "view-history-symbolic"
                 text: qsTr("No History")
                 visible: backend.loaded && window.view.enabled && window.view.total === 0
                 width: parent.width - Kirigami.Units.gridUnit * 4
@@ -252,6 +293,7 @@ Kirigami.ApplicationWindow {
             Kirigami.PlaceholderMessage {
                 anchors.centerIn: parent
                 explanation: qsTr("No link matches “%1”.").arg(searchField.text)
+                icon.name: "edit-find-symbolic"
                 text: qsTr("No Matches")
                 visible: window.view.total > 0 && window.view.rows.length === 0
                 width: parent.width - Kirigami.Units.gridUnit * 4

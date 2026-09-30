@@ -37,6 +37,7 @@ Test
 | SCR-07 | **Save** is disabled while the script has a syntax error. Runtime errors do not block saving. | Proposed |
 | SCR-08 | Scripts are stored as files next to the configuration ([12](12-data-model.md#storage)). When the file changes on disk (edited elsewhere), an open editor offers to reload it. | Proposed |
 | SCR-09 | Enabling a transform switch with an empty script opens the editor. | Proposed |
+| SCR-10 | Cancel and the window's close button do not discard edits silently. When the script has unsaved changes, a dialog asks "Discard unsaved changes?" with **Save** (the default button; off while the script has a syntax error, SCR-07), **Discard** and **Cancel**. Save writes the script and closes the window once that succeeded; if the save fails the window stays open. Discard closes without saving; Cancel and Escape return to the editor. With no unsaved changes the window closes without a question. The question belongs to Cancel and the close button only: quitting Wye (TRAY-17) closes the window without asking and without saving, because the service is gone and cannot store the script. | Proposed |
 
 ## Script API
 

@@ -16,16 +16,25 @@ OnboardingPage {
         enabled: page.view.writable ?? true
 
         FormCard.FormSwitchDelegate {
+            id: loginSwitch
+
             // GEN-01: the Nix modules decide login start; the switch shows
             // what they set (launchAtLogin is loginManagedOn then).
             readonly property bool managed: page.view.loginManaged ?? false
 
             checked: page.view.launchAtLogin ?? true
-            description: !managed ? "" : checked ? qsTr("Your Nix configuration starts Wye at login. Change it there.") : qsTr("Your Nix configuration does not start Wye at login. Change it there.")
             enabled: !managed
             text: qsTr("Launch at login")
 
             onToggled: OnboardingBackend.setLaunchAtLogin(checked)
+        }
+
+        // Why the switch is locked, in a row of its own so the reason is not greyed out with the switch.
+        FormCard.FormTextDelegate {
+            icon.name: "object-locked-symbolic"
+            text: loginSwitch.checked ? qsTr("Your Nix configuration starts Wye at login. Change it there.") : qsTr("Your Nix configuration does not start Wye at login. Change it there.")
+            textItem.wrapMode: Text.Wrap
+            visible: loginSwitch.managed
         }
     }
 

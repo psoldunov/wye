@@ -165,6 +165,10 @@ pub fn describe(inventory: &TargetInventory, request: &Request<'_>) -> Row {
     if *request.current == json!({"default": true}) {
         return default_row(request);
     }
+    // The picker reads as it does in the menu, with its icon (TGT-03).
+    if *request.current == json!({"picker": true}) {
+        return picker_section(request).remove(0);
+    }
     if let Some(info) = inventory
         .targets
         .iter()

@@ -98,12 +98,17 @@ impl qobject::TesterBackend {
         held_json: &QString,
         skip_network: bool,
     ) {
-        if self.offline {
-            return;
-        }
         let url = url.to_string();
         if url.trim().is_empty() {
+            // DLG-TST-01: no link, no result. An answer still on its way is for a link that is gone, so it must not
+            // land (the run number moves on) and the sheet must not keep spinning for it.
+            self.as_mut().rust_mut().get_mut().run += 1;
+            self.as_mut().set_busy(false);
+            self.as_mut().set_error(QString::default());
             self.as_mut().set_view_json(QString::default());
+            return;
+        }
+        if self.offline {
             return;
         }
         let run = self.run + 1;

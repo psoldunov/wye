@@ -155,12 +155,32 @@ pub fn check(draft: &Value, alternative_key: Modifiers) -> Check {
 #[must_use]
 pub fn matcher_error(matcher: &UrlMatcher) -> Option<String> {
     matcher.compile().err().map(|error| {
-        let text = error.to_string();
+        let text = one_line(&error.to_string());
         let mut chars = text.chars();
         chars.next().map_or_else(String::new, |first| {
             first.to_uppercase().chain(chars).collect()
         })
     })
+}
+
+/// A regular expression's parse error spans lines: the pattern again, a
+/// caret under the place, then `error: <what>`. The caret only lines up in a
+/// fixed-width font, and the entry just above already shows the pattern, so
+/// the row keeps the first line's lead and the last line's reason (RUL-14).
+fn one_line(text: &str) -> String {
+    let (Some(first), Some(last)) = (text.lines().next(), text.lines().last()) else {
+        return String::new();
+    };
+    if first == last {
+        return text.to_owned();
+    }
+    let lead = first
+        .trim_end()
+        .trim_end_matches("regex parse error:")
+        .trim_end()
+        .trim_end_matches(':');
+    let reason = last.trim().trim_start_matches("error:").trim();
+    format!("{lead}: {reason}")
 }
 
 /// RUL-19 "Test…": a link the draft's first matcher would see, for the
@@ -219,6 +239,17 @@ mod tests {
     }
 
     #[test]
+    fn rul_14_a_parse_error_is_one_line_with_its_reason() {
+        let text = "invalid regular expression: regex parse error:\n    ^a([b\n       ^\nerror: unclosed character class";
+        assert_eq!(
+            one_line(text),
+            "invalid regular expression: unclosed character class"
+        );
+        assert_eq!(one_line("empty pattern"), "empty pattern");
+        assert_eq!(one_line(""), "");
+    }
+
+    #[test]
     fn rul_18_save_needs_a_name_a_condition_and_valid_matchers() {
         let mut draft = new_draft(&Prefill::default(), "rule-1");
         let check_now = |draft: &Value| check(draft, shift());
@@ -231,6 +262,10 @@ mod tests {
         assert!(
             result.matcher_errors[0].starts_with("Invalid regular expression"),
             "{result:?}"
+        );
+        assert!(
+            !result.matcher_errors[0].contains('\n'),
+            "one line under the entry: {result:?}"
         );
         draft["url-matchers"] = json!([{"kind": "domain", "pattern": "meet.google.com"}]);
         assert!(check_now(&draft).valid);

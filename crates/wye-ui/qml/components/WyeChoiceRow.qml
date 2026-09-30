@@ -25,9 +25,17 @@ WyeRow {
         id: combo
 
         Accessible.name: row.title
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 10
+        // The same bounds as a target box (WyeTargetRow), so trailing controls line up down a card.
+        Layout.maximumWidth: Kirigami.Units.gridUnit * 16
+        Layout.minimumWidth: Kirigami.Units.gridUnit * 10
+        Layout.preferredWidth: Math.max(Kirigami.Units.gridUnit * 10, Math.min(implicitWidth, Kirigami.Units.gridUnit * 16))
         currentIndex: row.choices.findIndex(choice => choice.value === row.currentValue)
         model: row.choices.map(choice => choice.label)
+        // The menu is a window of its own, so it is never cut off by the Settings window.
+        popup.popupType: QQC2.Popup.Window
+        // Scrolling the page over the box must not change the setting.
+        wheelEnabled: false
+
         onActivated: index => {
             const value = row.choices[index].value;
             row.activated(value);
@@ -35,6 +43,25 @@ WyeRow {
                 SettingsBackend.setValue(row.path, JSON.stringify(value));
             }
             combo.currentIndex = Qt.binding(() => row.choices.findIndex(choice => choice.value === row.currentValue));
+        }
+
+        // While the menu is open, Escape closes it and not the window (SET-07).
+        Connections {
+            function onOpened() {
+                SettingsBackend.popupOpened();
+            }
+
+            function onClosed() {
+                SettingsBackend.popupClosed();
+            }
+
+            target: combo.popup
+        }
+
+        Component.onDestruction: {
+            if (combo.popup.opened) {
+                SettingsBackend.popupClosed();
+            }
         }
     }
 }

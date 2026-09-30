@@ -7,15 +7,20 @@
 //! (PIPE-13), launching (PIPE-15) and recording history (PIPE-16) belong to
 //! the caller; [`Pipeline::launch_url`] prepares the link for the chosen
 //! target.
+//!
+//! [`Pipeline::resolve_with`] plugs in the hooks that need more than data:
+//! network expansion of short links (PIPE-03) and the global transform
+//! script (PIPE-05). [`Pipeline::finish`] runs once the picker has answered
+//! and applies the matched rule's script (PIPE-14).
 
-use std::fmt;
-
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::catalogue::ServiceCatalogue;
 use crate::clean::{TrackingRules, force_https};
 use crate::config::Config;
 use crate::expand::ExpansionCatalogue;
+use crate::hooks::Hooks;
 use crate::keys::Modifiers;
 use crate::normalize::MatchUrl;
 use crate::rule::{CompiledRule, MatchInput, RunPosition};
@@ -24,7 +29,8 @@ use crate::target::{Availability, Target};
 
 /// How the link reached Wye (IN-01 to IN-08). The names match the script
 /// API's `context.entryPoint`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum EntryPoint {
     /// Opened in another app while Wye is the default browser.
     Handler,
@@ -116,6 +122,17 @@ pub enum ScriptScope {
     Rule,
 }
 
+impl ScriptScope {
+    /// "global" or "rule", for messages.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Global => "global",
+            Self::Rule => "rule",
+        }
+    }
+}
+
 /// One stage that changed the link or decided the target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Step {
@@ -124,6 +141,14 @@ pub enum Step {
         url: Url,
     },
     ShortLinkNotExpanded,
+    /// One hop of a short link's redirect chain (DLG-EXP-03).
+    ShortLinkExpanded {
+        url: Url,
+    },
+    /// The chain ended early; the link continues as far as it got (PIPE-03).
+    ShortLinkFailed {
+        reason: String,
+    },
     TrackingRemoved {
         params: Vec<String>,
         url: Url,
@@ -132,6 +157,18 @@ pub enum Step {
         url: Url,
     },
     ScriptNotRun(ScriptScope),
+    /// A transform script changed the link (PIPE-05, PIPE-14).
+    Transformed {
+        scope: ScriptScope,
+        url: Url,
+    },
+    /// A transform script ran and left the link as it was.
+    ScriptUnchanged(ScriptScope),
+    /// A transform script failed; the link continues unchanged (SCR-22).
+    ScriptFailed {
+        scope: ScriptScope,
+        message: String,
+    },
     AlternativeKey {
         target: Target,
     },
@@ -166,67 +203,10 @@ pub enum Step {
         target: Target,
     },
     HeldUntilUnlock,
-}
-
-impl fmt::Display for Step {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Unwrapped { wrapper, url } => write!(f, "Expanded ({wrapper} redirect): {url}"),
-            Self::ShortLinkNotExpanded => {
-                f.write_str("Short link not expanded: network expansion is not available yet")
-            }
-            Self::TrackingRemoved { params, url } => {
-                write!(f, "Cleaned (removed {}): {url}", params.join(", "))
-            }
-            Self::HttpsForced { url } => write!(f, "Forced HTTPS: {url}"),
-            Self::ScriptNotRun(ScriptScope::Global) => {
-                f.write_str("Global transform script not run: scripts are not supported yet")
-            }
-            Self::ScriptNotRun(ScriptScope::Rule) => {
-                f.write_str("Rule transform script not run: scripts are not supported yet")
-            }
-            Self::AlternativeKey { target } => {
-                write!(f, "Alternative-browser key: {target}")
-            }
-            Self::RuleMatched {
-                index,
-                name,
-                position,
-                target,
-            } => write!(
-                f,
-                "Matched rule {} {name:?} ({}): {target}",
-                index + 1,
-                position.label()
-            ),
-            Self::MappingMatched { service, target } => {
-                write!(f, "Matched web app mapping {service:?}: {target}")
-            }
-            Self::MappingTargetMissing { service, target } => write!(
-                f,
-                "Web app mapping {service:?} skipped: {target} is not installed"
-            ),
-            Self::Fallback { target } => write!(f, "No match, primary browser: {target}"),
-            Self::DefaultIsPrimary { target } => {
-                write!(f, "Default means the primary browser: {target}")
-            }
-            Self::TargetMissing { target } => {
-                write!(f, "{target} is not available; asking with the picker")
-            }
-            Self::ForcedPicker { by_extension: true } => {
-                f.write_str("Picker forced for links from the browser extension")
-            }
-            Self::ForcedPicker {
-                by_extension: false,
-            } => f.write_str("Picker requested"),
-            Self::LockedScreen { target } => {
-                write!(f, "Screen locked, picker skipped: {target}")
-            }
-            Self::HeldUntilUnlock => f.write_str(
-                "Screen locked and the alternative browser is the picker: held until unlock",
-            ),
-        }
-    }
+    /// The user's answer in the picker (PIPE-13).
+    PickerChoice {
+        target: Target,
+    },
 }
 
 /// Where a link goes.
@@ -315,7 +295,8 @@ impl Pipeline {
         &self.services
     }
 
-    /// Runs PIPE-02 to PIPE-12.
+    /// Runs PIPE-02 to PIPE-12 without hooks: short links are recognised but
+    /// not followed, and scripts are reported as not run.
     ///
     /// # Errors
     ///
@@ -325,19 +306,33 @@ impl Pipeline {
         request: &LinkRequest,
         apps: &dyn Availability,
     ) -> Result<Resolution, Rejected> {
+        self.resolve_with(request, apps, Hooks::none())
+    }
+
+    /// Runs PIPE-02 to PIPE-12 with `hooks`: network expansion of short links
+    /// (PIPE-03) and the global transform script (PIPE-05). The rule script
+    /// (PIPE-14) waits for [`Pipeline::finish`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Rejected`] for links Wye does not handle (PIPE-02).
+    pub fn resolve_with(
+        &self,
+        request: &LinkRequest,
+        apps: &dyn Availability,
+        hooks: Hooks<'_>,
+    ) -> Result<Resolution, Rejected> {
         let mut steps = Vec::new();
         let mut url = self.validate(&request.url)?;
         // Expansion and cleaning only mean something for web links; the
         // global transform (PIPE-05) also sees local HTML files (DEF-07).
         if is_web(&url) {
-            url = self.expand(url, &mut steps);
+            url = self.expand(url, hooks, &mut steps);
             url = self.clean(url, &mut steps);
         }
-        if self.config.advanced.transform {
-            steps.push(Step::ScriptNotRun(ScriptScope::Global));
-        }
+        url = self.transform_global(url, request, hooks, &mut steps);
 
-        let (target, decision, options) = self.decide(&url, request, apps, &mut steps);
+        let (target, decision, options) = self.decide(&url, request, apps, hooks, &mut steps);
         let mut resolution = Resolution {
             original: request.url.clone(),
             url,
@@ -377,21 +372,42 @@ impl Pipeline {
         }
     }
 
-    // PIPE-03
-    fn expand(&self, url: Url, steps: &mut Vec<Step>) -> Url {
+    // PIPE-03: wrappers locally, then a short link over the network, then
+    // wrappers again because a short link may land on one.
+    fn expand(&self, url: Url, hooks: Hooks<'_>, steps: &mut Vec<Step>) -> Url {
         if !self.config.advanced.expand_urls {
             return url;
         }
         let settings = &self.config.advanced.expansion;
-        let unwrapped = self.expansion.unwrap(&url, settings);
+        let url = self.unwrap_wrappers(url, steps);
+        if !self.expansion.is_short_link(&url, settings) {
+            return url;
+        }
+        let Some(resolver) = hooks.short_links() else {
+            steps.push(Step::ShortLinkNotExpanded);
+            return url;
+        };
+        let expanded = self.expansion.expand_short_link(&url, settings, resolver);
+        steps.extend(
+            expanded
+                .hops
+                .iter()
+                .map(|hop| Step::ShortLinkExpanded { url: hop.clone() }),
+        );
+        if let Some(reason) = expanded.stop.problem() {
+            steps.push(Step::ShortLinkFailed { reason });
+        }
+        let url = expanded.last().cloned().unwrap_or(url);
+        self.unwrap_wrappers(url, steps)
+    }
+
+    fn unwrap_wrappers(&self, url: Url, steps: &mut Vec<Step>) -> Url {
+        let unwrapped = self.expansion.unwrap(&url, &self.config.advanced.expansion);
         let url = unwrapped.last().map_or(url, |last| last.url.clone());
         steps.extend(unwrapped.into_iter().map(|u| Step::Unwrapped {
             wrapper: u.wrapper,
             url: u.url,
         }));
-        if self.expansion.is_short_link(&url, settings) {
-            steps.push(Step::ShortLinkNotExpanded);
-        }
         url
     }
 
@@ -418,6 +434,7 @@ impl Pipeline {
         url: &Url,
         request: &LinkRequest,
         apps: &dyn Availability,
+        hooks: Hooks<'_>,
         steps: &mut Vec<Step>,
     ) -> (Target, Decision, OpenOptions) {
         let browsers = &self.config.browsers;
@@ -435,13 +452,13 @@ impl Pipeline {
             source: &request.source,
             held: request.held,
         };
-        if let Some(hit) = self.first_rule(RunPosition::Before, input, apps, steps) {
+        if let Some(hit) = self.first_rule(RunPosition::Before, input, apps, hooks, steps) {
             return hit;
         }
         if let Some(hit) = self.mapping(url, apps, steps) {
             return hit;
         }
-        if let Some(hit) = self.first_rule(RunPosition::After, input, apps, steps) {
+        if let Some(hit) = self.first_rule(RunPosition::After, input, apps, hooks, steps) {
             return hit;
         }
         steps.push(Step::Fallback {
@@ -457,6 +474,7 @@ impl Pipeline {
         position: RunPosition,
         input: MatchInput<'_>,
         apps: &dyn Availability,
+        hooks: Hooks<'_>,
         steps: &mut Vec<Step>,
     ) -> Option<(Target, Decision, OpenOptions)> {
         let (index, compiled) = self
@@ -471,7 +489,8 @@ impl Pipeline {
             position,
             target: rule.target.clone(),
         });
-        if rule.transform {
+        // With a transformer, the rule's script runs in `finish` (PIPE-14).
+        if rule.transform && hooks.transformer().is_none() {
             steps.push(Step::ScriptNotRun(ScriptScope::Rule));
         }
         let target = self.settle(&rule.target, apps, steps);
@@ -581,7 +600,7 @@ impl Pipeline {
     }
 }
 
-fn is_web(url: &Url) -> bool {
+pub(crate) fn is_web(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https")
 }
 
@@ -592,5 +611,12 @@ fn is_html_file(url: &Url) -> bool {
         .any(|ext| path.ends_with(ext))
 }
 
+mod finish;
+mod step_text;
+
+pub use finish::{Chosen, Finished};
+
+#[cfg(test)]
+mod hook_tests;
 #[cfg(test)]
 mod tests;

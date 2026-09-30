@@ -1,0 +1,41 @@
+// The only C++ in Wye (docs design B): what neither cxx-qt-lib nor QML
+// offers. Every function has a fallback the caller can live with.
+#pragma once
+
+#include <memory>
+
+#include <QtCore/QObject>
+#include <QtCore/QString>
+#include <QtGui/QWindow>
+#include <QtWidgets/QApplication>
+
+#include "rust/cxx.h"
+
+namespace wye {
+
+// A QApplication rather than cxx-qt-lib's QGuiApplication: the
+// org.kde.desktop Quick Controls style draws with QStyle, which needs one.
+// Also sets the desktop file name (the Wayland app id), keeps running when
+// the last window closes and, unless QT_QUICK_CONTROLS_STYLE says
+// otherwise, uses the org.kde.desktop style.
+std::unique_ptr<QApplication> applicationNew(rust::Slice<const rust::String> args,
+                                             const QString &desktopFileName,
+                                             const QString &displayName);
+
+// QApplication::exec().
+int applicationExec();
+
+// Blur what is behind `window` (KWindowEffects). False when the compositor
+// has no blur effect: the caller then draws the popover background at full
+// opacity (02-picker.md, "No blur available").
+bool blurBehind(QWindow &window, bool enable);
+
+// Ask the compositor for an xdg-activation token for `appId`, using the
+// last input event `window` received (KWaylandExtras). The token arrives
+// later: `receiver`'s signal `activationTokenReady(QString)` is emitted with
+// it, or with an empty string when the compositor refused. False, with no
+// signal, when the session is not Wayland: the browser then starts without a
+// token and the compositor may not raise it.
+bool requestActivationToken(QWindow &window, const QString &appId, QObject &receiver);
+
+} // namespace wye

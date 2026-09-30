@@ -29,6 +29,7 @@ wye-service = { path = "crates/wye-service" }
 
 anyhow = "1"
 async-trait = "0.1"
+futures-lite = { version = "2", default-features = false }
 clap = { version = "4", features = ["derive"] }
 regex = "1"
 serde = { version = "1", features = ["derive"] }

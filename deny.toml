@@ -21,6 +21,8 @@ allow = [
   "MIT",
   "Unicode-3.0",
   "Unlicense",
+  # foldhash (via cxx, cxx-qt and hashbrown).
+  "Zlib",
 ]
 confidence-threshold = 0.8
 

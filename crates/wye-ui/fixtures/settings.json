@@ -1,0 +1,7 @@
+{
+  "cases": [
+    { "action": "show", "key": "settings", "argument": "general" },
+    { "action": "show", "key": "rule-editor", "argument": "{\"match\":\"example.com\"}" },
+    { "action": "show", "key": "test-rules" }
+  ]
+}

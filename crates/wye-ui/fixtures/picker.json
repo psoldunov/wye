@@ -1,0 +1,40 @@
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "1",
+      "argument": {
+        "url": {
+          "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+          "host": "github.com",
+          "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+        },
+        "source": { "name": "Slack", "icon": "slack" },
+        "tiles": [
+          {
+            "target": { "app": "firefox.desktop" },
+            "name": "Firefox",
+            "icon": "firefox",
+            "hotkey": "1",
+            "capabilities": { "private": true, "newWindow": true, "background": false }
+          },
+          {
+            "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } },
+            "name": "Work",
+            "icon": "google-chrome",
+            "badge": { "initial": "W", "color": "#336699" },
+            "hotkey": "2",
+            "capabilities": { "private": true, "newWindow": true, "background": true }
+          }
+        ],
+        "overflow": [],
+        "settings": { "iconSize": "medium", "showNames": true, "showUrl": true, "showBadge": true },
+        "keys": { "actions": { "open": ["Return"], "cancel": ["Escape"] }, "modifierActions": { "private": ["Shift"] } },
+        "held": [],
+        "preview": false
+      }
+    },
+    { "action": "show", "key": "2", "argument": {} },
+    { "action": "close", "key": "2" }
+  ]
+}

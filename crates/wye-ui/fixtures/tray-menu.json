@@ -1,0 +1,18 @@
+{
+  "cases": [
+    {
+      "action": "toggle",
+      "argument": {
+        "icon": { "kind": "picker" },
+        "visible": true,
+        "items": [
+          { "id": "header-primary", "kind": "header", "label": "Open links in" },
+          { "id": "primary:picker", "kind": "radio", "label": "Picker", "checked": true },
+          { "id": "primary:firefox.desktop", "kind": "radio", "label": "Firefox", "icon": "firefox" },
+          { "id": "sep-1", "kind": "separator" },
+          { "id": "settings", "kind": "action", "label": "Settings…", "shortcut": "Ctrl+," }
+        ]
+      }
+    }
+  ]
+}

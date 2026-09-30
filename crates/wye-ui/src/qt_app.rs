@@ -1,6 +1,7 @@
 //! The Qt side of the process: the application object, the QML engine and
 //! the event loop.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -10,7 +11,7 @@ use cxx_qt_lib::{QMap, QMapPair_QString_QVariant, QQmlApplicationEngine, QString
 use wye_api::names::BUS_NAME;
 
 use crate::bridge::shim::ffi;
-use crate::selftest::{fixtures, log};
+use crate::selftest::{fixtures, log, snapshot};
 use crate::surface::{self, Surface};
 
 /// Shown in window titles after the window's own title.
@@ -20,8 +21,12 @@ const DISPLAY_NAME: &str = "Wye";
 pub enum Launch {
     /// Stay resident and serve the D-Bus interfaces (decision 2).
     Resident,
-    /// Load one surface with its fixtures, print the pass line, exit.
-    SelfTest(Surface),
+    /// Load one surface with its fixtures, print the pass line, exit. With
+    /// `snapshots`, one case at a time, saving its windows there.
+    SelfTest {
+        surface: Surface,
+        snapshots: Option<PathBuf>,
+    },
 }
 
 /// Run the event loop until `Qt.quit()` or `Windows1.Quit`.
@@ -72,12 +77,20 @@ pub fn run(launch: &Launch) -> anyhow::Result<ExitCode> {
 /// The root object's `selfTest…` properties; empty for a resident start.
 fn initial_properties(launch: &Launch) -> anyhow::Result<QMap<QMapPair_QString_QVariant>> {
     let mut properties = QMap::<QMapPair_QString_QVariant>::default();
-    if let Launch::SelfTest(surface) = launch {
-        let cases = serde_json::to_string(&fixtures::cases(*surface)?)?;
+    if let Launch::SelfTest { surface, snapshots } = launch {
+        let cases = fixtures::cases(*surface)?;
+        // Empty for a plain self-test: `Main.qml` then delivers every case
+        // at once, as before.
+        let prefixes = match snapshots {
+            Some(dir) => serde_json::to_string(&snapshot::prefixes(dir, *surface, &cases))?,
+            None => String::new(),
+        };
+        let cases = serde_json::to_string(&cases)?;
         for (name, value) in [
             ("selfTestSurface", surface.name()),
             ("selfTestCases", cases.as_str()),
             ("selfTestPassLine", log::PASS_LINE),
+            ("selfTestSnapshots", prefixes.as_str()),
         ] {
             properties.insert(QString::from(name), QVariant::from(&QString::from(value)));
         }

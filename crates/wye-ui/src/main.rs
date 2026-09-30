@@ -56,8 +56,11 @@ fn main() -> ExitCode {
         .init();
     let cli = Cli::parse();
     let result = match (&cli.self_test, cli.self_test_child) {
-        (Some(surface), _) => selftest::run(surface),
-        (None, Some(surface)) => qt_app::run(&Launch::SelfTest(surface)),
+        (Some(surface), _) => selftest::run(surface, cli.snapshots.as_deref()),
+        (None, Some(surface)) => qt_app::run(&Launch::SelfTest {
+            surface,
+            snapshots: cli.snapshots.clone(),
+        }),
         (None, None) => resident(&cli),
     };
     result.unwrap_or_else(|error| {

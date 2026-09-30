@@ -39,4 +39,10 @@ bool blurBehindRect(QWindow &window, bool enable, int x, int y, int width, int h
 // token and the compositor may not raise it.
 bool requestActivationToken(QWindow &window, const QString &appId, QObject &receiver);
 
+// `wye-ui --self-test --snapshots`: save every visible QQuickWindow as a PNG,
+// the first as `<prefix>.png`, the Mth (M >= 2) as `<prefix>-w<M>.png`, in
+// creation order. Returns the files written; a window that cannot be grabbed
+// or saved is logged and skipped. Needs QT_QUICK_BACKEND=software offscreen.
+rust::Vec<rust::String> saveWindowSnapshots(const QString &prefix);
+
 } // namespace wye

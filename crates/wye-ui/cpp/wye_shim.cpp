@@ -6,9 +6,13 @@
 #include <QtCore/QFuture>
 #include <QtCore/QMetaObject>
 #include <QtCore/QPointer>
+#include <QtCore/QtLogging>
+#include <QtGui/QGuiApplication>
+#include <QtGui/QImage>
 #include <QtGui/QPainterPath>
 #include <QtGui/QPolygon>
 #include <QtGui/QRegion>
+#include <QtQuick/QQuickWindow>
 #include <QtQuickControls2/QQuickStyle>
 
 #include <KWaylandExtras>
@@ -94,6 +98,34 @@ bool requestActivationToken(QWindow &window, const QString &appId, QObject &rece
         }
     });
     return true;
+}
+
+rust::Vec<rust::String> saveWindowSnapshots(const QString &prefix)
+{
+    rust::Vec<rust::String> saved;
+    int count = 0;
+    const QWindowList windows = QGuiApplication::topLevelWindows();
+    for (QWindow *window : windows) {
+        auto *quick = qobject_cast<QQuickWindow *>(window);
+        if (quick == nullptr || !quick->isVisible()) {
+            continue;
+        }
+        ++count;
+        const QString path = count == 1 ? prefix + QStringLiteral(".png")
+                                        : prefix + QStringLiteral("-w%1.png").arg(count);
+        const QImage image = quick->grabWindow();
+        if (image.isNull()) {
+            qWarning("cannot grab window %d for %s", count, qPrintable(path));
+            continue;
+        }
+        if (!image.save(path)) {
+            qWarning("cannot save %s", qPrintable(path));
+            continue;
+        }
+        const QByteArray utf8 = path.toUtf8();
+        saved.push_back(rust::String(utf8.constData(), static_cast<size_t>(utf8.size())));
+    }
+    return saved;
 }
 
 } // namespace wye

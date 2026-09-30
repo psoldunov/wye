@@ -74,6 +74,7 @@ impl Fixture {
                 .clone()
                 .unwrap_or_else(|| base.services.clone()),
         }
+        .with_service_targets()
     }
 }
 

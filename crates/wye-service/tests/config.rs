@@ -283,30 +283,47 @@ async fn gen01_launch_at_login_follows_the_setting() {
     assert!(!service.desktop.path(AUTOSTART).exists());
 }
 
-/// GEN-01: while login start is managed outside Wye (`WYE_LOGIN_MANAGED=1`)
-/// the autostart entry is never written or removed, and `Status` says so.
+/// GEN-01: while login start is managed outside Wye (`WYE_LOGIN_MANAGED`)
+/// the autostart entry is never written; an entry Wye wrote itself is
+/// removed, anything else stays; `Status` says who starts Wye.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn gen01_managed_login_start_leaves_the_autostart_entry_alone() {
+async fn gen01_managed_login_start_leaves_only_foreign_autostart_entries() {
     let Some(service) = Service::start("").await else {
         return;
     };
-    assert!(!service.status().await.login_managed);
-    service.ctx.set_login_managed(true);
-    service
-        .ctx
-        .set_wye_executable(service.desktop.path("bin/wye"));
+    let status = service.status().await;
+    assert!(!status.login_managed && !status.login_managed_on);
+    let wye_path = service.desktop.path("bin/wye");
+    service.ctx.set_wye_executable(wye_path.clone());
     let wye = service.wye().await;
     wye.update_config(r#"{"general": {"launch-at-login": true}}"#, 0)
         .await
         .expect("saved");
-    assert!(!service.desktop.path(AUTOSTART).exists(), "not written");
-    assert!(service.status().await.login_managed);
+    assert!(service.desktop.path(AUTOSTART).exists(), "Wye's own entry");
 
-    let entry = service.desktop.path(AUTOSTART);
-    std::fs::create_dir_all(entry.parent().expect("parent")).expect("dir");
-    std::fs::write(&entry, "[Desktop Entry]\n").expect("written");
+    service.ctx.set_login_managed(Some(false));
     wye.update_config(r#"{"general": {"launch-at-login": false}}"#, 0)
         .await
         .expect("saved");
-    assert!(entry.exists(), "not removed");
+    assert!(
+        !service.desktop.path(AUTOSTART).exists(),
+        "Wye's entry removed"
+    );
+    let status = service.status().await;
+    assert!(status.login_managed && !status.login_managed_on);
+
+    service.ctx.set_login_managed(Some(true));
+    wye.update_config(r#"{"general": {"launch-at-login": true}}"#, 0)
+        .await
+        .expect("saved");
+    assert!(!service.desktop.path(AUTOSTART).exists(), "never written");
+    assert!(service.status().await.login_managed_on);
+
+    let entry = service.desktop.path(AUTOSTART);
+    std::fs::create_dir_all(entry.parent().expect("parent")).expect("dir");
+    std::fs::write(&entry, "[Desktop Entry]\nExec=/usr/bin/other\n").expect("written");
+    wye.update_config(r#"{"general": {"launch-at-login": false}}"#, 0)
+        .await
+        .expect("saved");
+    assert!(entry.exists(), "not Wye's, so not removed");
 }

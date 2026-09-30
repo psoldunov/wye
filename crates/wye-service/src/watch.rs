@@ -135,15 +135,26 @@ async fn poll(ctx: &ServiceContext, plan: &Plan) {
     }
 }
 
-/// The modification time of each of `paths`; `None` when it is missing.
-async fn stamps(paths: Vec<PathBuf>) -> BTreeMap<PathBuf, Option<SystemTime>> {
+/// What a path looks like now, for [`poll`]: where it leads and the
+/// modification times of the link and of what it leads to. A Nix profile
+/// swaps a symlink to files that all have the same modification time (1),
+/// so the target's own time alone would miss the change.
+type Stamp = (Option<PathBuf>, Option<SystemTime>, Option<SystemTime>);
+
+/// The [`Stamp`] of each of `paths`.
+async fn stamps(paths: Vec<PathBuf>) -> BTreeMap<PathBuf, Stamp> {
     blocking(move || {
         paths
             .into_iter()
             .map(|path| {
-                let stamp = std::fs::metadata(&path)
-                    .and_then(|meta| meta.modified())
-                    .ok();
+                let modified = |meta: std::io::Result<std::fs::Metadata>| {
+                    meta.and_then(|meta| meta.modified()).ok()
+                };
+                let stamp = (
+                    std::fs::canonicalize(&path).ok(),
+                    modified(std::fs::symlink_metadata(&path)),
+                    modified(std::fs::metadata(&path)),
+                );
                 (path, stamp)
             })
             .collect()
@@ -234,4 +245,38 @@ fn start(plan: &Plan, sender: mpsc::UnboundedSender<PathBuf>) -> Option<Recommen
         }
     }
     Some(watcher)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A retargeted symlink is a change even when both targets carry the
+    /// same modification time, as Nix store files do.
+    #[tokio::test]
+    async fn a_retargeted_symlink_changes_its_stamp() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let first = dir.path().join("first");
+        let second = dir.path().join("second");
+        std::fs::write(&first, "same").expect("written");
+        std::fs::copy(&first, &second).expect("copied");
+        let times = std::fs::File::options()
+            .write(true)
+            .open(&first)
+            .and_then(|file| file.metadata())
+            .and_then(|meta| meta.modified())
+            .expect("mtime");
+        std::fs::File::options()
+            .write(true)
+            .open(&second)
+            .and_then(|file| file.set_modified(times))
+            .expect("same mtime");
+        let link = dir.path().join("config.toml");
+        std::os::unix::fs::symlink(&first, &link).expect("linked");
+        let before = stamps(vec![link.clone()]).await;
+        std::fs::remove_file(&link).expect("unlinked");
+        std::os::unix::fs::symlink(&second, &link).expect("relinked");
+        let after = stamps(vec![link.clone()]).await;
+        assert_ne!(before.get(&link), after.get(&link));
+    }
 }

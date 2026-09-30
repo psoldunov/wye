@@ -90,7 +90,7 @@ use crate::error_text::{self, ErrorText};
 use crate::history::fixture::Fixture;
 use crate::history::sync::{self, Action, Snapshot, Update};
 use crate::history::view::{View, split_url};
-use crate::service;
+use crate::service::{self, Change};
 
 /// The properties' values and what the window shows.
 #[derive(Default)]
@@ -194,7 +194,11 @@ impl qobject::HistoryBackend {
         service::watch(
             self.qt_thread(),
             &["HistoryRevision", "InventoryRevision"],
-            |backend| {
+            |mut backend, change| {
+                if change == Change::Restarted {
+                    // A new service counts its revisions from 1 again.
+                    backend.as_mut().rust_mut().get_mut().snapshot.known = sync::Known::default();
+                }
                 if *backend.live() {
                     backend.poll();
                 }

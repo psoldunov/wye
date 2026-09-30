@@ -44,7 +44,10 @@ when the name is taken; `wye.service` lists 75 in `RestartPreventExitStatus=` an
 its objects before requesting the name, so the very first call of a bus activation is
 answered. It claims `dev.soldunov.wye` before asking the session anything slow; lock, clipboard, held-key, pointer and focus detection then run within 3 s
 each, the shortcuts portal within 20 s in the background
-(`crates/wye-service/src/platform/session.rs`).
+(`crates/wye-service/src/platform/session.rs`); `Status` is announced again once they are
+known. A link that needs held keys and arrives while the probes are still being detected
+waits up to 300 ms for them. `advanced.held-keys` is read from the service's cached
+configuration.
 
 Structured data travels as JSON in `s` values (camelCase), described by the serde types in
 `wye-api`, because the QML applet parses JSON far more easily than nested D-Bus structs.
@@ -73,15 +76,16 @@ bus connection; `wye service --activate` only asks the bus to start it.
 2. **`wye open` (Exec fallback).** It detects the source from its own parent chain, reads
    `XDG_ACTIVATION_TOKEN`/`DESKTOP_STARTUP_ID`, and calls `OpenLink` for each link, bounded
    by 3 s including bus activation. Without a desktop ID it also sends its parent's PID, so
-   the service can match the executable against the installed apps. When no service
-   exists or can be started (no session bus, `ServiceUnknown`/`NameHasNoOwner`, a failed
-   activation, `NotImplemented` from an older service), `wye open` routes the link itself
-   with the service's own hooks (short-link expansion, transform scripts;
-   `wye_service::offline::OfflineHooks`) and `finish`, with the picker stand-in; held keys
-   and the lock state are unknown there. A call that was sent but not answered within 3 s
-   is never repeated: the service may still open the link. A link the service refused
-   (exit 2) or failed to launch (exit 1) is not retried either: the service has already
-   told the user.
+   the service can match the executable against the installed apps. A call that reached
+   no service falls back to routing here: no session bus, `ServiceUnknown`/`NameHasNoOwner`/
+   `Unknown*`, `Spawn.*`, any `org.freedesktop.systemd1.*` error, `NotImplemented` from an
+   older service, or any other error from the bus daemon except `NoReply`/`TimedOut`
+   (`crates/wye/src/bus.rs`). `wye open` then routes the link itself with the service's own
+   hooks (short-link expansion, transform scripts; `wye_service::offline::OfflineHooks`) and
+   `finish`, with the picker stand-in; held keys and the lock state are unknown there. A call
+   that was sent but not answered within 3 s is never repeated here, since the service may
+   still open the link; `wye open` exits 1. A link the service refused (exit 2) or failed to
+   launch (exit 1) is not retried either: the service has already told the user.
 
 In the service a link goes through `crates/wye-service/src/api/link.rs`: it takes a
 `Snapshot` of the cached configuration, the installed apps and the remembered default
@@ -110,7 +114,9 @@ the stand-in (see "Picker fallback").
 Configuration is `$XDG_CONFIG_HOME/wye/config.toml`. It is hand-editable and never written
 with internal state. Every `wye` invocation reads it afresh; the service keeps a cached
 copy and reloads it when the file changes (100 ms debounce,
-[12-data-model.md](spec/12-data-model.md#storage)). A broken or unreadable file never stops
+[12-data-model.md](spec/12-data-model.md#storage)). Without inotify the watched files are
+polled every 2 s by canonical path and the modification times of the link and its target,
+so a Nix profile swapping a symlink is seen. A broken or unreadable file never stops
 a link, but the two paths recover differently (design risk 16): the service keeps the last
 good configuration and reports why the file is not in use, while `wye open` routing a link
 itself, and every other CLI command, uses the defaults. On the `wye open` path every diagnostic is written to stderr best effort,
@@ -141,7 +147,9 @@ The current default is the first *installed* desktop ID listed for
 `x-scheme-handler/https` in the `mimeapps.list` lookup order, as the mime-apps specification
 says; IDs whose entry is missing are skipped. `wye default unset` changes nothing (and
 exits 0, saying so) when Wye is no longer the default, so a browser the user chose since is
-never overwritten; the remembered browser is kept. On Plasma, `BrowserApplication` in
+never overwritten; the remembered browser is kept. With local HTML files on (DEF-07), only
+Wye is added to `[Added Associations]` for the HTML types; giving links back to the previous
+browser removes Wye there and adds nothing. On Plasma, `BrowserApplication` in
 `kdeglobals` is written through `kwriteconfig6` when it is available, else with an atomic
 write.
 
@@ -390,8 +398,10 @@ exists fails with an assertion. The home-manager module also writes `config.toml
 DEF-07) and the `kdeglobals` browser; the NixOS module wires the package into
 `environment.systemPackages`, `services.dbus.packages` and `systemd.packages`. Both own
 login start (GEN-01) through the unit's `WantedBy`, controlled by `launchAtLogin`, and set
-`WYE_LOGIN_MANAGED=1` on it, so the service never writes or removes the XDG autostart entry
-and Settings shows "Launch at login" as managed. Both prepend the Nix profile directories to
+`WYE_LOGIN_MANAGED` on it to `on` or `off` (the service also accepts `1` as `on`), so the
+service never writes the XDG autostart entry and removes one it wrote itself (a regular
+file whose `Exec` is `…/wye service --activate`), and Settings shows "Launch at login" as
+managed, with the option's value. Both prepend the Nix profile directories to
 a `PATH` that ends in `/usr/local/bin:/usr/bin:/bin`, which bare desktop-entry `Exec`s are
 resolved against. Native-messaging manifests are written
 at run time by `wye-native-host --install`, not by Nix.

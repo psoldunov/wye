@@ -12,6 +12,7 @@ mod added;
 
 pub use self::added::remove_html_association;
 use crate::discovery::find_entry;
+use crate::launch::WYE_DESKTOP_ID;
 use crate::xdg::XdgDirs;
 use crate::{atomic, keyfile};
 
@@ -170,8 +171,9 @@ pub fn set_default(
         let pairs: Vec<(&str, &str)> = keys.iter().map(|mime| (*mime, id.as_str())).collect();
         let text = set_keys(&text, DEFAULTS_GROUP, &pairs);
         // DEF-07: KService only honours a default the app is associated
-        // with, and Wye's desktop entry does not claim HTML files.
-        let text = if include_html && path == main {
+        // with, and Wye's desktop entry does not claim HTML files. Another
+        // browser (the one Wye gives links back to) claims them itself.
+        let text = if include_html && path == main && id.as_str() == WYE_DESKTOP_ID {
             added::associate(&text, &HTML_TYPES, id)
         } else {
             text

@@ -72,15 +72,10 @@ impl Probes {
     }
 }
 
-/// Screen lock (logind and the screen saver), clipboard, held modifiers
-/// (obeying `advanced.held-keys` in `config`), pointer and focus, all at
-/// once, each within [`PROBE_DEADLINE`]. `KWin` scripts answer through
-/// `reports`.
-pub async fn probes(
-    session: &zbus::Connection,
-    config: Option<&Path>,
-    reports: &Reports,
-) -> Probes {
+/// Screen lock (logind and the screen saver), clipboard, held modifiers,
+/// pointer and focus, all at once, each within [`PROBE_DEADLINE`]. `KWin`
+/// scripts answer through `reports`.
+pub async fn probes(session: &zbus::Connection, reports: &Reports) -> Probes {
     let lock = within(
         "the screen-lock state",
         PROBE_DEADLINE,
@@ -93,15 +88,12 @@ pub async fn probes(
         clipboard::detect(session),
         || Arc::new(NoClipboard) as Arc<dyn ClipboardProvider>,
     );
+    // `advanced.held-keys` is read from the service's configuration cache
+    // for each link (ADV-11), not from the file here.
     let modifiers = within(
         "held modifiers",
         PROBE_DEADLINE,
-        async {
-            match config {
-                Some(config) => modifiers::detect_configured(config).await,
-                None => modifiers::detect().await,
-            }
-        },
+        modifiers::detect(),
         || Arc::new(NoModifiers) as Arc<dyn ModifierSource>,
     );
     let pointer_and_focus = within(

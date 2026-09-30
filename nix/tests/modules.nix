@@ -217,6 +217,7 @@ let
     wantedBy = nixos.systemd.user.services.wye.wantedBy;
     environment = nixos.systemd.user.services.wye.environment;
     quietWantedBy = nixosQuiet.systemd.user.services.wye.wantedBy;
+    quietEnvironment = nixosQuiet.systemd.user.services.wye.environment;
     mime = nixos.xdg.mime.defaultApplications;
     offHasUnit = nixosOff.systemd.user.services ? wye;
     offPackages = map toString nixosOff.environment.systemPackages;
@@ -250,7 +251,8 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
     }"
     grep -qxF 'KillMode=process' "$(jq -r ".home.$name.unitFile" "$facts")"
     # GEN-01: the unit owns login start; the service leaves XDG autostart alone.
-    check ".home.$name.unit.Service.Environment | index(\"WYE_LOGIN_MANAGED=1\") != null"
+    login=$([ $name = quiet ] && echo off || echo on)
+    check ".home.$name.unit.Service.Environment | index(\"WYE_LOGIN_MANAGED=$login\") != null"
     # Browsers with a bare Exec: Nix profiles first, then the system's directories.
     check ".home.$name.unit.Service.Environment[] | select(startswith(\"PATH=\")) | startswith(\"PATH=/home/alice/.nix-profile/bin:\") and endswith(\":/usr/local/bin:/usr/bin:/bin\")"
     # The UI host's unit: bus-activated, never at login.
@@ -287,7 +289,8 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
   check '.package as $p | .nixos.systemdPackages | index($p) != null'
   check '.nixos.wantedBy == ["graphical-session.target"]'
   check '.nixos.quietWantedBy == []'
-  check '.nixos.environment.WYE_LOGIN_MANAGED == "1"'
+  check '.nixos.environment.WYE_LOGIN_MANAGED == "on"'
+  check '.nixos.quietEnvironment.WYE_LOGIN_MANAGED == "off"'
   check '.nixos.environment.PATH | startswith("/etc/profiles/per-user/%u/bin:/run/wrappers/bin:") and endswith(":/usr/local/bin:/usr/bin:/bin")'
   check '.nixos.mime == {
     "x-scheme-handler/http": "dev.soldunov.wye.desktop",

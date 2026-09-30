@@ -44,8 +44,8 @@ in
         Start the Wye service with every graphical session. Off, the service
         still starts on the first link. The module owns login start through
         the systemd unit: the service leaves the XDG autostart entry alone
-        (`WYE_LOGIN_MANAGED=1`) and the "Launch at login" setting shows as
-        managed by Nix.
+        (`WYE_LOGIN_MANAGED` is `on` or `off`, following this option) and the
+        "Launch at login" setting shows as managed by Nix.
       '';
     };
   };
@@ -77,8 +77,9 @@ in
           ]
         );
         # GEN-01: login start is this unit's wantedBy, not the XDG autostart
-        # entry the service would otherwise write.
-        WYE_LOGIN_MANAGED = "1";
+        # entry the service would otherwise write; the value tells Settings
+        # which way it is set.
+        WYE_LOGIN_MANAGED = if cfg.launchAtLogin then "on" else "off";
       };
     };
     xdg.mime.defaultApplications = lib.mkIf cfg.defaultBrowser {

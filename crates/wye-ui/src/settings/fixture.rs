@@ -147,4 +147,32 @@ mod tests {
         assert_eq!(second.revision, 4);
         assert!(second.writable());
     }
+
+    #[test]
+    fn gen_01_the_fixture_cases_show_nix_starting_wye_and_not() {
+        // Both first-run and Settings fixtures carry `loginManagedOn`
+        // through the typed `Status`, so the "on" cases render as on.
+        for file in ["settings.json", "onboarding.json"] {
+            let path = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/");
+            let text = std::fs::read_to_string(format!("{path}{file}")).expect("fixture file");
+            let cases: serde_json::Value = serde_json::from_str(&text).expect("json");
+            let managed: Vec<bool> = cases["cases"]
+                .as_array()
+                .expect("cases")
+                .iter()
+                .filter_map(|case| case["argument"]["fixture"].as_object())
+                .filter(|fixture| fixture.contains_key("status"))
+                .map(|fixture| {
+                    let text = serde_json::Value::Object(fixture.clone()).to_string();
+                    Fixture::parse(&text)
+                        .expect("fixture")
+                        .apply(&Snapshot::default())
+                        .status
+                })
+                .filter(|status| status.login_managed)
+                .map(|status| status.login_managed_on)
+                .collect();
+            assert_eq!(managed, [false, true], "{file}");
+        }
+    }
 }

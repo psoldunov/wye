@@ -16,6 +16,7 @@ use super::Result;
 use crate::bus::Property;
 use crate::context::{ServiceContext, blocking};
 use crate::platform::Platform;
+use wye_core::config::HeldKeys;
 
 /// What this topic keeps between calls.
 #[derive(Debug, Default)]
@@ -85,12 +86,16 @@ pub(crate) async fn status(ctx: &ServiceContext) -> Status {
         tracing::warn!(%error, "cannot read the state file");
         wye_desktop::State::default()
     });
+    let held_keys = super::config::current(ctx)
+        .await
+        .map_or(HeldKeys::Auto, |current| current.config.advanced.held_keys);
     Status {
         default_browser: super::default_browser::status(ctx, &state).await,
         config: config_status(ctx).await,
-        capabilities: capabilities(&platform),
+        capabilities: capabilities(&platform, held_keys),
         locked: *platform.lock.locked().borrow(),
-        login_managed: ctx.login_managed(),
+        login_managed: ctx.login_managed().is_some(),
+        login_managed_on: ctx.login_managed() == Some(true),
         ui_state: ui::from_state(&state),
     }
 }
@@ -113,10 +118,15 @@ async fn config_status(ctx: &ServiceContext) -> ConfigStatus {
 
 /// What the session supports, from the platform integrations (KEY-06,
 /// DLG-ABT-02).
-fn capabilities(platform: &Platform) -> Capabilities {
+/// `advanced.held-keys = "off"` makes held keys unavailable (KEY-06).
+fn capabilities(platform: &Platform, held_keys: HeldKeys) -> Capabilities {
     let clipboard = platform.clipboard.capabilities();
+    let probe = platform
+        .modifiers
+        .mechanism()
+        .filter(|_| held_keys == HeldKeys::Auto);
     Capabilities {
-        held_keys: platform.modifiers.mechanism().map(str::to_owned),
+        held_keys: probe.map(str::to_owned),
         pointer: platform.pointer.mechanism().map(str::to_owned),
         source_app_fallbacks: platform
             .focus
@@ -131,8 +141,7 @@ fn capabilities(platform: &Platform) -> Capabilities {
         lock_detection: platform.lock.mechanism().map(str::to_owned),
         // The held-key probe is a layer surface, so it proves the compositor
         // offers `zwlr_layer_shell_v1`; with the probe off this reads false.
-        layer_shell: platform.modifiers.mechanism()
-            == Some(crate::platform::modifiers::wayland::MECHANISM),
+        layer_shell: probe == Some(crate::platform::modifiers::wayland::MECHANISM),
     }
 }
 

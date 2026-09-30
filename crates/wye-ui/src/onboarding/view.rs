@@ -41,8 +41,9 @@ pub struct View {
     pub checklist: Vec<ListRow>,
     /// The **Launch at login** switch (ONB-04).
     pub launch_at_login: bool,
-    /// The Nix modules start Wye at login (`Status.loginManaged`): the
-    /// switch shows on, is disabled and saves nothing (GEN-01, ONB-04).
+    /// Login start is managed outside Wye (`Status.loginManaged`, the Nix
+    /// modules): the switch is disabled, shows `launch_at_login` as the
+    /// modules set it, and saves nothing (GEN-01, ONB-04).
     pub login_managed: bool,
     /// The desktop's note under the switch, if it needs one (ONB-04).
     pub desktop_note: Option<&'static str>,
@@ -86,7 +87,11 @@ impl View {
                 .unwrap_or_default(),
             primary,
             checklist: choices::checklist(&snapshot.targets, &foreign, &shown),
-            launch_at_login: snapshot.status.login_managed || launch_at_login(&snapshot.config),
+            launch_at_login: if snapshot.status.login_managed {
+                snapshot.status.login_managed_on
+            } else {
+                launch_at_login(&snapshot.config)
+            },
             login_managed: snapshot.status.login_managed,
             desktop_note: desktop.note(),
             writable: snapshot.writable(),
@@ -164,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn onb_04_a_managed_login_start_shows_on_whatever_the_file_says() {
+    fn onb_04_a_managed_login_start_shows_what_nix_sets_not_the_file() {
         let managed = snapshot(
             Status {
                 login_managed: true,
@@ -173,7 +178,22 @@ mod tests {
             json!({"general": {"launch-at-login": false}}),
         );
         let view = View::build(Flow::new(), &managed, Desktop::Kde);
-        assert!(view.login_managed && view.launch_at_login);
+        assert!(view.login_managed);
+        assert!(!view.launch_at_login, "Nix does not start it");
+
+        let started = snapshot(
+            Status {
+                login_managed: true,
+                login_managed_on: true,
+                ..Status::default()
+            },
+            json!({"general": {"launch-at-login": false}}),
+        );
+        let view = View::build(Flow::new(), &started, Desktop::Kde);
+        assert!(
+            view.launch_at_login,
+            "Nix starts it, whatever the file says"
+        );
     }
 
     #[test]

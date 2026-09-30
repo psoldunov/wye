@@ -220,6 +220,39 @@ async fn a_new_link_supersedes_the_pending_one() {
     );
 }
 
+/// KEY-13: the picker's private-window choice of a shown browser is its
+/// private target, which the service accepts and opens privately.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_private_window_choice_opens_privately() {
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    service
+        .desktop
+        .app("firefox.desktop", "Firefox", "firefox %u", true);
+    let proxy = wye(&service).await;
+    proxy.rescan().await.expect("rescanned");
+    let (ui, _ui_connection) = fake_ui(&service).await;
+    proxy.open_link(URL, cli()).await.expect("routed");
+    shown_count(&ui, 1).await;
+    let id = ui.shown().remove(0).0;
+    proxy
+        .picker_chose(&id, r#"{"private":"firefox.desktop"}"#, HashMap::new())
+        .await
+        .expect("a private choice is accepted");
+    let launched = service.fakes.launcher.launched();
+    assert_eq!(launched.len(), 1);
+    assert_eq!(
+        launched[0].argv.first().map(String::as_str),
+        Some("firefox")
+    );
+    assert!(
+        launched[0].argv.iter().any(|arg| arg == "--private-window"),
+        "{:?}",
+        launched[0].argv
+    );
+}
+
 /// PIPE-13: only a target the request showed is accepted; anything else
 /// is refused and the request stays pending.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -289,8 +322,12 @@ async fn without_a_ui_the_stand_in_opens_the_link_and_says_so() {
         .await
         .open_link(URL, cli())
         .await
-        .expect("opened");
-    assert_eq!(service.launched().len(), 1);
+        .expect("decided");
+    // `OpenLink` answers once the link is decided; the stand-in follows.
+    eventually("the stand-in to open", || async {
+        service.launched().len() == 1
+    })
+    .await;
     let shown = service.fakes.notifier.shown();
     assert!(
         shown

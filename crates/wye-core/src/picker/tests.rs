@@ -660,6 +660,28 @@ fn choosing_applies_the_held_way_of_opening() {
     assert!(model.choose(9, None).is_none());
 }
 
+// KEY-13: what the service accepts back for a shown tile.
+#[test]
+fn a_tile_can_come_back_plain_or_as_its_private_target() {
+    let config = shown(&[
+        (app("firefox.desktop"), None),
+        (app("app.zen_browser.zen.desktop"), None),
+    ]);
+    let model = model(&config);
+    assert_eq!(
+        choosable(&model.tiles[0].info),
+        [
+            app("firefox.desktop"),
+            Target::Private(id("firefox.desktop"))
+        ]
+    );
+    assert_eq!(
+        choosable(&model.tiles[1].info),
+        [app("app.zen_browser.zen.desktop")],
+        "no private window"
+    );
+}
+
 #[test]
 fn a_private_target_stays_private_under_the_private_key() {
     let catalog = catalog();

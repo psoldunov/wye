@@ -52,8 +52,8 @@ pub struct Change {
     pub base_revision: u64,
     /// The configuration the patch was built from, to tell whether its
     /// arrays changed on the way (see the module docs). `Value::Null` when
-    /// the caller has none: a patch with arrays is then refused on a
-    /// conflict.
+    /// the caller has none: a patch with arrays is then sent again only
+    /// where the fresh configuration has no such array either.
     pub base_config: Value,
 }
 
@@ -104,10 +104,11 @@ fn safe_to_resend(change: &Change, fresh: &str) -> bool {
     let Ok(fresh) = serde_json::from_str::<Value>(fresh) else {
         return false;
     };
-    arrays.iter().all(|path| {
-        let before = change.base_config.pointer(path);
-        before.is_some_and(|before| fresh.pointer(path) == Some(before))
-    })
+    // Missing in both counts as unchanged: a list the file never had, such
+    // as the first shown browser added to an empty configuration.
+    arrays
+        .iter()
+        .all(|path| fresh.pointer(path) == change.base_config.pointer(path))
 }
 
 /// JSON pointers to the arrays `patch` sets (arrays are replaced whole, so

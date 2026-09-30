@@ -238,6 +238,29 @@ async fn a_picker_route_waits_for_the_choice_and_opens_the_chosen_browser() {
     let Some(bus) = Bus::start(&desktop) else {
         return;
     };
+    pick(&desktop, &bus, r#"{"app":"fake-two.desktop"}"#).await;
+    assert_eq!(desktop.wait_for_log(TWO), format!("{URL}\n"));
+    assert!(desktop.never_launched(ONE));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_private_window_choice_opens_the_browser_privately() {
+    // KEY-13: the picker sends a private-capable browser's private target.
+    let desktop = Desktop::new();
+    desktop.add_browser("firefox.desktop", "Firefox");
+    desktop.config(PICKER);
+    let Some(bus) = Bus::start(&desktop) else {
+        return;
+    };
+    pick(&desktop, &bus, r#"{"private":"firefox.desktop"}"#).await;
+    let log = desktop.wait_for_log("firefox.desktop");
+    assert!(log.lines().any(|arg| arg == "--private-window"), "{log}");
+    assert!(log.lines().any(|arg| arg == URL), "{log}");
+}
+
+/// Open [`URL`] with `wye open` on a picker route, answer the picker the
+/// fake UI host shows with `choice`, and check `wye open` succeeded.
+async fn pick(desktop: &Desktop, bus: &Bus, choice: &str) {
     let ui = bus.connect().await;
     let shown = Shown::default();
     ui.object_server()
@@ -271,15 +294,9 @@ async fn a_picker_route_waits_for_the_choice_and_opens_the_chosen_browser() {
     );
 
     let wye = Wye1Proxy::new(&ui).await.expect("proxy");
-    wye.picker_chose(
-        &id,
-        r#"{"app":"fake-two.desktop"}"#,
-        HashMap::<&str, Value>::new(),
-    )
-    .await
-    .expect("chosen");
-    assert_eq!(desktop.wait_for_log(TWO), format!("{URL}\n"));
-    assert!(desktop.never_launched(ONE));
+    wye.picker_chose(&id, choice, HashMap::<&str, Value>::new())
+        .await
+        .expect("chosen");
     let output = opener.await.expect("joined");
     assert_eq!(output.status.code(), Some(0), "{output:?}");
 }

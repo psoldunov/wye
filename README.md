@@ -89,7 +89,7 @@ service first needs it.
 | `programs.wye.package` | The package to install. Defaults to the channel's package; set it to override. |
 | `programs.wye.settings` | The contents of `$XDG_CONFIG_HOME/wye/config.toml`. When set, the file is a read-only link into the Nix store and Wye's Settings window cannot save. Leave it empty to keep the file writable. |
 | `programs.wye.defaultBrowser` | Make Wye the handler of `http` and `https` in `mimeapps.list` (through `xdg.mimeApps`), and of HTML files when `settings.general.open-local-html` is on. On Plasma it also sets `BrowserApplication` in `kdeglobals`. |
-| `programs.wye.launchAtLogin` | Start the service with the graphical session (default on). Off, it still starts on the first link. The unit owns login start: Wye writes no XDG autostart entry, and its "Launch at login" setting shows as managed by Nix. The config file stays writable. |
+| `programs.wye.launchAtLogin` | Start the service with the graphical session (default on). Off, it still starts on the first link. The unit owns login start (`WYE_LOGIN_MANAGED=on` or `off` on it): Wye writes no XDG autostart entry and removes a stale one it wrote, and its "Launch at login" setting shows the option's value as managed by Nix. The config file stays writable. |
 
 The `release` channel builds with the packaging of the tagged release, so it brings its own
 nixpkgs revision into the closure; the `nixpkgs.follows` line above applies to the `git`

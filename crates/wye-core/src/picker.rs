@@ -21,7 +21,9 @@ mod modes;
 
 pub use hotkeys::{Hotkey, MAX_NUMBERED, assign as assign_hotkeys, find as find_hotkey};
 pub use keymap::{BindingProblem, KeyOutcome, PickerAction, PickerKeymap, select};
-pub use modes::{Choice, HeldActions, OpenMode, TileAction, TileMenuEntry, choose, tile_menu};
+pub use modes::{
+    Choice, HeldActions, OpenMode, TileAction, TileMenuEntry, choosable, choose, tile_menu,
+};
 
 /// Tiles per row before the row wraps (PICK-13).
 pub const TILES_PER_ROW: usize = 8;

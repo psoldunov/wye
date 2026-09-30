@@ -97,6 +97,54 @@ pub fn disable(xdg: &XdgDirs) -> Result<bool, AutostartError> {
         .map_err(|source| AutostartError::Io { path, source })
 }
 
+/// Removes the entry only when Wye wrote it: a regular file (never a
+/// symlink someone else made) whose `Exec` runs `wye service --activate`.
+/// For a session whose login start is managed elsewhere (GEN-01). Returns
+/// whether it was removed.
+///
+/// # Errors
+///
+/// Returns [`AutostartError::Io`] when reading or removing fails.
+pub fn remove_own(xdg: &XdgDirs) -> Result<bool, AutostartError> {
+    let path = entry_path(xdg);
+    let io_error = |source| AutostartError::Io {
+        path: path.clone(),
+        source,
+    };
+    match fs::symlink_metadata(&path) {
+        Ok(meta) if meta.file_type().is_file() => {}
+        Ok(_) => return Ok(false),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(source) => return Err(io_error(source)),
+    }
+    let text = fs::read_to_string(&path).map_err(io_error)?;
+    if !runs_wye(&text) {
+        return Ok(false);
+    }
+    fs::remove_file(&path).map(|()| true).map_err(io_error)
+}
+
+/// Whether an entry's `Exec` is `<…/>wye service --activate`, as
+/// [`entry_text`] writes it.
+fn runs_wye(text: &str) -> bool {
+    let groups = keyfile::parse(text);
+    let Some(exec) = groups
+        .iter()
+        .find(|group| group.name == "Desktop Entry")
+        .and_then(|group| group.get("Exec"))
+    else {
+        return false;
+    };
+    exec.trim()
+        .strip_suffix(SERVICE_ARGS)
+        .map(|program| program.trim().trim_matches('"'))
+        .is_some_and(|program| {
+            Path::new(program)
+                .file_name()
+                .is_some_and(|name| name == "wye")
+        })
+}
+
 /// True when the entry exists and the session would run it: it is not
 /// `Hidden` and `X-GNOME-Autostart-enabled` is not false.
 #[must_use]

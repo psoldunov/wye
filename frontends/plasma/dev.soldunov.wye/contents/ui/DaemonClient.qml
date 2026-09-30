@@ -28,7 +28,18 @@ Item {
     /*! RegisterTray answered on the current service. */
     property bool registered: false
     /*! A RegisterTray call is on its way. */
-    property bool registering: false
+    readonly property bool registering: client.pendingCall !== null
+    /*!
+       Counts the services seen: bumped when the service leaves, so a
+       RegisterTray reply from a service that is gone is ignored.
+    */
+    property int generation: 0
+    /*!
+       The RegisterTray call on its way, or null: `{generation, leaving}`. A
+       plain object, so its reply can still be handled after the applet is
+       destroyed (`leaving`).
+    */
+    property var pendingCall: null
     /*! Last transport or parse failure; empty after a good exchange. */
     property string lastError: ""
 
@@ -71,14 +82,33 @@ Item {
         if (client.registering) {
             return;
         }
-        client.registering = true;
+        const call = {
+            "generation": client.generation,
+            "leaving": false
+        };
+        // Built now: the reply may come after the applet is gone.
+        const unregisterMessage = buildMessage("UnregisterTray");
+        client.pendingCall = call;
         DBus.SessionBus.asyncCall(buildMessage("RegisterTray", ["plasma-applet"]), reply => {
-            client.registering = false;
+            if (call.leaving) {
+                // Destroyed while asking: take the registration back, so
+                // the service's own icon can return.
+                DBus.SessionBus.asyncCall(unregisterMessage, done => {}, failed => {});
+                return;
+            }
+            if (call.generation !== client.generation) {
+                // That service is gone; the new one gets its own call.
+                return;
+            }
+            client.pendingCall = null;
             client.registered = true;
             client.lastError = "";
             properties.updateAll();
         }, reply => {
-            client.registering = false;
+            if (call.leaving || call.generation !== client.generation) {
+                return;
+            }
+            client.pendingCall = null;
             client.registered = false;
             client.lastError = client.errorText(reply);
         });
@@ -91,6 +121,12 @@ Item {
        is registered).
     */
     function unregister() {
+        if (client.pendingCall !== null) {
+            // The reply sends UnregisterTray once it is there.
+            client.pendingCall.leaving = true;
+            client.pendingCall = null;
+            return;
+        }
         if (!client.registered) {
             return;
         }
@@ -157,9 +193,11 @@ Item {
                 // A new service knows no hosts yet.
                 client.register();
             } else {
-                // The service is gone and with it every registration.
+                // The service is gone and with it every registration; a
+                // reply still on its way belongs to it.
+                client.generation += 1;
+                client.pendingCall = null;
                 client.registered = false;
-                client.registering = false;
                 client.tray = null;
             }
         }

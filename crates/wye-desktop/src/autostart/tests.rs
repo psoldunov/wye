@@ -160,3 +160,29 @@ fn a_symlinked_entry_is_left_alone() {
     // The managed entry still counts as enabled.
     assert!(is_enabled(&fx.xdg));
 }
+
+// GEN-01: with login start managed elsewhere, only an entry Wye wrote goes.
+#[test]
+fn remove_own_removes_only_an_entry_wye_wrote() {
+    let fx = Fixture::new();
+    let path = entry_path(&fx.xdg);
+    assert!(!remove_own(&fx.xdg).unwrap(), "nothing there");
+
+    enable(&fx.xdg, Path::new("/opt/my apps/wye")).unwrap();
+    assert!(remove_own(&fx.xdg).unwrap());
+    assert!(!path.exists());
+
+    let other = "[Desktop Entry]\nExec=/usr/bin/other service --activate\n";
+    fx.write("home/.config/autostart/dev.soldunov.wye.desktop", other);
+    assert!(!remove_own(&fx.xdg).unwrap(), "not Wye's");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), other);
+
+    std::fs::remove_file(&path).unwrap();
+    let target = fx.write("store/wye.desktop", &entry_text(Path::new("/usr/bin/wye")));
+    symlink(&target, &path).unwrap();
+    assert!(
+        !remove_own(&fx.xdg).unwrap(),
+        "a symlink belongs to its maker"
+    );
+    assert!(std::fs::symlink_metadata(&path).is_ok());
+}

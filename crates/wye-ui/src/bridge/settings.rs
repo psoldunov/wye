@@ -367,7 +367,7 @@ use wye_api::expansion::ExpansionCatalogue;
 use wye_api::shortcuts::Shortcuts;
 
 use crate::error_text::{self, ErrorText};
-use crate::service;
+use crate::service::{self, Change as ServiceChange};
 use crate::settings::expansion::Catalogue;
 use crate::settings::fixture::Fixture;
 use crate::settings::patch;
@@ -607,7 +607,11 @@ impl qobject::SettingsBackend {
             return;
         }
         self.as_mut().rust_mut().get_mut().watching = true;
-        service::watch(self.qt_thread(), WATCHED, |backend| {
+        service::watch(self.qt_thread(), WATCHED, |mut backend, change| {
+            if change == ServiceChange::Restarted {
+                // A new service counts its revisions from 1 again.
+                backend.as_mut().rust_mut().get_mut().known = Known::default();
+            }
             if *backend.live() {
                 backend.poll();
             }

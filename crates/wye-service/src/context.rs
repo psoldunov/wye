@@ -6,7 +6,6 @@
 
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 
 use tokio::sync::watch;
@@ -15,9 +14,10 @@ use crate::api;
 use crate::api::link::Environment;
 use crate::platform::Platform;
 
-/// Set to `1` when something else starts Wye at login (the Nix modules'
-/// systemd unit): the service then leaves the autostart entry alone
-/// (GEN-01).
+/// Set when something else decides whether Wye starts at login (the Nix
+/// modules' systemd unit): `on` (or `1`) when it does start Wye, `off` when
+/// it does not. The service then never writes the autostart entry, and
+/// removes one it wrote itself (GEN-01).
 pub const LOGIN_MANAGED_ENV: &str = "WYE_LOGIN_MANAGED";
 
 /// The session's files, or `None` when there is no home directory.
@@ -36,14 +36,17 @@ struct Inner {
     platform: RwLock<Arc<Platform>>,
     connection: OnceLock<zbus::Connection>,
     shutdown: watch::Sender<bool>,
+    /// The session probes are in place (false while `run` detects them).
+    probes_ready: watch::Sender<bool>,
     /// Where the configuration, state, history and apps are; topics that
     /// cache files reload when it changes.
     environment: watch::Sender<SharedEnvironment>,
     /// The `wye` executable the autostart entry runs (GEN-01), when set
     /// explicitly; otherwise it is looked up.
     wye_executable: RwLock<Option<PathBuf>>,
-    /// Starting at login is managed outside Wye ([`LOGIN_MANAGED_ENV`]).
-    login_managed: AtomicBool,
+    /// Starting at login is managed outside Wye ([`LOGIN_MANAGED_ENV`]):
+    /// `Some(on)`, where `on` says whether Wye starts at login.
+    login_managed: RwLock<Option<bool>>,
     clipboard: api::clipboard::State,
     config: api::config::State,
     default_browser: api::default_browser::State,
@@ -74,9 +77,12 @@ impl ServiceContext {
             platform: RwLock::new(Arc::new(platform)),
             connection: OnceLock::new(),
             shutdown: watch::Sender::new(false),
+            probes_ready: watch::Sender::new(true),
             environment: watch::Sender::new(session_environment()),
             wye_executable: RwLock::new(None),
-            login_managed: AtomicBool::new(login_managed_from_env()),
+            login_managed: RwLock::new(parse_login_managed(
+                std::env::var(LOGIN_MANAGED_ENV).ok().as_deref(),
+            )),
         };
         Self {
             inner: Arc::new(inner),
@@ -103,6 +109,23 @@ impl ServiceContext {
             .write()
             .unwrap_or_else(PoisonError::into_inner);
         *platform = Arc::new(update(&platform));
+        drop(platform);
+        // Capabilities follow the integrations.
+        crate::api::config::effects::changed(self, crate::bus::Property::Status);
+    }
+
+    /// Say whether the session probes are in place; links that need them
+    /// wait a moment while they are not ([`ServiceContext::probes_settled`]).
+    pub fn set_probes_ready(&self, ready: bool) {
+        self.inner.probes_ready.send_replace(ready);
+    }
+
+    /// Resolves once the session probes are in place, or after `patience`.
+    pub(crate) async fn probes_settled(&self, patience: std::time::Duration) {
+        let mut ready = self.inner.probes_ready.subscribe();
+        // An error means the sender is gone, which cannot happen while
+        // `self` lives; either way there is nothing left to wait for.
+        let _ = tokio::time::timeout(patience, ready.wait_for(|ready| *ready)).await;
     }
 
     /// The bus connection the service is served on, once it is.
@@ -144,16 +167,25 @@ impl ServiceContext {
         self.inner.environment.subscribe()
     }
 
-    /// Whether starting at login is managed outside Wye (GEN-01).
+    /// Whether starting at login is managed outside Wye (GEN-01):
+    /// `Some(on)`, where `on` says whether Wye starts at login.
     #[must_use]
-    pub fn login_managed(&self) -> bool {
-        self.inner.login_managed.load(Ordering::Relaxed)
+    pub fn login_managed(&self) -> Option<bool> {
+        *self
+            .inner
+            .login_managed
+            .read()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Treat starting at login as managed outside Wye, or not (tests; the
-    /// service reads [`LOGIN_MANAGED_ENV`]).
-    pub fn set_login_managed(&self, managed: bool) {
-        self.inner.login_managed.store(managed, Ordering::Relaxed);
+    /// Treat starting at login as managed outside Wye (`Some(on)`) or not
+    /// (tests; the service reads [`LOGIN_MANAGED_ENV`]).
+    pub fn set_login_managed(&self, managed: Option<bool>) {
+        *self
+            .inner
+            .login_managed
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = managed;
     }
 
     /// Name the `wye` executable the autostart entry runs (GEN-01) instead
@@ -210,9 +242,20 @@ pub(crate) async fn blocking<T: Send + 'static>(
         .map_err(|error| wye_api::Error::failed(format!("file work stopped: {error}")))
 }
 
-/// Whether [`LOGIN_MANAGED_ENV`] says login start is managed elsewhere.
-fn login_managed_from_env() -> bool {
-    std::env::var_os(LOGIN_MANAGED_ENV).is_some_and(|value| value == "1")
+/// What [`LOGIN_MANAGED_ENV`] says: `Some(true)` for `on` or `1`,
+/// `Some(false)` for `off`, `None` when unset or unknown (logged).
+fn parse_login_managed(value: Option<&str>) -> Option<bool> {
+    match value?.trim() {
+        "on" | "1" => Some(true),
+        "off" => Some(false),
+        other => {
+            tracing::warn!(
+                value = other,
+                "{LOGIN_MANAGED_ENV} is not on or off; ignored"
+            );
+            None
+        }
+    }
 }
 
 /// The session's directories, from the process environment.
@@ -310,5 +353,37 @@ mod tests {
         let ctx = ServiceContext::new(Platform::unavailable());
         let raced = tokio::time::timeout(Duration::from_millis(50), ctx.until_shutdown()).await;
         assert!(raced.is_err(), "shut down without being asked to");
+    }
+
+    /// A link that needs held keys waits for probes still being detected,
+    /// but never longer than its patience.
+    #[tokio::test(start_paused = true)]
+    async fn probes_settle_when_ready_or_after_the_patience() {
+        let ctx = ServiceContext::new(Platform::unavailable());
+        let started = tokio::time::Instant::now();
+        ctx.probes_settled(Duration::from_millis(300)).await;
+        assert_eq!(started.elapsed(), Duration::ZERO, "ready by default");
+
+        ctx.set_probes_ready(false);
+        ctx.probes_settled(Duration::from_millis(300)).await;
+        assert_eq!(started.elapsed(), Duration::from_millis(300));
+
+        let waiting = tokio::spawn({
+            let ctx = ctx.clone();
+            async move { ctx.probes_settled(Duration::from_secs(10)).await }
+        });
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        ctx.set_probes_ready(true);
+        waiting.await.expect("settled");
+        assert!(started.elapsed() < Duration::from_secs(1));
+    }
+
+    #[test]
+    fn gen_01_login_managed_reads_on_off_and_1() {
+        assert_eq!(parse_login_managed(Some("on")), Some(true));
+        assert_eq!(parse_login_managed(Some("1")), Some(true));
+        assert_eq!(parse_login_managed(Some("off")), Some(false));
+        assert_eq!(parse_login_managed(Some("maybe")), None);
+        assert_eq!(parse_login_managed(None), None);
     }
 }

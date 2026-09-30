@@ -46,7 +46,7 @@ impl Desktop {
     }
 
     /// A browser whose executable appends each argument to `<stem>.log`.
-    fn add_browser(&self, id: &str, name: &str) {
+    pub fn add_browser(&self, id: &str, name: &str) {
         let stem = id.trim_end_matches(".desktop");
         let program = self.path("bin").join(stem);
         let log = self.log_path(id);

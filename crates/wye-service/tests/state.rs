@@ -177,3 +177,22 @@ async fn onb11_keep_current_default_remembers_the_app() {
     );
     assert!(service.status().await.default_browser.kept_current);
 }
+
+/// KEY-06, DLG-ABT-02: `Status.capabilities` follow the integrations, so a
+/// change of them (the probes detected after start) is announced.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn status_is_announced_when_the_integrations_change() {
+    use futures_lite::StreamExt as _;
+
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let wye = service.wye().await;
+    service.status().await;
+    let mut changes = wye.receive_status_changed().await;
+    service.ctx.update_platform(Clone::clone);
+    tokio::time::timeout(std::time::Duration::from_secs(5), changes.next())
+        .await
+        .expect("Status announced")
+        .expect("a change");
+}

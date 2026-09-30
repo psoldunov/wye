@@ -20,6 +20,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use tokio::task::JoinHandle;
 use wye_api::Error;
+use wye_core::config::HeldKeys;
 use wye_core::{LinkRequest, Modifiers, SourceApp, Target};
 
 pub use environment::Environment;
@@ -37,6 +38,10 @@ use crate::platform::Platform;
 /// (LAUNCH-07). The server does not say when one closes, so the oldest is
 /// forgotten instead.
 const MAX_FAILED: usize = 8;
+
+/// How long a link that needs held keys waits for the session probes of a
+/// service that is still starting.
+const PROBES_PATIENCE: std::time::Duration = std::time::Duration::from_millis(300);
 
 /// What this topic keeps between calls.
 #[derive(Debug, Default)]
@@ -169,47 +174,14 @@ async fn open_one(
 ) -> Result<()> {
     let environment = ctx.environment()?;
     let snapshot = super::config::snapshot(ctx).await?;
-    // BRW-03, RUL-27, ADV-11: probe only when a binding reads held keys,
-    // and start the probe first, alongside source detection (which may ask
-    // KWin), so a quickly released Shift is still seen.
-    let probe = incoming.held.is_none()
-        && crate::platform::modifiers::bindings_need_modifiers(
-            snapshot.pipeline.config(),
-            incoming.entry,
-        );
-    let held = async {
-        match incoming.held {
-            Some(held) => held,
-            None if probe => probe_modifiers(&ctx.platform()).await,
-            None => Modifiers::NONE,
-        }
-    };
-    let detection = async {
-        let (snapshot, detected) = blocking(move || {
-            let detected = match hint {
-                SourceHint::Known(source) => Some(source),
-                SourceHint::Pid { pid, fallback } => {
-                    source::from_pid(&environment.proc_root, pid, &snapshot.inventory).map(
-                        |found| {
-                            if found == SourceApp::default() {
-                                fallback
-                            } else {
-                                found
-                            }
-                        },
-                    )
-                }
-            };
-            (snapshot, detected)
-        })
-        .await?;
-        let source = match detected {
-            Some(source) => source,
-            None => source::from_focus(ctx.platform().focus.as_ref()).await,
-        };
-        Ok::<_, Error>((snapshot, source))
-    };
-    let (held, detection) = tokio::join!(held, detection);
+    // BRW-03, RUL-27, ADV-11: start the probe first, alongside source
+    // detection (which may ask KWin), so a quickly released Shift is still
+    // seen.
+    let probe = needs_probe(snapshot.pipeline.config(), incoming);
+    let (held, detection) = tokio::join!(
+        held_now(ctx, incoming, probe),
+        detect_source(ctx, &environment, snapshot, hint)
+    );
     let (snapshot, source) = detection?;
     let request = LinkRequest {
         source,
@@ -234,6 +206,81 @@ async fn open_one(
         });
         routed
     });
+    act(ctx, url, incoming, routed).await
+}
+
+/// Whether the held keys are worth probing for this link: none were given,
+/// `advanced.held-keys` is `auto` (ADV-11, from the cached configuration),
+/// and a binding reads them (BRW-03, RUL-27).
+fn needs_probe(config: &wye_core::Config, incoming: &Incoming) -> bool {
+    incoming.held.is_none()
+        && config.advanced.held_keys == HeldKeys::Auto
+        && crate::platform::modifiers::bindings_need_modifiers(config, incoming.entry)
+}
+
+/// The held modifiers: the caller's, else probed when `probe`, else none.
+async fn held_now(ctx: &ServiceContext, incoming: &Incoming, probe: bool) -> Modifiers {
+    match incoming.held {
+        Some(held) => held,
+        None if probe => {
+            // A link that started the service may arrive before the probes
+            // are detected (`run`); give them a moment.
+            ctx.probes_settled(PROBES_PATIENCE).await;
+            probe_modifiers(&ctx.platform()).await
+        }
+        None => Modifiers::NONE,
+    }
+}
+
+/// The link's source app (PIPE-01): from `hint`, reading `/proc` on a
+/// blocking thread, else the focused window. Hands `snapshot` back.
+async fn detect_source(
+    ctx: &ServiceContext,
+    environment: &Environment,
+    snapshot: Snapshot,
+    hint: SourceHint,
+) -> Result<(Snapshot, SourceApp)> {
+    let proc_root = environment.proc_root.clone();
+    let (snapshot, detected) = blocking(move || {
+        let detected = from_hint(&proc_root, hint, &snapshot.inventory);
+        (snapshot, detected)
+    })
+    .await?;
+    let source = match detected {
+        Some(source) => source,
+        None => source::from_focus(ctx.platform().focus.as_ref()).await,
+    };
+    Ok((snapshot, source))
+}
+
+/// The source `hint` names or detects; `None` when the focused window has
+/// to be asked.
+fn from_hint(
+    proc_root: &std::path::Path,
+    hint: SourceHint,
+    inventory: &wye_desktop::Inventory,
+) -> Option<SourceApp> {
+    match hint {
+        SourceHint::Known(source) => Some(source),
+        SourceHint::Pid { pid, fallback } => {
+            source::from_pid(proc_root, pid, inventory).map(|found| {
+                if found == SourceApp::default() {
+                    fallback
+                } else {
+                    found
+                }
+            })
+        }
+    }
+}
+
+/// Carry out where the link was routed.
+async fn act(
+    ctx: &ServiceContext,
+    url: &str,
+    incoming: &Incoming,
+    routed: std::result::Result<Routed, wye_core::Rejected>,
+) -> Result<()> {
     match routed {
         Err(rejected) => {
             launch::notify_rejected(ctx, url, &rejected).await;

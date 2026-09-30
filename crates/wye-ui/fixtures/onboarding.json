@@ -979,7 +979,26 @@
               "writable": true,
               "lossless": true
             },
-            "loginManaged": true
+            "loginManaged": true,
+            "loginManagedOn": false
+          }
+        },
+        "desktop": "kde"
+      }
+    },
+    {
+      "action": "show",
+      "key": "first-run",
+      "argument": {
+        "step": 3,
+        "fixture": {
+          "status": {
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true,
+            "loginManagedOn": true
           }
         },
         "desktop": "kde"

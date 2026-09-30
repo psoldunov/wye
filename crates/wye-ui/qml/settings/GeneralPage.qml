@@ -10,9 +10,11 @@ WyePage {
     readonly property var defaultBrowser: page.status.defaultBrowser ?? ({})
     readonly property bool isDefault: defaultBrowser.isDefault ?? false
     readonly property string currentName: defaultBrowser.current?.name ?? ""
-    // GEN-01: the Nix modules start Wye at login themselves; the switch
-    // would change nothing. Absent from an older service: not managed.
+    // GEN-01: the Nix modules decide login start (`loginManagedOn`); the
+    // switch shows what they set and changes nothing. Absent from an older
+    // service: not managed, and not started.
     readonly property bool loginManaged: page.status.loginManaged ?? false
+    readonly property bool loginManagedOn: page.status.loginManagedOn ?? false
 
     title: qsTr("General")
 
@@ -42,9 +44,9 @@ WyePage {
 
         WyeSwitchRow {
             dimmed: page.loginManaged
-            isOn: page.loginManaged || page.value(path, true)
+            isOn: page.loginManaged ? page.loginManagedOn : page.value(path, true)
             path: "general.launch-at-login"
-            subtitle: page.loginManaged ? qsTr("Your Nix configuration starts Wye at login, so this switch changes nothing. Change it there.") : ""
+            subtitle: !page.loginManaged ? "" : page.loginManagedOn ? qsTr("Your Nix configuration starts Wye at login. Change it there.") : qsTr("Your Nix configuration does not start Wye at login. Change it there.")
             title: qsTr("Launch at login")
         }
     }

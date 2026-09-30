@@ -39,6 +39,7 @@ let
   # The file is managed (a read-only store link) only when `settings` asks.
   # Login start is the unit's `WantedBy` alone (GEN-01, `launchAtLogin`).
   managedConfig = cfg.settings != { };
+  loginManaged = if cfg.launchAtLogin then "on" else "off";
 
   # Browsers launched from desktop entries with a bare `Exec=firefox` are
   # looked up on the service's PATH. `Environment=PATH=` replaces the user
@@ -105,8 +106,9 @@ in
         Start the Wye service with the graphical session, so the tray icon is
         there from the start. Off, the service still starts on the first link.
         The module owns login start through the systemd unit: the service
-        leaves the XDG autostart entry alone (`WYE_LOGIN_MANAGED=1`) and the
-        "Launch at login" setting shows as managed by Nix.
+        leaves the XDG autostart entry alone (`WYE_LOGIN_MANAGED` is `on` or
+        `off`, following this option) and the "Launch at login" setting shows
+        as managed by Nix.
       '';
     };
   };
@@ -145,8 +147,9 @@ in
             Environment = [
               "PATH=${searchPath}"
               # GEN-01: login start is this unit's WantedBy, not the XDG
-              # autostart entry the service would otherwise write.
-              "WYE_LOGIN_MANAGED=1"
+              # autostart entry the service would otherwise write; the value
+              # tells Settings which way it is set.
+              "WYE_LOGIN_MANAGED=${loginManaged}"
             ];
           };
           Install.WantedBy = lib.optional cfg.launchAtLogin "graphical-session.target";

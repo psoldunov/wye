@@ -12,7 +12,7 @@ use wye_api::picker::{
 use wye_api::{Badge as WireBadge, TargetCapabilities};
 use wye_core::config::{Config, IconSize, PickerKeys as CoreKeys};
 use wye_core::link_text::LinkParts;
-use wye_core::picker::{OverflowEntry, PickerModel, SourceLabel, Tile};
+use wye_core::picker::{OverflowEntry, PickerModel, SourceLabel, Tile, choosable};
 use wye_core::target_menu::{Badge, MenuChoice, MenuSection, TargetCatalog, TargetInfo};
 use wye_core::{Modifiers, Target};
 
@@ -29,6 +29,46 @@ pub(crate) struct Input<'a> {
     pub placement: Option<Placement>,
     /// PKS-06: choosing opens nothing.
     pub preview: bool,
+}
+
+/// Every target `PickerChose` may answer `input`'s request with: each tile
+/// and **Open In** entry as it is, and each way it can open (its private
+/// target, KEY-13), as the core's own choice logic produces them.
+pub(crate) fn offered(input: &Input<'_>) -> Vec<Target> {
+    let model = PickerModel::new(
+        input.config,
+        input.catalog,
+        Some(input.url),
+        input.source.clone(),
+    );
+    let tiles = model.tiles.iter().flat_map(|tile| choosable(&tile.info));
+    let open_in = model
+        .overflow
+        .iter()
+        .filter_map(|entry| match entry {
+            OverflowEntry::OpenIn(menu) => Some(menu),
+            OverflowEntry::Separator | OverflowEntry::Action(_) => None,
+        })
+        .flat_map(|menu| menu.sections.iter())
+        .flat_map(|section| section.items.iter())
+        .filter_map(|item| match &item.choice {
+            MenuChoice::Target(target) => Some(target),
+            MenuChoice::Other => None,
+        })
+        .flat_map(|target| {
+            input
+                .catalog
+                .describe(target)
+                .map_or_else(|| vec![target.clone()], |info| choosable(&info))
+        });
+    tiles
+        .chain(open_in)
+        .fold(Vec::new(), |mut offered, target| {
+            if !offered.contains(&target) {
+                offered.push(target);
+            }
+            offered
+        })
 }
 
 /// The request for `input`.

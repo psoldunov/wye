@@ -43,8 +43,11 @@ impl State {
     }
 }
 
-/// Show the picker for a link (PIPE-13). Falls back to the stand-in, with a
-/// notification, when the UI host cannot show it.
+/// Show the picker for a link (PIPE-13): the request is built and made the
+/// pending one here, and `ShowPicker` goes to the UI host in the
+/// background, so `OpenLink` answers once the link is decided, not after a
+/// cold `wye-ui` started. Falls back to the stand-in, with a notification,
+/// when the UI host cannot show it.
 pub(crate) async fn show_link(
     ctx: &ServiceContext,
     needed: PickerNeeded,
@@ -63,7 +66,7 @@ pub(crate) async fn show_link(
             placement,
             preview: false,
         };
-        encode(&request::build(&input))
+        encode(&input)
     })
     .await??;
     let (text, offered) = text;
@@ -78,7 +81,19 @@ pub(crate) async fn show_link(
             "a new link replaces the pending one"
         );
     }
-    let Err(error) = host::show_picker(ctx, &id, &text).await else {
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        if let Err(error) = deliver(&ctx, id, &text).await {
+            tracing::warn!(%error, "cannot open the link without the picker");
+        }
+    });
+    Ok(())
+}
+
+/// Send request `id` to the UI host; when it cannot show it, close it there
+/// and open the link through the stand-in.
+async fn deliver(ctx: &ServiceContext, id: String, text: &str) -> Result<()> {
+    let Err(error) = host::show_picker(ctx, &id, text).await else {
         return Ok(());
     };
     tracing::warn!(%error, "cannot show the picker");
@@ -136,7 +151,7 @@ pub async fn preview_picker(ctx: &ServiceContext) -> Result<()> {
             placement,
             preview: true,
         };
-        encode(&request::build(&input))
+        encode(&input)
     })
     .await??;
     let (text, offered) = text;
@@ -264,16 +279,13 @@ fn not_pending(request_id: &str) -> Error {
     Error::NotFound(format!("no picker request {request_id:?} is pending"))
 }
 
-/// The request's JSON, and every target it shows (tiles and **Open In**),
-/// which are the only ones `PickerChose` accepts.
-fn encode(request: &wye_api::picker::PickerRequest) -> Result<(String, Vec<Target>)> {
-    let offered = request
-        .tiles
-        .iter()
-        .chain(request.overflow.iter().flat_map(|group| group.tiles.iter()))
-        .filter_map(|tile| serde_json::from_value(tile.target.clone()).ok())
-        .collect();
-    Ok((wye_api::json::encode(request)?, offered))
+/// The request's JSON, and every target `PickerChose` may answer it with
+/// ([`request::offered`]).
+fn encode(input: &request::Input<'_>) -> Result<(String, Vec<Target>)> {
+    Ok((
+        wye_api::json::encode(&request::build(input))?,
+        request::offered(input),
+    ))
 }
 
 /// Background work of this topic, started with the service: keep the UI

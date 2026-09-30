@@ -146,6 +146,26 @@ fn set_06_a_list_changed_elsewhere_is_not_overwritten() {
 }
 
 #[test]
+fn set_06_a_list_missing_before_and_after_is_unchanged() {
+    // The first rule added to a configuration that never had any, while
+    // another key changed.
+    let api = Fake::with(json!({}), 3);
+    api.external(&json!({"general": {"tray-icon": "wye"}}));
+    let patch = rules(&["new"]);
+    block_on(save(&api, &change(patch.clone(), 3, json!({})))).expect("saved");
+    assert_eq!(api.config()["rules"], patch["rules"]);
+}
+
+#[test]
+fn set_06_a_list_added_elsewhere_to_a_config_without_one_is_not_overwritten() {
+    let api = Fake::with(json!({}), 3);
+    api.external(&rules(&["by hand"]));
+    let error = block_on(save(&api, &change(rules(&["new"]), 3, json!({})))).expect_err("refused");
+    assert!(matches!(error, Error::Conflict(_)), "{error:?}");
+    assert_eq!(api.config(), rules(&["by hand"]));
+}
+
+#[test]
 fn set_06_a_list_without_the_config_it_came_from_is_refused_on_a_conflict() {
     let api = Fake::with(rules(&["a"]), 3);
     api.external(&json!({"b": 2}));

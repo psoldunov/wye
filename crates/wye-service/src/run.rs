@@ -61,6 +61,7 @@ pub async fn run(options: ServiceOptions) -> anyhow::Result<()> {
         .platform
         .unwrap_or_else(|| session::base(&connection));
     let ctx = ServiceContext::new(platform);
+    ctx.set_probes_ready(!detect);
     serve_and_claim(&connection, &ctx).await?;
     tracing::info!("serving {BUS_NAME}");
     let watchers = if detect {
@@ -128,12 +129,15 @@ async fn detect_then_spawn(
     ctx: &ServiceContext,
 ) -> Vec<JoinHandle<()>> {
     let config = Environment::from_env()
-        .inspect_err(|error| tracing::warn!(%error, "no configuration file for advanced.held-keys"))
+        .inspect_err(
+            |error| tracing::warn!(%error, "no configuration file for the preferred shortcuts"),
+        )
         .ok()
         .map(|environment| environment.config);
     let reports = ctx.platform().kwin_reports.clone();
-    let probes = session::probes(connection, config.as_deref(), &reports).await;
+    let probes = session::probes(connection, &reports).await;
     ctx.update_platform(|platform| probes.apply(platform));
+    ctx.set_probes_ready(true);
     let shortcuts = {
         let ctx = ctx.clone();
         tokio::spawn(async move {

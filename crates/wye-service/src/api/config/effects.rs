@@ -30,7 +30,9 @@ pub(crate) async fn announce(
     let login_changed = before.is_some_and(|before| {
         before.config.general.launch_at_login != after.config.general.launch_at_login
     });
-    if saved || login_changed {
+    // A managed login start clears Wye's own entry once, at the first load.
+    let first_managed = before.is_none() && ctx.login_managed().is_some();
+    if saved || login_changed || first_managed {
         sync_autostart(ctx, after).await;
     }
     // Decision 2: the picker just became reachable; start the UI host now.
@@ -76,10 +78,11 @@ async fn notify_broken(ctx: &ServiceContext, current: &Current) {
 
 /// GEN-01: the autostart entry follows `general.launch-at-login`. A managed
 /// entry (a symlink) is left alone and logged; so is everything while login
-/// start is managed outside Wye (`WYE_LOGIN_MANAGED=1`).
+/// start is managed outside Wye (`WYE_LOGIN_MANAGED`), when only an entry
+/// Wye wrote itself is removed, so the session does not start Wye twice.
 pub(crate) async fn sync_autostart(ctx: &ServiceContext, current: &Current) {
-    if ctx.login_managed() {
-        tracing::debug!("login start is managed outside Wye; the autostart entry stays as it is");
+    if ctx.login_managed().is_some() {
+        remove_own_entry(current).await;
         return;
     }
     let xdg = current.environment.xdg.clone();
@@ -102,6 +105,20 @@ pub(crate) async fn sync_autostart(ctx: &ServiceContext, current: &Current) {
         Ok(Ok(())) => {}
         Ok(Err(error)) => tracing::warn!(%error, "cannot update the autostart entry"),
         Err(error) => tracing::warn!(%error, "cannot update the autostart entry"),
+    }
+}
+
+/// GEN-01: login start is managed elsewhere; an autostart entry Wye wrote
+/// would start it a second time (or against the manager's "off").
+async fn remove_own_entry(current: &Current) {
+    let xdg = current.environment.xdg.clone();
+    match blocking(move || autostart::remove_own(&xdg)).await {
+        Ok(Ok(true)) => {
+            tracing::info!("login start is managed elsewhere; removed Wye's own autostart entry");
+        }
+        Ok(Ok(false)) => {}
+        Ok(Err(error)) => tracing::warn!(%error, "cannot remove Wye's own autostart entry"),
+        Err(error) => tracing::warn!(%error, "cannot remove Wye's own autostart entry"),
     }
 }
 

@@ -91,7 +91,9 @@ pub fn run(
             }
             Err(unanswered @ CallError::NoAnswer(_)) => {
                 // Never opened here as well: the service may still open it.
+                // The outcome is unknown, so the exit code says it failed.
                 notice::write(console.err, format_args!("wye: {unanswered}"));
+                tally.failed = true;
             }
             Err(unreachable @ CallError::Unreachable(_)) => {
                 if debug {

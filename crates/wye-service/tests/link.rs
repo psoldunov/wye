@@ -221,8 +221,13 @@ async fn the_picker_stand_in_opens_the_previous_default() {
         .await
         .open_link(URL, cli())
         .await
-        .expect("opened");
-    assert_eq!(service.launched(), [argv("fake-two", URL)]);
+        .expect("decided");
+    // `OpenLink` answers once the link is decided; the stand-in follows
+    // when the UI host turns out to be missing (PIPE-13).
+    eventually("the stand-in to open", || async {
+        service.launched() == [argv("fake-two", URL)]
+    })
+    .await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -286,4 +291,29 @@ async fn activate_without_a_ui_host_still_answers() {
         .await
         .expect_err("no UI host on the private bus");
     assert!(matches!(error, Error::Unavailable(_)), "{error}");
+}
+
+/// ADV-11: `advanced.held-keys = "off"` from the configuration in use: the
+/// probe is not asked, a held Shift picks nothing, and `Status` says held
+/// keys are unavailable (KEY-06).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn held_keys_off_skips_the_probe() {
+    let config = format!(
+        "[browsers]\nprimary = {{ app = \"{ONE}\" }}\nalternative = {{ app = \"{TWO}\" }}\n\n\
+         [advanced]\nheld-keys = \"off\"\n"
+    );
+    let Some(service) = Service::start(&config).await else {
+        return;
+    };
+    service
+        .fakes
+        .modifiers
+        .set(Some(vec![context::Modifier::Shift]));
+    wye(&service)
+        .await
+        .open_link(URL, cli())
+        .await
+        .expect("opened");
+    assert_eq!(service.launched(), [argv("fake-one", URL)]);
+    assert_eq!(service.status().await.capabilities.held_keys, None);
 }

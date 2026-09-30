@@ -16,11 +16,12 @@ OnboardingPage {
         enabled: page.view.writable ?? true
 
         FormCard.FormSwitchDelegate {
-            // GEN-01: the Nix modules start Wye at login themselves.
+            // GEN-01: the Nix modules decide login start; the switch shows
+            // what they set (launchAtLogin is loginManagedOn then).
             readonly property bool managed: page.view.loginManaged ?? false
 
-            checked: managed || (page.view.launchAtLogin ?? true)
-            description: managed ? qsTr("Your Nix configuration starts Wye at login, so this switch changes nothing. Change it there.") : ""
+            checked: page.view.launchAtLogin ?? true
+            description: !managed ? "" : checked ? qsTr("Your Nix configuration starts Wye at login. Change it there.") : qsTr("Your Nix configuration does not start Wye at login. Change it there.")
             enabled: !managed
             text: qsTr("Launch at login")
 

@@ -148,37 +148,52 @@ where
     });
 }
 
+/// Why a watched window should read the service again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Change {
+    /// A watched property moved, or the subscription just started.
+    Moved,
+    /// A service took the bus name: a new one starts its revisions over at
+    /// 1, so read everything, not only what moved since the last read.
+    Restarted,
+}
+
 /// Call `changed` on the Qt thread whenever one of `properties` of
-/// `dev.soldunov.wye1` changes, when the service starts or stops (a new
-/// service starts over), and once as soon as the subscription stands, for
-/// anything that changed while it was being set up. A burst of changes (one
-/// configuration change moves `ConfigRevision`, `Status` and `Tray`)
-/// arrives as one call. `changed` reads what it needs itself.
+/// `dev.soldunov.wye1` changes ([`Change::Moved`]), when a service takes the
+/// bus name ([`Change::Restarted`]), and once as soon as the subscription
+/// stands, for anything that changed while it was being set up. A burst of
+/// changes (one configuration change moves `ConfigRevision`, `Status` and
+/// `Tray`) arrives as one call. `changed` reads what it needs itself.
+///
+/// The service leaving the bus (TRAY-17 "Quit Wye") is not a change: a read
+/// then would start it again through D-Bus activation.
 pub fn watch<T, D>(thread: CxxQtThread<T>, properties: &'static [&'static str], changed: D)
 where
     T: Threading + 'static,
-    D: Fn(Pin<&mut T>) + Send + Sync + 'static,
+    D: Fn(Pin<&mut T>, Change) + Send + Sync + 'static,
 {
     let queued = Arc::new(AtomicBool::new(false));
     let delivered = Arc::clone(&queued);
     follow(
         thread,
         move |connection| changes(connection, properties, queued),
-        move |object, ()| {
+        move |object, change| {
             // Cleared before reading, so a change during the read is not lost.
             delivered.store(false, Ordering::SeqCst);
-            changed(object);
+            changed(object, change);
         },
     );
 }
 
-/// The stream behind [`watch`]: one item per change worth a reload, none
-/// while the last one still waits on the Qt thread.
+/// The stream behind [`watch`]: one item per change worth a reload. A
+/// [`Change::Moved`] is dropped while the last item still waits on the Qt
+/// thread; a [`Change::Restarted`] never is, since the read it asks for is a
+/// different one.
 async fn changes(
     connection: zbus::Connection,
     properties: &'static [&'static str],
     queued: Arc<AtomicBool>,
-) -> Result<impl Stream<Item = ()> + Unpin + Send, Error> {
+) -> Result<impl Stream<Item = Change> + Unpin + Send, Error> {
     let changed = PropertiesProxy::builder(&connection)
         .destination(BUS_NAME)?
         .path(OBJECT_PATH)?
@@ -194,16 +209,22 @@ async fn changes(
                     args.changed_properties.contains_key(name)
                         || args.invalidated_properties.contains(name)
                 });
-            ours.then_some(())
+            ours.then_some(Change::Moved)
         });
     let owners = DBusProxy::new(&connection)
         .await?
         .receive_name_owner_changed_with_args(&[(0, BUS_NAME)])
         .await?
-        .map(|_| ());
-    Ok(stream::once(())
+        .filter_map(|signal| {
+            let args = signal.args().ok()?;
+            args.new_owner().is_some().then_some(Change::Restarted)
+        });
+    Ok(stream::once(Change::Moved)
         .chain(changed.or(owners))
-        .filter(move |()| !queued.swap(true, Ordering::SeqCst)))
+        .filter(move |change| {
+            let waiting = queued.swap(true, Ordering::SeqCst);
+            !waiting || *change == Change::Restarted
+        }))
 }
 
 fn queue<T, R, D>(thread: &CxxQtThread<T>, deliver: D, result: Result<R, Error>)
@@ -246,7 +267,7 @@ mod tests {
         }
     }
 
-    async fn next(items: &mut (impl Stream<Item = ()> + Unpin)) -> Option<()> {
+    async fn next(items: &mut (impl Stream<Item = Change> + Unpin)) -> Option<Change> {
         tokio::time::timeout(QUIET, items.next())
             .await
             .ok()
@@ -280,7 +301,7 @@ mod tests {
             .expect("subscribed");
 
         // Once as soon as the subscription stands.
-        assert_eq!(next(&mut items).await, Some(()));
+        assert_eq!(next(&mut items).await, Some(Change::Moved));
         queued.store(false, Ordering::SeqCst);
 
         let iface = service
@@ -295,7 +316,11 @@ mod tests {
             .config_revision_changed(iface.signal_emitter())
             .await
             .expect("emitted");
-        assert_eq!(next(&mut items).await, Some(()), "a watched property");
+        assert_eq!(
+            next(&mut items).await,
+            Some(Change::Moved),
+            "a watched property"
+        );
         queued.store(false, Ordering::SeqCst);
 
         iface.get_mut().await.tray = "{}".to_owned();
@@ -317,6 +342,23 @@ mod tests {
             .await
             .expect("emitted");
         assert_eq!(next(&mut items).await, None, "coalesced");
+        queued.store(false, Ordering::SeqCst);
+
+        // TRAY-17: the service quits. Reading now would start it again.
+        drop(iface);
+        service.close().await.expect("the service leaves");
+        assert_eq!(next(&mut items).await, None, "leaving is not a change");
+
+        // A new service: read everything, even while a move still waits.
+        queued.store(true, Ordering::SeqCst);
+        let _again = bus
+            .builder()
+            .name(BUS_NAME)
+            .expect("name")
+            .build()
+            .await
+            .expect("a new service");
+        assert_eq!(next(&mut items).await, Some(Change::Restarted));
     }
 
     #[test]

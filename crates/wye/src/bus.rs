@@ -32,6 +32,20 @@ const ABSENT: [&str; 5] = [
 /// the service could not be started, so it never saw the call.
 const SPAWN_ERRORS: &str = "org.freedesktop.DBus.Error.Spawn.";
 
+/// Activation through systemd that failed (`NoSuchUnit`, `UnitMasked`, …),
+/// which the bus passes on: the service never started.
+const SYSTEMD_ERRORS: &str = "org.freedesktop.systemd1.";
+
+/// The bus daemon itself: an error it sends means the call was never
+/// delivered, except when it gave up waiting for the reply.
+const BUS_DAEMON: &str = "org.freedesktop.DBus";
+
+/// Bus-daemon errors that come after the call was delivered.
+const DELIVERED: [&str; 2] = [
+    "org.freedesktop.DBus.Error.NoReply",
+    "org.freedesktop.DBus.Error.TimedOut",
+];
+
 /// Why a call to the service did not succeed.
 #[derive(Debug)]
 pub enum CallError {
@@ -154,9 +168,17 @@ fn classify(error: Error) -> CallError {
 /// Whether `error` says the call reached no service.
 fn is_absent(error: &zbus::Error) -> bool {
     use zbus::DBusError as _;
-    let absent = |name: &str| ABSENT.contains(&name) || name.starts_with(SPAWN_ERRORS);
+    let absent = |name: &str| {
+        ABSENT.contains(&name) || name.starts_with(SPAWN_ERRORS) || name.starts_with(SYSTEMD_ERRORS)
+    };
     match error {
-        zbus::Error::MethodError(name, _, _) => absent(name.as_str()),
+        zbus::Error::MethodError(name, _, reply) => {
+            let from_bus = reply
+                .header()
+                .sender()
+                .is_some_and(|sender| sender.as_str() == BUS_DAEMON);
+            absent(name.as_str()) || (from_bus && !DELIVERED.contains(&name.as_str()))
+        }
         zbus::Error::FDO(fdo) => absent(fdo.name().as_str()),
         _ => false,
     }
@@ -175,14 +197,57 @@ mod tests {
     use super::*;
 
     fn method_error(name: &str) -> Error {
+        error_from(name, None)
+    }
+
+    /// A D-Bus error named `name`, sent by `sender`.
+    fn error_from(name: &str, sender: Option<&str>) -> Error {
+        let builder = zbus::message::Message::method_call("/", "Ping").expect("builder");
+        let builder = match sender {
+            Some(sender) => builder.sender(sender).expect("sender"),
+            None => builder,
+        };
         Error::from(zbus::Error::MethodError(
             zbus::names::OwnedErrorName::try_from(name).expect("error name"),
             Some("x".to_owned()),
-            zbus::message::Message::method_call("/", "Ping")
-                .expect("builder")
-                .build(&())
-                .expect("message"),
+            builder.build(&()).expect("message"),
         ))
+    }
+
+    /// Activation that failed in systemd or the bus daemon never reached a
+    /// service: `wye open` routes the link itself (DEF-04).
+    #[test]
+    fn a_failed_activation_is_unreachable() {
+        for error in [
+            method_error("org.freedesktop.systemd1.NoSuchUnit"),
+            method_error("org.freedesktop.systemd1.UnitMasked"),
+            error_from("org.freedesktop.DBus.Error.AccessDenied", Some(BUS_DAEMON)),
+            error_from(
+                "org.freedesktop.DBus.Error.LimitsExceeded",
+                Some(BUS_DAEMON),
+            ),
+        ] {
+            let shown = format!("{error:?}");
+            let classified = classify(error);
+            assert!(
+                matches!(classified, CallError::Unreachable(_)),
+                "{shown}: {classified:?}"
+            );
+        }
+        assert!(matches!(
+            classify(error_from(
+                "org.freedesktop.DBus.Error.NoReply",
+                Some(BUS_DAEMON)
+            )),
+            CallError::NoAnswer(_)
+        ));
+        assert!(matches!(
+            classify(error_from(
+                "org.freedesktop.DBus.Error.LimitsExceeded",
+                Some(":1.7")
+            )),
+            CallError::NoAnswer(_)
+        ));
     }
 
     #[test]

@@ -133,6 +133,22 @@ pub fn choose(info: &TargetInfo, mode: Option<OpenMode>) -> Choice {
     }
 }
 
+/// Every target choosing `info` can produce: as it is, and with each
+/// mode it supports (KEY-13), for example the browser's private target.
+/// What the service accepts back for a target the picker showed.
+#[must_use]
+pub fn choosable(info: &TargetInfo) -> Vec<Target> {
+    std::iter::once(None)
+        .chain(OpenMode::ALL.map(Some))
+        .map(|mode| choose(info, mode).chosen.target)
+        .fold(Vec::new(), |mut targets, target| {
+            if !targets.contains(&target) {
+                targets.push(target);
+            }
+            targets
+        })
+}
+
 /// What the tile's context menu offers (PICK-30).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileAction {

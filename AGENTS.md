@@ -9,15 +9,18 @@ window or desktop app, or asks with a small picker. The specification is in
 
 | Path | Contents |
 |------|----------|
-| `crates/wye-core` | Pure routing core: config, targets, rules, matchers, URL cleaning, redirect unwrapping, web app catalogue, pipeline. No IO. |
-| `crates/wye-desktop` | Linux integration: desktop entries, browser discovery and profiles, Exec/launch, `mimeapps.list` default browser, source-app detection. |
+| `crates/wye-core` | Pure routing core: config, targets, rules, matchers, URL cleaning, redirect unwrapping, web app catalogue, pipeline, and the pure models of the picker, tray, history, hooks and clipboard. No IO. |
+| `crates/wye-desktop` | Linux integration: desktop entries, browser discovery and profiles (including Firefox profile groups), Exec/launch, `mimeapps.list` default browser, `kdeglobals`, autostart, source-app detection, native-messaging manifests. |
 | `crates/wye-api` | The D-Bus contract: bus/interface/error names, JSON payload types (serde, camelCase), zbus proxies. See [docs/dbus-api.md](docs/dbus-api.md). |
+| `crates/wye-script` | The transform-script engine (QuickJS through `rquickjs`): global and per-rule scripts, limits, diffs. |
 | `crates/wye-service` | The session service library behind `wye service`: `bus/` interface impls delegate to one `api/<topic>.rs` per topic; `platform/` holds session integrations behind traits, with no-op and fake implementations. |
-| `crates/wye` | The `wye` binary and CLI. |
-| `crates/wye-ui` | The Qt/Kirigami UI host `wye-ui` (cxx-qt): picker, Settings and other windows. |
-| `frontends/` | Desktop frontends that are not Rust: the Plasma tray applet, the browser extension. |
-| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry, the icon, and `@bindir@` templates for the D-Bus service files (`data/dbus/`) and the systemd user unit (`data/systemd/`). |
-| `nix/`, `flake.nix` | Package, checks and dev shell. |
+| `crates/wye` | The `wye` binary and CLI, and `wye-native-host`, the browser extension's native-messaging host. Its `tests/e2e.rs` runs the real service on a private bus. |
+| `crates/wye-ui` | The Qt/Kirigami UI host `wye-ui` (cxx-qt): picker, tray-menu popup, Settings, script editor, onboarding, about and history windows. UI conventions: [crates/wye-ui/README.md](crates/wye-ui/README.md). |
+| `frontends/plasma/` | The Plasma 6 tray applet `dev.soldunov.wye` (pure QML) and its tests. |
+| `frontends/extension/` | The Firefox and Chromium extension (one set of files, one manifest per family). See its README. |
+| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user unit; `kwin/` the KWin query script. |
+| `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (applet and extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
+| `.github/workflows/` | `ci.yml` (`nix flake check`, advisories), `rust-doctor.yml`, `release.yml` (tag build, GitHub release, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
 
 Every requirement in the spec has an ID such as `PIPE-06`. Cite the ID in code comments,
@@ -44,11 +47,28 @@ Run in this order. Every gate must pass before a change is ready.
 4. `nix develop -c rust-doctor --yes --blocking warning`. A change must not introduce findings.
    Install once with `nix develop -c cargo install --locked rust-doctor`. CI installs the
    pinned version and runs it in `.github/workflows/rust-doctor.yml` (read-only token, no pull
-   request comment); config, if needed, goes in `rust-doctor.toml`.
+   request comment). `rust-doctor.toml` holds the policy: a rule is switched off there only
+   with a comment that says why (today `duplicate_major_versions`, for the syn 2/3 split).
 5. `nix develop -c cargo deny check` (advisories need the network).
-6. `nix flake check -L --keep-going`
+6. `nix flake check -L --keep-going`. Beyond the Rust checks (`clippy`, `test`, `fmt`, `deny`,
+   `machete`) it runs `installed-desktop-entry` and `installed-dbus-files` (the installed
+   files name this package's binaries), `qmllint` and `ui-selftest` (wye-ui),
+   `plasmoid-lint`, `plasmoid-loads` and `plasmoid-dbus-smoke` (the applet),
+   `extension-manifests` (the browser extension), `modules-eval` (both Nix modules and both
+   channels, evaluated with a fake `release.json`) and `nix-fmt`. `cargo test` includes
+   `crates/wye/tests/e2e.rs`: the real `wye service` on a private `dbus-daemon`, activated
+   from the shipped service file, with a fake browser and a fake `PickerHost1`.
    Run it through the `ci-check` script (or `cachix watch-exec psoldunov -- nix flake check -L --keep-going`) with `CACHIX_AUTH_TOKEN` set before pushing: it fills the public psoldunov Cachix cache, so CI substitutes instead of building.
 
 ## Commits
 
 Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, `perf:`, `ci:`.
+
+## Releases
+
+Push a tag `vX.Y.Z` that equals the workspace `version` in `Cargo.toml`, on master.
+`.github/workflows/release.yml` builds it, creates the GitHub release with generated notes,
+and opens a pull request that writes the tag's commit and content hash to
+`nix/release.json`. Merging that pull request is what makes `programs.wye.channel =
+"release"` the default. Never edit `nix/release.json` by hand. The workflow needs the
+repository setting "Allow GitHub Actions to create and approve pull requests".

@@ -18,6 +18,19 @@ def fmt(value, precision=1):
     return "0" if text in ("-0", "") else text
 
 
+SYMBOLIC_SCALE = 0.8
+"""The symbolic glyphs are drawn edge to edge on the 16 px grid, then shrunk to this
+fraction about the canvas centre, strokes included: Breeze symbolic icons keep a margin
+and hairline weight, and a full-bleed glyph looks bigger and heavier beside them in the
+panel."""
+
+
+def shrink(value, centre=8):
+    """A coordinate of a symbolic glyph, scaled by SYMBOLIC_SCALE about centre. Pass
+    centre=0 for a length (a radius, a stroke width, an offset)."""
+    return centre + (value - centre) * SYMBOLIC_SCALE
+
+
 def opacity(value):
     """Opacity without the leading zero: 0.016 -> ".016"."""
     text = fmt(value, 3)

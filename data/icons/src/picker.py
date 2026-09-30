@@ -5,12 +5,13 @@ Browser" style) and the Picker's radio item show a bulleted list: three dots, th
 lines. Filled shapes only, like the Wye symbolic icon, so GTK and Plasma recolour it.
 """
 
-from common import fmt
+from common import fmt, shrink
 
-# On the 16 px grid: dots of radius 1.25 at x 3, bars from x 6 to 14, rows at y 3.5, 8, 12.5.
-ROWS = (3.5, 8, 12.5)
-DOT = dict(cx=3, r=1.25)
-BAR = dict(x0=6, x1=14, half=1)
+# Drawn on the 16 px grid (dots of radius 1.25 at x 3, bars from x 6 to 14, rows at
+# y 3.5, 8, 12.5), then shrunk about the centre like every symbolic glyph.
+ROWS = tuple(shrink(y) for y in (3.5, 8, 12.5))
+DOT = dict(cx=shrink(3), r=shrink(1.25, 0))
+BAR = dict(x0=shrink(6), x1=shrink(14), half=shrink(1, 0))
 
 TEMPLATE = """\
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">

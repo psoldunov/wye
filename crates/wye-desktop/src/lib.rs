@@ -20,8 +20,10 @@ pub mod kdeglobals;
 pub mod keyfile;
 pub mod launch;
 pub mod loop_guard;
+pub mod native_messaging;
 pub mod profiles;
 pub mod source_app;
+pub mod state;
 pub mod xdg;
 
 #[cfg(test)]
@@ -38,4 +40,5 @@ pub use launch::{LaunchCommand, LaunchError, LaunchRequest, WYE_DESKTOP_ID, buil
 pub use loop_guard::forwards_links;
 pub use profiles::{Profile, ProfileError};
 pub use source_app::{ExecMatcher, ProcessProgram};
+pub use state::{State, StateError};
 pub use xdg::{Locale, NoHomeError, XdgDirs};

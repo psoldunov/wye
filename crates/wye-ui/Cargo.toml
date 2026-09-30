@@ -1,0 +1,45 @@
+[package]
+name = "wye-ui"
+description = "Wye's Qt/Kirigami UI host: the picker, Settings and the other windows"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+cxx.workspace = true
+cxx-qt.workspace = true
+cxx-qt-lib.workspace = true
+# `StreamExt` for the `ScriptFileChanged` signal stream (SCR-08).
+futures-lite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+wye-api.workspace = true
+wye-core.workspace = true
+zbus.workspace = true
+
+[dev-dependencies]
+# Import/export file tests (RUL-02).
+tempfile.workspace = true
+
+[build-dependencies]
+cxx-qt-build.workspace = true
+
+# Not the workspace table: the cxx-qt bridges expand to `unsafe` blocks and
+# `unsafe fn` declarations, which `forbid` would reject with no way to allow
+# them where they occur. `deny` keeps unsafe code out of everything else;
+# each `mod` of a bridge in `src/bridge/mod.rs` carries the one scoped allow.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }

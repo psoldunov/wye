@@ -1,0 +1,26 @@
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "about",
+      "argument": {
+        "scheme": "light",
+        "fixture": {
+          "version": "0.1.0",
+          "troubleshooting": "Wye: 0.1.0\nDesktop: KDE\nDefault browser: Wye; before Wye: Firefox (firefox.desktop)\nConfiguration: /home/user/.config/wye/config.toml\nConfiguration writable: yes\nConfiguration lossless: yes\nApps: 42 apps, 7 handle web links, 3 browser profiles\nHeld keys: wayland-layer-shell\nPointer position: kwin\nSource app fallbacks: kwin\nClipboard reading: wl-data-control\nClipboard watching: wl-data-control\nClipboard writing: wl-data-control\nGlobal shortcuts: kglobalaccel\nLock detection: logind\nLayer shell: yes\nScreen locked: no\nOnboarding done: yes\n"
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "about",
+      "argument": {
+        "scheme": "dark",
+        "fixture": {
+          "version": "0.1.0",
+          "troubleshooting": "Wye: 0.1.0\nDesktop: unknown\nDefault browser: Firefox (firefox.desktop)\nConfiguration: /home/user/.config/wye/config.toml\nConfiguration writable: no\nConfiguration lossless: yes\nConfiguration warning: unknown key general.colour\nApps: 3 apps, 1 handle web links, 0 browser profiles\nHeld keys: unavailable\nPointer position: unavailable\nSource app fallbacks: unavailable\nClipboard reading: unavailable\nClipboard watching: unavailable\nClipboard writing: unavailable\nClipboard features: This session does not let apps watch the clipboard. On GNOME, enable Wye's Shell integration.\nGlobal shortcuts: unavailable\nLock detection: unavailable\nLayer shell: no\nScreen locked: no\nOnboarding done: no\n"
+        }
+      }
+    }
+  ]
+}

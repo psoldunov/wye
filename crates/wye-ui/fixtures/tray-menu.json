@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "action": "toggle",
+      "argument": {
+        "icon": { "kind": "picker" },
+        "overlay": "warning",
+        "visible": true,
+        "items": [
+          { "id": "header-primary", "kind": "header", "label": "Open links in" },
+          { "id": "primary:picker", "kind": "radio", "label": "Picker", "icon": "dev.soldunov.wye-picker-symbolic", "shortcut": "P", "checked": true },
+          { "id": "primary:firefox.desktop", "kind": "radio", "label": "Firefox", "icon": "firefox", "shortcut": "1" },
+          { "id": "primary:chromium.desktop", "kind": "radio", "label": "Chromium", "icon": "chromium", "shortcut": "2", "enabled": false },
+          { "id": "sep-1", "kind": "separator" },
+          { "id": "clipboard", "kind": "action", "label": "Open URL from Clipboard", "enabled": false },
+          { "id": "more", "kind": "submenu", "label": "More", "children": [
+            { "id": "history", "kind": "action", "label": "History…" },
+            { "id": "test-rules", "kind": "action", "label": "Test Rules…" },
+            { "id": "sep-more", "kind": "separator" },
+            { "id": "about", "kind": "action", "label": "About Wye" }
+          ] },
+          { "id": "sep-2", "kind": "separator" },
+          { "id": "settings", "kind": "action", "label": "Settings…", "shortcut": "Ctrl+," },
+          { "id": "quit", "kind": "action", "label": "Quit Wye", "shortcut": "Ctrl+Q" }
+        ],
+        "placement": { "output": "DP-1", "x": 400, "y": 300 }
+      }
+    },
+    {
+      "action": "toggle",
+      "argument": { "icon": { "kind": "app" }, "visible": true, "items": [] }
+    },
+    {
+      "action": "toggle",
+      "argument": {
+        "icon": { "kind": "theme", "name": "firefox" },
+        "visible": false,
+        "items": [
+          { "id": "primary:picker", "kind": "radio", "label": "Picker", "shortcut": "P" },
+          { "id": "settings", "kind": "action", "label": "Settings…", "shortcut": "Ctrl+," }
+        ]
+      }
+    }
+  ]
+}

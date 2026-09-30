@@ -10,16 +10,21 @@
 //! as `DISC-05` refer to the specification in `docs/spec/`.
 
 pub mod atomic;
+pub mod autostart;
 pub mod default_browser;
 pub mod discovery;
 pub mod entry;
 pub mod exec;
 pub mod family;
+pub mod kdeglobals;
 pub mod keyfile;
 pub mod launch;
 pub mod loop_guard;
+pub mod native_messaging;
 pub mod profiles;
 pub mod source_app;
+pub mod stand_in;
+pub mod state;
 pub mod xdg;
 
 #[cfg(test)]
@@ -35,4 +40,6 @@ pub use family::{BrowserFamily, Packaging};
 pub use launch::{LaunchCommand, LaunchError, LaunchRequest, WYE_DESKTOP_ID, build_command, spawn};
 pub use loop_guard::forwards_links;
 pub use profiles::{Profile, ProfileError};
-pub use xdg::{NoHomeError, XdgDirs};
+pub use source_app::{ExecMatcher, ProcessProgram};
+pub use state::{State, StateError};
+pub use xdg::{Locale, NoHomeError, XdgDirs};

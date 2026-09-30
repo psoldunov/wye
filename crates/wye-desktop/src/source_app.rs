@@ -8,8 +8,14 @@ use std::path::{Path, PathBuf};
 
 use wye_core::{DesktopId, SourceApp};
 
+use crate::discovery::Inventory;
 use crate::launch::WYE_DESKTOP_ID;
 use crate::loop_guard::OPENERS;
+
+mod exec_match;
+mod sandbox;
+
+pub use exec_match::{ExecMatcher, ProcessProgram};
 
 /// Processes between the source app and Wye: launch helpers and shells.
 const SKIPPED: &[&str] = &[
@@ -46,15 +52,46 @@ const MAX_HOPS: usize = 64;
 /// `<proc_root>/self/cgroup` is used then, unless that unit is Wye's own
 /// (a launcher that started Wye in a scope of its own). Otherwise the
 /// source is unknown.
+///
+/// The desktop ID of the app comes from, in order: its systemd scope,
+/// `GIO_LAUNCHED_DESKTOP_FILE`, the Flatpak sandbox it runs in, its Snap
+/// unit. [`detect_with`] adds matching its program against desktop entries.
 #[must_use]
 pub fn detect(proc_root: &Path, start_pid: u32) -> SourceApp {
-    walk_parents(proc_root, start_pid)
+    detect_using(proc_root, start_pid, None)
+}
+
+/// Like [`detect`], and when none of those name the app, the program it runs
+/// is matched against the `Exec` of the desktop entries in `matcher`: the
+/// executable and `argv[0]`, by resolved path and then by file name
+/// (13-linux-platform.md, step 3).
+#[must_use]
+pub fn detect_with(proc_root: &Path, start_pid: u32, matcher: &ExecMatcher) -> SourceApp {
+    detect_using(proc_root, start_pid, Some(matcher))
+}
+
+/// [`detect_with`] over the apps of `inventory`.
+#[must_use]
+pub fn detect_in(proc_root: &Path, start_pid: u32, inventory: &Inventory) -> SourceApp {
+    detect_with(
+        proc_root,
+        start_pid,
+        &ExecMatcher::from_inventory(inventory),
+    )
+}
+
+fn detect_using(proc_root: &Path, start_pid: u32, matcher: Option<&ExecMatcher>) -> SourceApp {
+    walk_parents(proc_root, start_pid, matcher)
         .or_else(|| own_scope(proc_root))
         .unwrap_or_default()
 }
 
 /// The source app from the parent chain, or `None` when it names none.
-fn walk_parents(proc_root: &Path, start_pid: u32) -> Option<SourceApp> {
+fn walk_parents(
+    proc_root: &Path,
+    start_pid: u32,
+    matcher: Option<&ExecMatcher>,
+) -> Option<SourceApp> {
     let mut pid = start_pid;
     for _ in 0..MAX_HOPS {
         if pid <= 1 {
@@ -75,7 +112,7 @@ fn walk_parents(proc_root: &Path, start_pid: u32) -> Option<SourceApp> {
                 None => break,
             }
         }
-        return Some(describe(proc_root, pid, comm));
+        return Some(describe(proc_root, pid, comm, matcher));
     }
     None
 }
@@ -117,16 +154,25 @@ pub fn parse_app_unit(unit: &str) -> Option<DesktopId> {
     DesktopId::new(unescape_unit(app_id)?).ok()
 }
 
-/// The source app for one process: its desktop ID from the systemd scope
-/// or `GIO_LAUNCHED_DESKTOP_FILE`, and its executable's file name.
-fn describe(proc_root: &Path, pid: u32, comm: String) -> SourceApp {
+/// The source app for one process: its desktop ID and its executable's file
+/// name. The ID is tried from the systemd scope, `GIO_LAUNCHED_DESKTOP_FILE`,
+/// the Flatpak sandbox, the Snap unit and, with a `matcher`, the program's
+/// desktop entry.
+fn describe(proc_root: &Path, pid: u32, comm: String, matcher: Option<&ExecMatcher>) -> SourceApp {
     let dir = pid_dir(proc_root, pid);
-    let desktop_id = fs::read_to_string(dir.join("cgroup"))
-        .ok()
-        .and_then(|text| desktop_id_from_cgroup(&text))
-        .or_else(|| desktop_id_from_environ(&dir.join("environ")));
-    let executable = fs::read_link(dir.join("exe"))
-        .ok()
+    let cgroup = fs::read_to_string(dir.join("cgroup")).unwrap_or_default();
+    let exe_path = fs::read_link(dir.join("exe")).ok();
+    let desktop_id = desktop_id_from_cgroup(&cgroup)
+        .or_else(|| desktop_id_from_environ(&dir.join("environ")))
+        .or_else(|| sandbox::flatpak_desktop_id(&dir))
+        .or_else(|| sandbox::snap_desktop_id(&cgroup))
+        .or_else(|| {
+            matcher?.find(&ProcessProgram {
+                exe: exe_path.clone(),
+                argv: read_argv(&dir.join("cmdline")),
+            })
+        });
+    let executable = exe_path
         .and_then(|target| {
             let name = target.file_name()?.to_string_lossy().into_owned();
             Some(name.trim_end_matches(" (deleted)").to_owned())
@@ -141,10 +187,30 @@ fn describe(proc_root: &Path, pid: u32, comm: String) -> SourceApp {
 
 /// The unified-hierarchy (`0::`) cgroup path's innermost `app-…` unit.
 fn desktop_id_from_cgroup(text: &str) -> Option<DesktopId> {
-    let path = text.lines().find_map(|line| line.strip_prefix("0::"))?;
-    path.rsplit('/')
+    cgroup_units(text)
         .filter(|unit| unit.starts_with("app-"))
         .find_map(parse_app_unit)
+}
+
+/// The units of the unified-hierarchy (`0::`) cgroup path, innermost first.
+fn cgroup_units(text: &str) -> impl Iterator<Item = &str> {
+    text.lines()
+        .find_map(|line| line.strip_prefix("0::"))
+        .unwrap_or_default()
+        .rsplit('/')
+}
+
+/// `/proc/<pid>/cmdline` split at NUL.
+fn read_argv(path: &Path) -> Vec<String> {
+    fs::read(path)
+        .map(|bytes| {
+            bytes
+                .split(|byte| *byte == 0)
+                .filter(|arg| !arg.is_empty())
+                .map(|arg| String::from_utf8_lossy(arg).into_owned())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn desktop_id_from_environ(path: &Path) -> Option<DesktopId> {

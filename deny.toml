@@ -21,8 +21,49 @@ allow = [
   "MIT",
   "Unicode-3.0",
   "Unlicense",
+  # foldhash (via cxx, cxx-qt and hashbrown).
+  "Zlib",
 ]
 confidence-threshold = 0.8
+
+# File watchers in the service (config reload, mimeapps.list, application
+# dirs): notify is CC0-1.0, its Linux backend inotify is ISC. Scoped to these
+# crates rather than allowed globally.
+[[licenses.exceptions]]
+crate = "notify"
+allow = ["CC0-1.0"]
+
+[[licenses.exceptions]]
+crate = "inotify"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+crate = "inotify-sys"
+allow = ["ISC"]
+
+# HTTP for short-link expansion and Songlink (decision 7: ureq with rustls).
+# ring and the webpki crates are ISC (ring also Apache-2.0), subtle is
+# BSD-3-Clause, and ureq's `rustls` feature brings the Mozilla root list
+# (CDLA-Permissive-2.0) even though Wye verifies with the platform's store.
+[[licenses.exceptions]]
+crate = "ring"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+crate = "rustls-webpki"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+crate = "untrusted"
+allow = ["ISC"]
+
+[[licenses.exceptions]]
+crate = "subtle"
+allow = ["BSD-3-Clause"]
+
+[[licenses.exceptions]]
+crate = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
 
 [bans]
 multiple-versions = "warn"

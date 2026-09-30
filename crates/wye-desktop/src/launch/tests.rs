@@ -233,6 +233,39 @@ fn spawns_detached_processes() {
 }
 
 #[test]
+fn spawn_with_env_passes_the_activation_token() {
+    // LAUNCH-03: the service hands the token it received to the app.
+    let dir = tempfile::tempdir().unwrap();
+    let out = dir.path().join("env");
+    let command = LaunchCommand {
+        program: "sh".into(),
+        args: vec![
+            "-c".into(),
+            format!(
+                "printf '%s|%s' \"$XDG_ACTIVATION_TOKEN\" \"${{DESKTOP_STARTUP_ID-unset}}\" > {}",
+                out.display()
+            ),
+        ],
+        remove_env: Vec::new(),
+    };
+    let env = [
+        ("XDG_ACTIVATION_TOKEN", Some("token-1")),
+        ("DESKTOP_STARTUP_ID", None),
+    ];
+    let pid = spawn_with_env(&command, &env).unwrap();
+    assert!(pid > 0);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    let text = loop {
+        let text = std::fs::read_to_string(&out).unwrap_or_default();
+        if !text.is_empty() || std::time::Instant::now() > deadline {
+            break text;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    assert_eq!(text, "token-1|unset");
+}
+
+#[test]
 fn refuses_commands_that_loop_back_to_wye() {
     // DEF-06: beyond Wye's desktop ID, never run Wye or a generic opener.
     let fx = browsers();

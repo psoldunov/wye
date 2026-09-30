@@ -1,0 +1,520 @@
+{
+ "cases": [
+  {
+   "action": "show",
+   "key": "1",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "hotkey": "f",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      },
+      "hotkey": "w",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "2",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "browser1.desktop"
+      },
+      "name": "Browser 1",
+      "icon": "internet-web-browser",
+      "hotkey": "1",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser2.desktop"
+      },
+      "name": "Browser 2",
+      "icon": "internet-web-browser",
+      "hotkey": "2",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser3.desktop"
+      },
+      "name": "Browser 3",
+      "icon": "internet-web-browser",
+      "hotkey": "3",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser4.desktop"
+      },
+      "name": "Browser 4",
+      "icon": "internet-web-browser",
+      "hotkey": "4",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser5.desktop"
+      },
+      "name": "Browser 5",
+      "icon": "internet-web-browser",
+      "hotkey": "5",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser6.desktop"
+      },
+      "name": "Browser 6",
+      "icon": "internet-web-browser",
+      "hotkey": "6",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser7.desktop"
+      },
+      "name": "Browser 7",
+      "icon": "internet-web-browser",
+      "hotkey": "7",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser8.desktop"
+      },
+      "name": "Browser 8",
+      "icon": "internet-web-browser",
+      "hotkey": "8",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser9.desktop"
+      },
+      "name": "Browser 9",
+      "icon": "internet-web-browser",
+      "hotkey": "9",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [],
+    "settings": {
+     "iconSize": "small",
+     "showNames": false,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [
+     "Shift"
+    ],
+    "preview": false
+   }
+  },
+  {
+   "action": "show",
+   "key": "3",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/blob/master/docs/spec/02-picker.md?plain=1&utm=none#L1-L80-a-long-anchor-to-cut",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/blob/master/docs/spec/02-picker.md?plain=1&utm=none#L1-L80-a-long-anchor-to-cut"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "hotkey": "f",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      },
+      "hotkey": "w",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "medium",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [],
+    "preview": false
+   }
+  },
+  {
+   "action": "show",
+   "key": "4",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [],
+    "overflow": [],
+    "settings": {
+     "iconSize": "medium",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [],
+    "preview": true
+   }
+  },
+  {
+   "action": "close",
+   "key": "4"
+  }
+ ]
+}

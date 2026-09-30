@@ -2,6 +2,7 @@
 //! directories, fake browsers that log the links they receive, and Wye's
 //! own desktop entry on demand.
 
+use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
@@ -45,7 +46,7 @@ impl Desktop {
     }
 
     /// A browser whose executable appends each argument to `<stem>.log`.
-    fn add_browser(&self, id: &str, name: &str) {
+    pub fn add_browser(&self, id: &str, name: &str) {
         let stem = id.trim_end_matches(".desktop");
         let program = self.path("bin").join(stem);
         let log = self.log_path(id);
@@ -139,24 +140,44 @@ impl Desktop {
         Run::from(output)
     }
 
-    fn command(&self, args: &[&str]) -> Command {
+    /// Runs `wye` with its session bus at `address`.
+    pub fn wye_on_bus(&self, args: &[&str], address: &str) -> Run {
+        let mut command = self.command(args);
+        command.env("DBUS_SESSION_BUS_ADDRESS", address);
+        Run::from(command.output().unwrap())
+    }
+
+    /// The environment `wye` runs in: this desktop's directories, the fake
+    /// browsers first on `PATH`, and no reachable session or system bus.
+    pub fn env(&self) -> Vec<(&'static str, OsString)> {
         let path = format!(
             "{}:{}",
             self.path("bin").display(),
             std::env::var("PATH").unwrap_or_default()
         );
+        vec![
+            ("PATH", path.into()),
+            ("HOME", self.path("home").into()),
+            ("XDG_CONFIG_HOME", self.path("config").into()),
+            ("XDG_CONFIG_DIRS", self.path("sysconfig").into()),
+            ("XDG_DATA_HOME", self.path("data").into()),
+            ("XDG_DATA_DIRS", self.path("sysdata").into()),
+            ("XDG_STATE_HOME", self.path("state").into()),
+            ("XDG_CURRENT_DESKTOP", "Test".into()),
+            (
+                "DBUS_SESSION_BUS_ADDRESS",
+                format!("unix:path={}", self.path("no-bus").display()).into(),
+            ),
+            (
+                "DBUS_SYSTEM_BUS_ADDRESS",
+                format!("unix:path={}", self.path("no-system-bus").display()).into(),
+            ),
+        ]
+    }
+
+    fn command(&self, args: &[&str]) -> Command {
         let mut command = Command::new(env!("CARGO_BIN_EXE_wye"));
-        command
-            .args(args)
-            .env_clear()
-            .env("PATH", path)
-            .env("HOME", self.path("home"))
-            .env("XDG_CONFIG_HOME", self.path("config"))
-            .env("XDG_CONFIG_DIRS", self.path("sysconfig"))
-            .env("XDG_DATA_HOME", self.path("data"))
-            .env("XDG_DATA_DIRS", self.path("sysdata"))
-            .env("XDG_STATE_HOME", self.path("state"))
-            .env("XDG_CURRENT_DESKTOP", "Test");
+        command.args(args).env_clear().envs(self.env());
         command
     }
 }

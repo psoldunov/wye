@@ -28,6 +28,89 @@ pub struct XdgDirs {
     pub current_desktops: Vec<String>,
     /// `$PATH`, used to resolve `TryExec` and bare executable names.
     pub search_path: Vec<PathBuf>,
+    /// The session's message locale (`$LC_ALL`, `$LC_MESSAGES`, `$LANG`),
+    /// which picks localised desktop-entry keys (DISC-03).
+    pub locale: Locale,
+}
+
+/// A message locale such as `de_AT.UTF-8@euro`, reduced to the parts the
+/// Desktop Entry specification's key lookup uses: language, country and
+/// modifier. The encoding is dropped.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Locale {
+    lang: String,
+    country: Option<String>,
+    modifier: Option<String>,
+}
+
+impl Locale {
+    /// The locale that looks up only unlocalised keys (`C`, `POSIX`).
+    #[must_use]
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// Parses `lang[_COUNTRY][.ENCODING][@MODIFIER]`. `C`, `POSIX` and
+    /// empty text have no language to look up, so they give `None`.
+    #[must_use]
+    pub fn parse(text: &str) -> Option<Self> {
+        let text = text.trim();
+        let (rest, modifier) = match text.split_once('@') {
+            Some((rest, modifier)) => (rest, Some(modifier)),
+            None => (text, None),
+        };
+        let rest = rest.split_once('.').map_or(rest, |(before, _)| before);
+        let (lang, country) = match rest.split_once('_') {
+            Some((lang, country)) => (lang, Some(country)),
+            None => (rest, None),
+        };
+        let part = |value: &str| (!value.is_empty()).then(|| value.to_owned());
+        if lang.is_empty() || lang == "C" || lang == "POSIX" {
+            return None;
+        }
+        Some(Self {
+            lang: lang.to_owned(),
+            country: country.and_then(part),
+            modifier: modifier.and_then(part),
+        })
+    }
+
+    /// The locale an environment selects: the first of `LC_ALL`,
+    /// `LC_MESSAGES` and `LANG` that is set and not empty decides, as in
+    /// `setlocale`; when that one is `C` or `POSIX`, nothing is localised.
+    pub fn from_lookup(lookup: impl Fn(&str) -> Option<OsString>) -> Self {
+        ["LC_ALL", "LC_MESSAGES", "LANG"]
+            .iter()
+            .filter_map(|name| lookup(name))
+            .map(|value| value.to_string_lossy().into_owned())
+            .find(|value| !value.trim().is_empty())
+            .and_then(|value| Self::parse(&value))
+            .unwrap_or_default()
+    }
+
+    /// The key suffixes to try, best first, in the order the Desktop Entry
+    /// specification gives: `lang_COUNTRY@MODIFIER`, `lang_COUNTRY`,
+    /// `lang@MODIFIER`, `lang`. Suffixes the locale has no parts for are
+    /// left out. `Name[de_AT]` is tried as `de_AT`, never as `de-AT`.
+    #[must_use]
+    pub fn candidates(&self) -> Vec<String> {
+        if self.lang.is_empty() {
+            return Vec::new();
+        }
+        let lang = &self.lang;
+        let mut out = Vec::with_capacity(4);
+        if let (Some(country), Some(modifier)) = (&self.country, &self.modifier) {
+            out.push(format!("{lang}_{country}@{modifier}"));
+        }
+        if let Some(country) = &self.country {
+            out.push(format!("{lang}_{country}"));
+        }
+        if let Some(modifier) = &self.modifier {
+            out.push(format!("{lang}@{modifier}"));
+        }
+        out.push(lang.clone());
+        out
+    }
 }
 
 /// The environment has no usable `$HOME`.
@@ -83,6 +166,7 @@ impl XdgDirs {
         let search_path = lookup("PATH")
             .map(|value| absolute_paths(&value))
             .unwrap_or_default();
+        let locale = Locale::from_lookup(&lookup);
 
         Ok(Self {
             config_home: single("XDG_CONFIG_HOME", home.join(".config")),
@@ -91,6 +175,7 @@ impl XdgDirs {
             data_dirs: list("XDG_DATA_DIRS", &["/usr/local/share", "/usr/share"]),
             current_desktops,
             search_path,
+            locale,
             home,
         })
     }
@@ -202,6 +287,74 @@ mod tests {
             ]
         );
         assert_eq!(dirs.search_path.len(), 2);
+    }
+
+    #[test]
+    fn parses_locales() {
+        let parse = |text: &str| Locale::parse(text).map(|l| l.candidates());
+        assert_eq!(
+            parse("de_AT.UTF-8@euro"),
+            Some(vec![
+                "de_AT@euro".to_owned(),
+                "de_AT".to_owned(),
+                "de@euro".to_owned(),
+                "de".to_owned()
+            ])
+        );
+        assert_eq!(
+            parse("de_AT"),
+            Some(vec!["de_AT".to_owned(), "de".to_owned()])
+        );
+        assert_eq!(
+            parse("sr@latin"),
+            Some(vec!["sr@latin".to_owned(), "sr".to_owned()])
+        );
+        assert_eq!(parse("fr.UTF-8"), Some(vec!["fr".to_owned()]));
+        assert_eq!(
+            parse("pt_BR.utf8"),
+            Some(vec!["pt_BR".to_owned(), "pt".to_owned()])
+        );
+        assert_eq!(parse("C"), None);
+        assert_eq!(parse("POSIX"), None);
+        assert_eq!(parse("C.UTF-8"), None);
+        assert_eq!(parse(""), None);
+        assert_eq!(parse("_DE"), None);
+        assert!(Locale::none().candidates().is_empty());
+    }
+
+    #[test]
+    fn the_locale_comes_from_lc_all_then_lc_messages_then_lang() {
+        let locale = |vars: &[(&str, &str)]| {
+            let mut all = vec![("HOME", "/home/u")];
+            all.extend_from_slice(vars);
+            XdgDirs::from_lookup(lookup(&all)).unwrap().locale
+        };
+        assert_eq!(locale(&[]), Locale::none());
+        assert_eq!(
+            locale(&[("LANG", "de_DE.UTF-8")]),
+            Locale::parse("de_DE").unwrap()
+        );
+        assert_eq!(
+            locale(&[("LANG", "de_DE.UTF-8"), ("LC_MESSAGES", "fr_FR.UTF-8")]),
+            Locale::parse("fr_FR").unwrap()
+        );
+        assert_eq!(
+            locale(&[
+                ("LANG", "de_DE.UTF-8"),
+                ("LC_MESSAGES", "fr_FR.UTF-8"),
+                ("LC_ALL", "es_ES.UTF-8")
+            ]),
+            Locale::parse("es_ES").unwrap()
+        );
+        // An empty LC_ALL is unset; a C LC_ALL wins and switches localisation off.
+        assert_eq!(
+            locale(&[("LC_ALL", ""), ("LANG", "de_DE.UTF-8")]),
+            Locale::parse("de_DE").unwrap()
+        );
+        assert_eq!(
+            locale(&[("LC_ALL", "C"), ("LANG", "de_DE.UTF-8")]),
+            Locale::none()
+        );
     }
 
     #[test]

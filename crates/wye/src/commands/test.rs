@@ -4,11 +4,11 @@
 use std::process::ExitCode;
 
 use wye_core::{LinkRequest, Modifiers, Pipeline, Resolution};
-use wye_desktop::{Inventory, LaunchRequest, build_command};
+use wye_desktop::{Inventory, LaunchRequest, build_command, stand_in};
 
 use super::{Console, Context, INVALID};
 use crate::cli::TestArgs;
-use crate::{display, picker_fallback};
+use crate::display;
 
 pub fn run(
     context: &Context,
@@ -61,19 +61,23 @@ impl Report<'_> {
             None => writeln!(console.out, "Opens in: {target}")?,
         }
 
-        let target = if picker_fallback::needed(resolution) {
+        let target = if stand_in::needed(resolution) {
             let state = self.context.state_or_default(console.err);
-            let stand_in = picker_fallback::choose(self.pipeline.config(), self.inventory, &state);
+            let stand_in = stand_in::choose(
+                self.pipeline.config(),
+                self.inventory,
+                state.previous_default_browser.as_ref(),
+            );
             let Some(stand_in) = stand_in else {
                 writeln!(
                     console.out,
-                    "The picker is not available yet, and no web browser is installed."
+                    "Without the Wye service no picker can be shown, and no web browser is installed."
                 )?;
                 return Ok(());
             };
             writeln!(
                 console.out,
-                "The picker is not available yet; wye open would use {}.",
+                "Without the Wye service no picker can be shown; wye open would use {}.",
                 display::target(&stand_in, self.inventory)
             )?;
             stand_in

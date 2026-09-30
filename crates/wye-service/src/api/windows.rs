@@ -2,16 +2,25 @@
 //! `ActivateAction`, `ShowWindow`, `Quit` (TRAY-05, TRAY-16, TRAY-17,
 //! SET-04).
 //!
-//! Windows are forwarded to the UI host (`dev.soldunov.wye.Windows1`).
+//! Windows belong to the UI host: they are forwarded to
+//! `dev.soldunov.wye.Windows1` on `dev.soldunov.wye.Ui`, which the bus starts
+//! when it is not running.
+
+use std::time::Duration;
 
 use wye_api::Error;
+use wye_api::actions::{ApplicationAction, Window};
+use wye_api::proxy::Windows1Proxy;
 use zbus::zvariant::OwnedValue;
 
 use super::{Caller, Dict, Result};
 use crate::context::ServiceContext;
 use crate::platform::Platform;
 
-/// State this topic keeps. Empty until the topic is implemented.
+/// How long the UI host may take to start and answer.
+const UI_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// State this topic keeps. Empty until the topic needs any.
 #[derive(Debug, Default)]
 pub struct State;
 
@@ -21,50 +30,81 @@ impl State {
     }
 }
 
-/// `org.freedesktop.Application.Activate`: started without a link. First
-/// run, else Settings when there is no tray icon (TRAY-05), else nothing.
-#[allow(
-    clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
-)]
-pub async fn activate(
-    _ctx: &ServiceContext,
-    _caller: &Caller,
-    _platform_data: &Dict,
-) -> Result<()> {
-    Err(Error::not_implemented("Activate"))
+/// `org.freedesktop.Application.Activate`: Wye started without a link
+/// (TRAY-05).
+///
+/// Settings opens while no tray icon can bring the user back in. The
+/// first-run window and "tray icon shown" come with onboarding state (U07)
+/// and the tray (U08); until then there is never a tray, so Settings always
+/// opens. A UI host that cannot be reached is logged, not returned: a
+/// launcher has nobody to show the error to.
+pub async fn activate(ctx: &ServiceContext, _caller: &Caller, _platform_data: &Dict) -> Result<()> {
+    if let Err(error) = show(ctx, Window::Settings, "").await {
+        tracing::warn!(%error, "cannot open Settings");
+    }
+    Ok(())
 }
 
 /// `org.freedesktop.Application.ActivateAction`: a desktop action
 /// ([`wye_api::actions::ApplicationAction`]).
-#[allow(
-    clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
-)]
 pub async fn activate_action(
-    _ctx: &ServiceContext,
-    _caller: &Caller,
-    _action: &str,
+    ctx: &ServiceContext,
+    caller: &Caller,
+    action: &str,
     _parameter: &[OwnedValue],
     _platform_data: &Dict,
 ) -> Result<()> {
-    Err(Error::not_implemented("ActivateAction"))
+    let action: ApplicationAction = action
+        .parse()
+        .map_err(|error| Error::invalid_args(format!("{error}")))?;
+    match action {
+        ApplicationAction::Settings => show(ctx, Window::Settings, "").await,
+        ApplicationAction::Setup => show(ctx, Window::FirstRun, "").await,
+        ApplicationAction::History => show(ctx, Window::History, "").await,
+        ApplicationAction::TestRules => show(ctx, Window::TestRules, "").await,
+        ApplicationAction::About => show(ctx, Window::About, "").await,
+        ApplicationAction::Clipboard => super::clipboard::open_clipboard(ctx, caller, false).await,
+        ApplicationAction::ClipboardAlternative => {
+            super::clipboard::open_clipboard(ctx, caller, true).await
+        }
+        ApplicationAction::Menu => super::shortcuts::toggle_menu(ctx).await,
+        ApplicationAction::Quit => quit(ctx).await,
+    }
 }
 
 /// `dev.soldunov.wye1.ShowWindow` ([`wye_api::actions::Window`]).
-#[allow(
-    clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
-)]
-pub async fn show_window(_ctx: &ServiceContext, _window: &str, _argument: &str) -> Result<()> {
-    Err(Error::not_implemented("ShowWindow"))
+pub async fn show_window(ctx: &ServiceContext, window: &str, argument: &str) -> Result<()> {
+    let window: Window = window
+        .parse()
+        .map_err(|error| Error::invalid_args(format!("{error}")))?;
+    show(ctx, window, argument).await
+}
+
+/// Forward to the UI host; `Unavailable` when it cannot be reached.
+async fn show(ctx: &ServiceContext, window: Window, argument: &str) -> Result<()> {
+    let connection = ctx
+        .connection()
+        .ok_or_else(|| Error::Unavailable("the service is not on a bus".to_owned()))?;
+    let call = async {
+        let proxy = Windows1Proxy::new(connection).await?;
+        proxy.show_window(window.as_str(), argument).await
+    };
+    match tokio::time::timeout(UI_TIMEOUT, call).await {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(Error::Unavailable(format!(
+            "the Wye window host did not open {window}: {error}"
+        ))),
+        Err(_) => Err(Error::Unavailable(format!(
+            "the Wye window host did not answer within {UI_TIMEOUT:?}"
+        ))),
+    }
 }
 
 /// `dev.soldunov.wye1.Quit` (TRAY-17): the service stops; the next link
 /// starts it again through D-Bus activation.
 #[allow(
     clippy::unused_async,
-    reason = "the bus layer awaits every topic function; this one has nothing to await yet"
+    reason = "the bus layer awaits every topic function; this one has nothing to await"
 )]
 pub async fn quit(ctx: &ServiceContext) -> Result<()> {
     ctx.request_shutdown();

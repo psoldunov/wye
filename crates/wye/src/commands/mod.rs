@@ -1,10 +1,14 @@
 //! The subcommands and what they share.
 
 mod browsers;
+mod clipboard;
 mod config;
+mod debug;
 mod default;
 mod open;
+mod service;
 mod test;
+mod window;
 
 use std::io::Write;
 use std::process::ExitCode;
@@ -35,13 +39,22 @@ pub struct Console<'a> {
 ///
 /// Returns runtime failures; `main` prints them and exits with 1.
 pub fn run(command: Command, console: &mut Console<'_>) -> anyhow::Result<ExitCode> {
-    let context = Context::from_env()?;
     match command {
-        Command::Open(args) => open::run(&context, console, &args),
-        Command::Test(args) => test::run(&context, console, &args),
-        Command::Browsers => browsers::run(&context, console),
-        Command::Default { action } => default::run(&context, console, action.unwrap_or_default()),
-        Command::Config { action } => config::run(&context, console, action.unwrap_or_default()),
+        Command::Open(args) => open::run(&Context::from_env()?, console, &args),
+        Command::Test(args) => test::run(&Context::from_env()?, console, &args),
+        Command::Browsers => browsers::run(&Context::from_env()?, console),
+        Command::Default { action } => {
+            default::run(&Context::from_env()?, console, action.unwrap_or_default())
+        }
+        Command::Config { action } => {
+            config::run(&Context::from_env()?, console, action.unwrap_or_default())
+        }
+        // These only talk to the service and need no home directory here.
+        Command::Service { activate } => service::run(console, activate),
+        Command::Clipboard { alternative } => Ok(clipboard::run(console, alternative)),
+        Command::Menu => Ok(window::menu(console)),
+        Command::Settings { page } => Ok(window::settings(console, page.as_deref())),
+        Command::Debug { action } => Ok(debug::run(console, &action)),
     }
 }
 

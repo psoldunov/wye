@@ -2,6 +2,7 @@
 //!
 //! Every member of the contract must answer: with a real reply, or with
 //! `dev.soldunov.wye.Error.NotImplemented` while its topic is still a stub.
+//! What the link path does is tested in `link.rs`.
 //! Skips (and says so) when `dbus-daemon` is not on `PATH`.
 
 mod support;
@@ -9,7 +10,7 @@ mod support;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
-use support::PrivateBus;
+use support::Service;
 use wye_api::proxy::{ApplicationProxy, KWin1Proxy, Wye1Proxy};
 use wye_api::status::Status;
 use wye_api::tray::TrayMenu;
@@ -20,32 +21,15 @@ use zbus::zvariant::Value;
 
 const URL: &str = "https://example.com/";
 
-/// A running service and a client connection to it.
-struct Harness {
-    ctx: ServiceContext,
-    client: zbus::Connection,
-    // Dropped last: the connections need the daemon.
-    _bus: PrivateBus,
+async fn harness() -> Option<Service> {
+    Service::start("").await
 }
 
-async fn harness() -> Option<Harness> {
-    let bus = PrivateBus::start()?;
-    let ctx = ServiceContext::new(FakePlatform::new().platform());
-    let service = bus.connect().await;
-    let watchers = run::start(&service, &ctx).await.expect("service started");
-    assert!(watchers.is_empty(), "no watchers exist yet");
-    let client = bus.connect().await;
-    Some(Harness {
-        ctx,
-        client,
-        _bus: bus,
-    })
-}
-
-/// A real reply or `NotImplemented`; anything else fails the test.
+/// A real reply, `NotImplemented`, or `Unavailable` (no UI host on the
+/// private bus); anything else fails the test.
 fn answered<T: Debug>(member: &str, reply: Result<T, Error>) {
     match reply {
-        Ok(_) | Err(Error::NotImplemented(_)) => {}
+        Ok(_) | Err(Error::NotImplemented(_) | Error::Unavailable(_)) => {}
         Err(other) => panic!("{member} answered {other}"),
     }
 }

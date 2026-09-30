@@ -30,6 +30,43 @@ pub enum Command {
         #[command(subcommand)]
         action: Option<ConfigAction>,
     },
+    /// Run the Wye session service (DEF-04).
+    Service {
+        /// Only make sure the service runs, through D-Bus activation, and
+        /// exit (for the autostart entry, GEN-01).
+        #[arg(long)]
+        activate: bool,
+    },
+    /// Open the URL on the clipboard (IN-02 to IN-04).
+    Clipboard {
+        /// Open it in the alternative browser (IN-04).
+        #[arg(long)]
+        alternative: bool,
+    },
+    /// Open or close the tray menu (TRAY-08).
+    Menu,
+    /// Open the Settings window (SET-04).
+    Settings {
+        /// The page to show, such as `browsers` or `rules`.
+        #[arg(value_name = "PAGE")]
+        page: Option<String>,
+    },
+    /// Diagnostics for what only a real session can show.
+    Debug {
+        #[command(subcommand)]
+        action: DebugAction,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum DebugAction {
+    /// Print the held modifiers, the pointer and the focused app, after an
+    /// optional delay to set them up.
+    Probe {
+        /// Seconds to wait first.
+        #[arg(long, value_name = "SECONDS")]
+        delay: Option<u64>,
+    },
 }
 
 /// Overrides of the normal decision, shared by `open` and `test`.

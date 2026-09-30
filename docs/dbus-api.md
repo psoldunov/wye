@@ -14,6 +14,9 @@ The name is D-Bus activatable (`share/dbus-1/services/dev.soldunov.wye.service`,
 `SystemdService=wye.service`), so any call starts the service when it is not running.
 Only one service runs per session: it requests the name with `DoNotQueue` and exits with
 status 75 when the name is taken; `wye.service` lists 75 in `RestartPreventExitStatus=`.
+The service also stops when it loses the name or the bus connection; the next call
+starts a new one. `wye service --activate` only calls `StartServiceByName` and exits (the
+XDG autostart entry uses it, GEN-01).
 
 The names, error names, JSON payload types and zbus proxies are in the `wye-api` crate
 (`crates/wye-api`). Code should use those rather than repeating strings.
@@ -53,8 +56,8 @@ the app it launches (LAUNCH-03).
 
 | Signature | Description |
 |-----------|-------------|
-| `Activate(a{sv} platform_data) → ()` | Started without a link: the first-run window when onboarding is not done, else Settings when the tray icon is hidden or no tray exists (TRAY-05), else nothing. |
-| `Open(as uris, a{sv} platform_data) → ()` | Each URI enters the pipeline as a handler link (IN-01). Source-app detection starts at the caller's PID (`GetConnectionCredentials`); when the caller is `xdg-desktop-portal`, the focused window is used instead. |
+| `Activate(a{sv} platform_data) → ()` | Started without a link: the first-run window when onboarding is not done, else Settings when the tray icon is hidden or no tray exists (TRAY-05), else nothing. Until onboarding state and the tray exist, Settings always opens. A UI host that cannot be reached is logged; the call still succeeds. |
+| `Open(as uris, a{sv} platform_data) → ()` | Each URI enters the pipeline as a handler link (IN-01). Source-app detection starts at the caller's PID (`GetConnectionCredentials`), skipping openers such as `kde-open` and `xdg-open` up the parent chain; when the caller is `xdg-desktop-portal`, the focused window is used instead. Every URI is tried; the first error is returned. |
 | `ActivateAction(s action_name, av parameter, a{sv} platform_data) → ()` | Desktop actions: `settings`, `clipboard`, `clipboard-alternative`, `menu`, `setup`, `history`, `test-rules`, `about`, `quit` (`wye_api::actions::ApplicationAction`). |
 
 ## Interface `dev.soldunov.wye1`
@@ -76,7 +79,7 @@ All read-only.
 
 | Signature | Description |
 |-----------|-------------|
-| `OpenLink(s url, a{sv} context) → ()` | Route one link (IN-01, IN-05, IN-07). Context keys below. Returns once the decision is made, not after the picker closes. `InvalidArgs` when the link is rejected (PIPE-02); the service also notifies. |
+| `OpenLink(s url, a{sv} context) → ()` | Route one link (IN-01, IN-05, IN-07). Context keys below. Returns once the decision is made, not after the picker closes. `InvalidArgs` when the link is rejected (PIPE-02) or a context value is malformed; for a rejected link the service also notifies. `Failed` when the target cannot be started; the service notifies with buttons offering up to three other available targets (LAUNCH-07). A link that needs the picker while the screen is locked is held and returns at once; it opens when the screen unlocks, and a newer held link replaces it (PKS-07). |
 | `OpenClipboard(b alternative) → ()` | Route the URL on the clipboard (IN-02 to IN-04). `NotFound` when the clipboard holds no URL. |
 | `ClipboardHasUrl() → b` | Whether the clipboard holds a URL; tray hosts call it before opening the menu (TRAY-10). |
 | `TestLink(s url, a{sv} context) → s` | How the link would be routed, without opening it (IN-08, DLG-TST). Context also takes `skip-network` (`b`). JSON `wye_api::trace::LinkTrace`: `steps` (`kind`, `text`, `url`), `decision` (`open`, `picker`, `rejected`), `rejected`, `target`, `targetName`, `options`, `finalUrl`, `ruleIndex`. |
@@ -109,7 +112,7 @@ All read-only.
 | `SetShortcut(s action, s binding) → ()` | Bind `toggle-menu`, `clipboard-primary` or `clipboard-alternative`; an empty binding clears it. On the portal this is `BindShortcuts` with the preferred trigger. `Unavailable` without a mechanism. |
 | `ConfigureShortcuts() → ()` | Open the mechanism's own dialog (KEY-40 "Change…"). |
 | `UpdateUiState(s merge_patch) → ()` | Merge patch of `uiState` in `Status`: dismissed callouts (BLK-09), last page (SET-08), help arrow (RUL-19), onboarding done (ONB-06). |
-| `ShowWindow(s window, s argument) → ()` | Open a window in the UI host: `settings` (argument: page), `first-run`, `history`, `test-rules`, `about`, `script-editor` (argument: scope), `rule-editor` (argument: JSON prefill). |
+| `ShowWindow(s window, s argument) → ()` | Open a window in the UI host: `settings` (argument: page), `first-run`, `history`, `test-rules`, `about`, `script-editor` (argument: scope), `rule-editor` (argument: JSON prefill). `InvalidArgs` for an unknown window, `Unavailable` when the UI host cannot be started or does not answer within 10 s. |
 | `ToggleMenu() → ()` | Open or close the tray-menu popup (TRAY-08). |
 | `RegisterTray(s kind) → ()` | A tray host announces itself (`plasma-applet`, later `gnome-extension`). The service hides its own StatusNotifierItem while the caller's connection lives. |
 | `GetTroubleshooting() → s` | Plain-text troubleshooting report for the About window (DLG-ABT-02). |
@@ -123,7 +126,7 @@ Keys in `wye_api::context`.
 |-----|------|---------|
 | `source-desktop-id` | `s` | Desktop ID of the app the link came from. |
 | `source-executable` | `s` | The source app's executable, when there is no desktop ID. |
-| `source-pid` | `u` | Start source-app detection at this process; the service detects. |
+| `source-pid` | `u` | Detect the source app from this process up, with the installed apps (all steps of source-app detection). Used only when `source-desktop-id` is absent; `source-executable`, if given, is the fallback when detection finds nothing. `wye open` sends its parent. |
 | `activation-token` | `s` | `XDG_ACTIVATION_TOKEN` for the launched app (LAUNCH-03). |
 | `startup-id` | `s` | `DESKTOP_STARTUP_ID` for the launched app (LAUNCH-03). |
 | `held` | `as` | Modifiers held when the link was opened: `Shift`, `Ctrl`, `Alt`, `Super`. |

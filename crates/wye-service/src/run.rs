@@ -5,15 +5,21 @@
 //! service` exits with [`wye_api::names::ALREADY_RUNNING_EXIT`], which
 //! `wye.service` lists in `RestartPreventExitStatus=`.
 
+use std::sync::Arc;
+
 use anyhow::Context as _;
+use futures_lite::StreamExt as _;
 use tokio::task::JoinHandle;
 use wye_api::names::BUS_NAME;
 use zbus::fdo::{DBusProxy, RequestNameFlags, RequestNameReply};
 
-use crate::bus;
+pub use crate::api::link::Environment;
 use crate::context::ServiceContext;
 use crate::platform::Platform;
-use crate::watch;
+use crate::platform::lock::SessionLockMonitor;
+use crate::platform::notify::DesktopNotifier;
+use crate::platform::scope::{SpawnLauncher, SystemdScopes};
+use crate::{api, bus, watch};
 
 /// Another process already owns [`BUS_NAME`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -49,11 +55,15 @@ pub async fn run(options: ServiceOptions) -> anyhow::Result<()> {
     // nothing useful to do.
     refuse_if_owned(&connection).await?;
 
-    let ctx = ServiceContext::new(options.platform.unwrap_or_else(Platform::detect));
+    let platform = match options.platform {
+        Some(platform) => platform,
+        None => session_platform(&connection).await,
+    };
+    let ctx = ServiceContext::new(platform);
     let watchers = start(&connection, &ctx).await?;
     tracing::info!("serving {BUS_NAME}");
 
-    wait_for_shutdown(&ctx).await?;
+    wait_for_shutdown(&ctx, &connection).await?;
     tracing::info!("shutting down");
     for watcher in watchers {
         watcher.abort();
@@ -76,7 +86,33 @@ pub async fn start(
         .await
         .context("cannot serve the D-Bus objects")?;
     claim_name(connection).await?;
-    Ok(watch::spawn(ctx))
+    Ok(watch::spawn(ctx)
+        .into_iter()
+        .chain(api::link::spawn_tasks(ctx))
+        .collect())
+}
+
+/// Route links with the files `environment` names instead of the session's
+/// (tests point this at temporary directories).
+pub fn use_environment(ctx: &ServiceContext, environment: Environment) {
+    ctx.link().set_environment(environment);
+}
+
+/// The integrations this session supports: notifications, launching,
+/// systemd scopes and lock state over `session` (and the system bus for
+/// logind), the rest from [`Platform::detect`].
+pub async fn session_platform(session: &zbus::Connection) -> Platform {
+    let system = zbus::Connection::system()
+        .await
+        .inspect_err(|error| tracing::info!(%error, "no system bus"))
+        .ok();
+    Platform {
+        notifier: Arc::new(DesktopNotifier::new(session.clone())),
+        launcher: Arc::new(SpawnLauncher),
+        scope: Arc::new(SystemdScopes::new(session.clone())),
+        lock: Arc::new(SessionLockMonitor::start(session, system.as_ref()).await),
+        ..Platform::detect()
+    }
 }
 
 /// Ask for [`BUS_NAME`]; refuse to run beside another service.
@@ -110,8 +146,13 @@ async fn refuse_if_owned(connection: &zbus::Connection) -> anyhow::Result<()> {
     }
 }
 
-/// Wait for SIGINT, SIGTERM or [`ServiceContext::request_shutdown`].
-async fn wait_for_shutdown(ctx: &ServiceContext) -> anyhow::Result<()> {
+/// Wait for SIGINT, SIGTERM, [`ServiceContext::request_shutdown`], or the
+/// loss of the bus name or the bus itself: a service nobody can reach has
+/// nothing left to do, and the next link starts a new one.
+async fn wait_for_shutdown(
+    ctx: &ServiceContext,
+    connection: &zbus::Connection,
+) -> anyhow::Result<()> {
     use tokio::signal::unix::{SignalKind, signal};
 
     let mut term = signal(SignalKind::terminate()).context("cannot listen for SIGTERM")?;
@@ -120,8 +161,27 @@ async fn wait_for_shutdown(ctx: &ServiceContext) -> anyhow::Result<()> {
         _ = term.recv() => {}
         _ = int.recv() => {}
         () = ctx.until_shutdown() => tracing::info!("quit requested"),
+        () = until_unreachable(connection) => tracing::info!("lost the bus or the bus name"),
     }
     Ok(())
+}
+
+/// Resolves when [`BUS_NAME`] is lost or the connection closes.
+async fn until_unreachable(connection: &zbus::Connection) {
+    let lost = async {
+        let bus = DBusProxy::new(connection).await?;
+        let mut lost = bus.receive_name_lost().await?;
+        while let Some(signal) = lost.next().await {
+            if signal.args().is_ok_and(|args| args.name() == BUS_NAME) {
+                break;
+            }
+        }
+        Ok::<_, zbus::Error>(())
+    };
+    if let Err(error) = lost.await {
+        tracing::warn!(%error, "cannot watch the bus name");
+        std::future::pending::<()>().await;
+    }
 }
 
 #[cfg(test)]

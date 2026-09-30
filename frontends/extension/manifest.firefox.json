@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "Wye",
+  "version": "0.1.0",
+  "description": "Open links and pages with Wye, the browser picker.",
+  "homepage_url": "https://github.com/psoldunov/wye",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "wye@soldunov.dev",
+      "strict_min_version": "115.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  },
+  "icons": {
+    "16": "icons/wye-16.png",
+    "32": "icons/wye-32.png",
+    "48": "icons/wye-48.png",
+    "128": "icons/wye-128.png"
+  },
+  "permissions": ["activeTab", "contextMenus", "nativeMessaging", "storage"],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "action": {
+    "default_title": "Open Page with Wye",
+    "default_icon": {
+      "16": "icons/wye-16.png",
+      "32": "icons/wye-32.png"
+    }
+  },
+  "commands": {
+    "open-page": {
+      "suggested_key": { "default": "Alt+Shift+W" },
+      "description": "Open Page with Wye"
+    }
+  },
+  "options_ui": {
+    "page": "options.html"
+  }
+}

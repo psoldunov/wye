@@ -56,6 +56,19 @@ pub enum Command {
         #[command(subcommand)]
         action: DebugAction,
     },
+    /// Connect the browser extension to Wye (BEXT-04).
+    Extension {
+        #[command(subcommand)]
+        action: ExtensionAction,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum ExtensionAction {
+    /// Write the native-messaging host manifest for every detected browser.
+    Install,
+    /// Delete the manifests `install` wrote.
+    Remove,
 }
 
 #[derive(Debug, Clone, Copy, Subcommand)]
@@ -237,5 +250,22 @@ mod tests {
     fn pick_conflicts_with_alternative() {
         let result = Cli::try_parse_from(["wye", "open", "--pick", "--alternative", "x"]);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn extension_takes_install_or_remove_bext_04() {
+        let action = |args: &[&str]| match Cli::try_parse_from(args).map(|cli| cli.command) {
+            Ok(Command::Extension { action }) => Some(action),
+            _ => None,
+        };
+        assert!(matches!(
+            action(&["wye", "extension", "install"]),
+            Some(ExtensionAction::Install)
+        ));
+        assert!(matches!(
+            action(&["wye", "extension", "remove"]),
+            Some(ExtensionAction::Remove)
+        ));
+        assert!(action(&["wye", "extension"]).is_none());
     }
 }

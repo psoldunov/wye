@@ -11,15 +11,16 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
-serde.workspace = true
 tokio.workspace = true
-toml.workspace = true
 tracing-subscriber.workspace = true
 wye-api.workspace = true
 wye-core.workspace = true
 wye-desktop.workspace = true
 wye-service.workspace = true
 zbus.workspace = true
+# The native-messaging host's JSON messages (BEXT-04, BEXT-05).
+serde.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

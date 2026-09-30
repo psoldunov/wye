@@ -5,6 +5,10 @@ mod clipboard;
 mod config;
 mod debug;
 mod default;
+mod extension;
+// The host manifests (BEXT-04); `wye-native-host` includes the same file.
+#[path = "../native_host/install.rs"]
+mod manifests;
 mod open;
 mod service;
 mod test;
@@ -55,6 +59,7 @@ pub fn run(command: Command, console: &mut Console<'_>) -> anyhow::Result<ExitCo
         Command::Menu => Ok(window::menu(console)),
         Command::Settings { page } => Ok(window::settings(console, page.as_deref())),
         Command::Debug { action } => Ok(debug::run(console, &action)),
+        Command::Extension { action } => Ok(extension::run(&Context::from_env()?, console, action)),
     }
 }
 

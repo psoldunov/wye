@@ -103,6 +103,7 @@ mod tests {
     fn remembered(id: &str) -> State {
         State {
             previous_default_browser: Some(DesktopId::new(id).unwrap()),
+            ..State::default()
         }
     }
 

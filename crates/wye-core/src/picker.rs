@@ -42,19 +42,19 @@ impl TileMetrics {
     pub const fn for_size(size: IconSize) -> Self {
         match size {
             IconSize::Small => Self {
+                icon: 24,
+                pitch: 36,
+                badge: 14,
+            },
+            IconSize::Medium => Self {
                 icon: 32,
                 pitch: 48,
                 badge: 18,
             },
-            IconSize::Medium => Self {
-                icon: 42,
-                pitch: 56,
-                badge: 24,
-            },
             IconSize::Large => Self {
-                icon: 52,
-                pitch: 64,
-                badge: 32,
+                icon: 40,
+                pitch: 60,
+                badge: 24,
             },
         }
     }

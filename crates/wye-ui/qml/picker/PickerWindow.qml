@@ -25,15 +25,14 @@ Window {
     // Panel metrics (02-picker.md, "At every size").
     readonly property int panelPadding: 14
     readonly property int panelRadius: 14
-    readonly property int overflowSize: 18
+    readonly property int overflowSize: 14
     // How long to wait for the compositor's activation token (PICK-29).
     readonly property int tokenWait: 500
     // The tiles as the backend describes them.
     readonly property var tiles: JSON.parse(backend.tiles || "[]")
     readonly property bool hasHotkeys: tiles.some(tile => tile.hotkey !== "")
-    // PICK-11: body text under Large icons, a smaller caption under the
-    // others.
-    readonly property font nameFont: backend.iconSize >= Kirigami.Units.iconSizes.large ? Kirigami.Theme.defaultFont : Kirigami.Theme.smallFont
+    // PICK-11: a caption under the icons at every size.
+    readonly property font nameFont: Kirigami.Theme.smallFont
     readonly property int tilePadding: Kirigami.Units.smallSpacing + Kirigami.Units.smallSpacing / 2
     // PICK-05: every tile is as wide as the longest name needs, from the
     // size's pitch up to twice that; a longer name is cut with an ellipsis.
@@ -56,7 +55,7 @@ Window {
         return clamp(fit, 1, backend.columns);
     }
     // PICK-04: the hotkey character's size; `hotkeyMetrics` and every tile use it.
-    readonly property int hotkeyPixels: 12
+    readonly property int hotkeyPixels: 10
     // PICK-08: the "⋯" button is centred on the icons.
     readonly property real iconCentre: tilePadding + (hasHotkeys ? hotkeyMetrics.height + Kirigami.Units.smallSpacing : 0) + backend.iconSize / 2
     property bool blurred: false
@@ -187,7 +186,12 @@ Window {
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
     LayerShell.Window.wantsToBeOnActiveScreen: !backend.placed
-    LayerShell.Window.scope: "wye-picker"
+    // PICK-15: KWin gives a surface the window type its scope names, and zooms and fades every
+    // new surface of the normal type (the type of an unknown scope) into view. It animates no
+    // utility window, so the panel appears at once. (An on-screen display is not animated
+    // either, but KWin takes the keyboard focus straight back from one, which cancels the
+    // picker, PICK-23.)
+    LayerShell.Window.scope: "utility"
 
     PickerBackend {
         id: backend

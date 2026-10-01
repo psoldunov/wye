@@ -133,19 +133,19 @@ fn icon_size_and_names_come_from_the_settings() {
     assert_eq!(
         model.metrics,
         TileMetrics {
-            icon: 32,
-            pitch: 48,
-            badge: 18
+            icon: 24,
+            pitch: 36,
+            badge: 14
         }
     );
     assert!(!model.show_names);
-    assert_eq!(TileMetrics::for_size(IconSize::Medium).icon, 42);
+    assert_eq!(TileMetrics::for_size(IconSize::Medium).icon, 32);
     assert_eq!(
         TileMetrics::for_size(IconSize::Large),
         TileMetrics {
-            icon: 52,
-            pitch: 64,
-            badge: 32
+            icon: 40,
+            pitch: 60,
+            badge: 24
         }
     );
 }

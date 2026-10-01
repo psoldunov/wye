@@ -1,0 +1,706 @@
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "scheme": "light",
+        "fixture": {
+          "config": {
+            "general": {
+              "launch-at-login": true,
+              "tray-icon": "primary-browser",
+              "show-tray-icon": true,
+              "open-local-html": false
+            },
+            "browsers": {
+              "primary": {
+                "picker": true
+              },
+              "alternative": {
+                "app": "firefox.desktop"
+              },
+              "alternative-key": [
+                "Shift"
+              ],
+              "shown": [
+                {
+                  "target": {
+                    "app": "firefox.desktop"
+                  },
+                  "hotkey": "f"
+                },
+                {
+                  "target": {
+                    "profile": {
+                      "app": "google-chrome.desktop",
+                      "id": "Profile 1"
+                    }
+                  },
+                  "hotkey": "c"
+                },
+                {
+                  "target": {
+                    "app": "org.kde.konsole.desktop"
+                  }
+                }
+              ]
+            },
+            "apps": {
+              "discord": {
+                "app": "com.discordapp.Discord.desktop"
+              },
+              "google-meet": {
+                "profile": {
+                  "app": "google-chrome.desktop",
+                  "id": "Profile 1"
+                }
+              },
+              "linear": {
+                "app": "gone.desktop"
+              },
+              "figma": {
+                "private": "firefox.desktop"
+              }
+            },
+            "picker": {
+              "hotkeys": "per-target",
+              "icon-size": "medium",
+              "skip-when-locked": true,
+              "keys": {
+                "open": [
+                  "Return",
+                  "KP_Enter",
+                  "space"
+                ],
+                "cancel": [
+                  "Escape"
+                ],
+                "next": [
+                  "Right",
+                  "Tab"
+                ],
+                "previous": [
+                  "Left",
+                  "Shift+Tab"
+                ],
+                "first": [
+                  "Home"
+                ],
+                "last": [
+                  "End"
+                ],
+                "copy-link": [
+                  "Ctrl+c"
+                ],
+                "more": [
+                  "Menu"
+                ],
+                "create-rule": [
+                  "Ctrl+r"
+                ],
+                "private-modifier": [
+                  "Shift"
+                ],
+                "background-modifier": [
+                  "Ctrl"
+                ],
+                "new-window-modifier": [
+                  "Alt"
+                ]
+              }
+            },
+            "advanced": {
+              "history": true,
+              "force-picker-from-extension": true,
+              "bypass-key": [
+                "Alt"
+              ],
+              "expansion": {
+                "disabled": [
+                  "t.co"
+                ],
+                "custom-short-links": [
+                  "mine.link"
+                ],
+                "timeout-ms": 2000,
+                "max-redirects": 5,
+                "notify-on-failure": false
+              }
+            },
+            "shortcuts": {
+              "toggle-menu": "Ctrl+Alt+o"
+            },
+            "extras": {
+              "strip-tracking-on-open": true,
+              "strip-tracking-on-copy": true,
+              "force-https": false
+            }
+          },
+          "revision": 7,
+          "status": {
+            "defaultBrowser": {
+              "isDefault": false,
+              "current": {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {
+              "heldKeys": "wayland-layer-shell",
+              "pointer": "kwin",
+              "clipboardRead": "wayland-ext-data-control",
+              "clipboardWatch": "wayland-ext-data-control",
+              "clipboardWrite": "wayland-ext-data-control",
+              "globalShortcuts": "portal"
+            },
+            "uiState": {
+              "onboardingDone": true,
+              "dismissedCallouts": [],
+              "lastPage": "apps"
+            }
+          },
+          "targets": {
+            "targets": [
+              {
+                "target": {
+                  "picker": true
+                },
+                "kind": "picker",
+                "name": "Picker"
+              },
+              {
+                "target": {
+                  "app": "firefox.desktop"
+                },
+                "kind": "app",
+                "name": "Firefox",
+                "icon": "firefox",
+                "capabilities": {
+                  "private": true,
+                  "newWindow": true,
+                  "background": true
+                },
+                "packaging": "native"
+              },
+              {
+                "target": {
+                  "app": "google-chrome.desktop"
+                },
+                "kind": "app",
+                "name": "Google Chrome",
+                "icon": "google-chrome",
+                "capabilities": {
+                  "private": true,
+                  "newWindow": true,
+                  "background": true
+                },
+                "packaging": "native"
+              },
+              {
+                "target": {
+                  "app": "app.zen_browser.zen.desktop"
+                },
+                "kind": "app",
+                "name": "Zen",
+                "icon": "app.zen_browser.zen",
+                "capabilities": {
+                  "private": true,
+                  "newWindow": true,
+                  "background": true
+                },
+                "packaging": "flatpak"
+              },
+              {
+                "target": {
+                  "app": "org.kde.konsole.desktop"
+                },
+                "kind": "app",
+                "name": "Konsole",
+                "icon": "utilities-terminal",
+                "capabilities": {
+                  "private": false,
+                  "newWindow": false,
+                  "background": true
+                },
+                "packaging": "native"
+              },
+              {
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                },
+                "kind": "app",
+                "name": "Discord",
+                "icon": "discord",
+                "packaging": "flatpak"
+              },
+              {
+                "target": {
+                  "private": "firefox.desktop"
+                },
+                "kind": "private",
+                "name": "Firefox (Private)",
+                "icon": "firefox",
+                "browser": "firefox.desktop",
+                "capabilities": {
+                  "private": true,
+                  "newWindow": false,
+                  "background": true
+                }
+              },
+              {
+                "target": {
+                  "private": "google-chrome.desktop"
+                },
+                "kind": "private",
+                "name": "Google Chrome (Private)",
+                "icon": "google-chrome",
+                "browser": "google-chrome.desktop",
+                "capabilities": {
+                  "private": true,
+                  "newWindow": false,
+                  "background": true
+                }
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                },
+                "kind": "profile",
+                "name": "Work (Google Chrome)",
+                "shortName": "Work",
+                "icon": "google-chrome",
+                "badge": {
+                  "initial": "W",
+                  "color": "#336699"
+                },
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Default"
+                  }
+                },
+                "kind": "profile",
+                "name": "Personal (Google Chrome)",
+                "shortName": "Personal",
+                "icon": "google-chrome",
+                "badge": {
+                  "initial": "P",
+                  "color": "#993366"
+                },
+                "browser": "google-chrome.desktop"
+              },
+              {
+                "target": {
+                  "custom": "/opt/tool/bin/tool"
+                },
+                "kind": "custom",
+                "name": "tool"
+              },
+              {
+                "target": {
+                  "app": "gone.desktop"
+                },
+                "kind": "app",
+                "name": "gone.desktop",
+                "missing": true
+              }
+            ]
+          },
+          "services": {
+            "services": [
+              {
+                "id": "airtable",
+                "name": "Airtable",
+                "target": {
+                  "default": true
+                }
+              },
+              {
+                "id": "asana",
+                "name": "Asana",
+                "target": {
+                  "default": true
+                }
+              },
+              {
+                "id": "claude",
+                "name": "Claude",
+                "target": {
+                  "default": true
+                }
+              },
+              {
+                "id": "discord",
+                "name": "Discord",
+                "icon": "discord",
+                "installedApp": {
+                  "id": "com.discordapp.Discord.desktop",
+                  "name": "Discord",
+                  "icon": "discord"
+                },
+                "target": {
+                  "app": "com.discordapp.Discord.desktop"
+                }
+              },
+              {
+                "id": "figma",
+                "name": "Figma",
+                "target": {
+                  "private": "firefox.desktop"
+                }
+              },
+              {
+                "id": "google-meet",
+                "name": "Google Meet",
+                "target": {
+                  "profile": {
+                    "app": "google-chrome.desktop",
+                    "id": "Profile 1"
+                  }
+                }
+              },
+              {
+                "id": "linear",
+                "name": "Linear",
+                "target": {
+                  "app": "gone.desktop"
+                }
+              },
+              {
+                "id": "slack",
+                "name": "Slack",
+                "target": {
+                  "default": true
+                }
+              },
+              {
+                "id": "zoom",
+                "name": "Zoom",
+                "target": {
+                  "default": true
+                }
+              }
+            ]
+          },
+          "apps": {
+            "apps": [
+              {
+                "id": "firefox.desktop",
+                "name": "Firefox",
+                "icon": "firefox",
+                "isBrowser": true,
+                "keywords": [
+                  "web",
+                  "internet"
+                ]
+              },
+              {
+                "id": "google-chrome.desktop",
+                "name": "Google Chrome",
+                "icon": "google-chrome",
+                "isBrowser": true
+              },
+              {
+                "id": "com.discordapp.Discord.desktop",
+                "name": "Discord",
+                "icon": "discord",
+                "packaging": "flatpak",
+                "isBrowser": false,
+                "keywords": [
+                  "chat"
+                ]
+              },
+              {
+                "id": "com.slack.Slack.desktop",
+                "name": "Slack",
+                "icon": "slack",
+                "packaging": "flatpak",
+                "isBrowser": false
+              },
+              {
+                "id": "thunderbird.desktop",
+                "name": "Thunderbird",
+                "icon": "thunderbird",
+                "isBrowser": false,
+                "genericName": "Email Client"
+              },
+              {
+                "id": "org.kde.konsole.desktop",
+                "name": "Konsole",
+                "icon": "utilities-terminal",
+                "isBrowser": false
+              },
+              {
+                "id": "snap-tool_tool.desktop",
+                "name": "Snap Tool",
+                "packaging": "snap",
+                "isBrowser": false
+              }
+            ],
+            "recentSources": [
+              "com.slack.Slack.desktop",
+              "thunderbird.desktop"
+            ]
+          },
+          "shortcuts": {
+            "mechanism": "portal",
+            "bindings": [
+              {
+                "action": "toggle-menu",
+                "description": "Toggle menu",
+                "trigger": "CTRL+ALT+O",
+                "command": "wye menu"
+              },
+              {
+                "action": "clipboard-primary",
+                "description": "Open URL from clipboard with primary browser",
+                "command": "wye clipboard"
+              },
+              {
+                "action": "clipboard-alternative",
+                "description": "Open URL from clipboard with alternative browser",
+                "command": "wye clipboard --alternative"
+              }
+            ]
+          },
+          "expansion": {
+            "wrappers": [
+              {
+                "id": "google-search",
+                "name": "Google search results",
+                "hosts": [
+                  "google.com/url"
+                ],
+                "enabled": true
+              },
+              {
+                "id": "facebook",
+                "name": "Facebook and Instagram",
+                "hosts": [
+                  "l.facebook.com",
+                  "l.instagram.com"
+                ],
+                "enabled": true
+              },
+              {
+                "id": "safelinks",
+                "name": "Microsoft Safe Links",
+                "hosts": [
+                  "*.safelinks.protection.outlook.com"
+                ],
+                "enabled": true
+              }
+            ],
+            "shortLinks": [
+              {
+                "domain": "bit.ly",
+                "enabled": true
+              },
+              {
+                "domain": "t.co",
+                "enabled": false
+              },
+              {
+                "domain": "tinyurl.com",
+                "enabled": true
+              },
+              {
+                "domain": "lnkd.in",
+                "enabled": true
+              },
+              {
+                "domain": "mine.link",
+                "enabled": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "scheme": "dark"
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "scheme": "light",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": true,
+              "previous": {
+                "id": "firefox.desktop",
+                "name": "Firefox"
+              }
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": false,
+              "lossless": true,
+              "warnings": []
+            },
+            "capabilities": {},
+            "uiState": {
+              "onboardingDone": true,
+              "dismissedCallouts": [
+                "general-links",
+                "apps-read-first"
+              ],
+              "lastPage": "browsers"
+            }
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "scheme": "dark"
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": true
+            },
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true,
+            "uiState": {
+              "onboardingDone": true,
+              "dismissedCallouts": []
+            },
+            "loginManagedOn": false
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": true
+            },
+            "config": {
+              "writable": true,
+              "lossless": true
+            },
+            "loginManaged": true,
+            "uiState": {
+              "onboardingDone": true,
+              "dismissedCallouts": []
+            },
+            "loginManagedOn": true
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": "browsers"
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": "apps"
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": "picker"
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": "rules"
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": "extras"
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": "advanced"
+    },
+    {
+      "action": "show",
+      "key": "rule-editor",
+      "argument": "{\"domain\":\"example.com\",\"sourceApp\":null}"
+    },
+    {
+      "action": "show",
+      "key": "test-rules"
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": ""
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "general",
+        "scheme": "light",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {
+              "isDefault": true
+            },
+            "config": {
+              "path": "/home/user/.config/wye/config.toml",
+              "writable": true,
+              "lossless": true,
+              "warnings": []
+            },
+            "uiState": {
+              "onboardingDone": true,
+              "dismissedCallouts": [
+                "general-links"
+              ],
+              "lastPage": "general"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

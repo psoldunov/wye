@@ -35,11 +35,15 @@ it shipped with your desktop, in the spirit of
 KDE Plasma 6 comes first: the global shortcuts portal and the source-app and
 focused-window detection target it. The tray icon is a standard StatusNotifierItem, so it
 shows in Plasma's system tray and in any other tray that supports the protocol. Alongside
-the KDE frontend, GNOME Shell 48+ has a native picker and tray extension plus GTK 4/libadwaita
-windows. [Browse the GNOME screenshots](docs/media/gnome/README.md). The GNOME fixture
-captures do not yet verify an installed Rust-service round trip. The core and CLI work on
-any Linux desktop; Sway and Hyprland still lack desktop-specific extras (see
-[Not yet implemented](docs/architecture.md#not-yet-implemented)).
+the KDE frontend, GNOME has its own: a GNOME Shell 48+ extension draws the picker and the
+tray menu, and GTK 4/libadwaita windows (Settings, rules, history and the rest) replace the
+Qt ones. With the GNOME frontend chosen on a window manager such as Sway, Hyprland or niri,
+the same GTK host (`wye-gtk`) also shows the picker and the tray menu, as a layer-shell
+overlay where the compositor has one. Settings → Advanced → Interface → Frontend (`advanced.frontend`, or
+`programs.wye.frontend` in the Nix modules) picks KDE, GNOME or Automatic, which uses GNOME
+on GNOME and KDE everywhere else. [Take the GNOME tour](docs/tour-gnome.md). The core and
+CLI work on any Linux desktop; Sway and Hyprland still lack some desktop-specific extras
+(see [Not yet implemented](docs/architecture.md#not-yet-implemented)).
 
 The specification starts at [docs/spec/README.md](docs/spec/README.md); the design is in
 [docs/architecture.md](docs/architecture.md) and the D-Bus contract in

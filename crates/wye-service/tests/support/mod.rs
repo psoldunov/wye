@@ -21,6 +21,8 @@ use wye_service::ServiceContext;
 use wye_service::platform::fake::FakePlatform;
 use wye_service::run::{self, Environment};
 
+pub mod hosts;
+
 /// The daemon's program name.
 const DAEMON: &str = "dbus-daemon";
 

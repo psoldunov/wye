@@ -8,11 +8,13 @@
 //! `ActivateTrayItem`. `MenuRequested` goes out first, for a tray host that
 //! can open its own menu.
 
-use crate::api::{Result, picker::host};
-use crate::context::ServiceContext;
 use serde_json::Value;
 use wye_api::Error;
 use wye_api::picker::Placement;
+
+use crate::api::Result;
+use crate::api::picker::host;
+use crate::context::ServiceContext;
 
 /// The key of the pointer in the `ShowMenu` payload.
 const PLACEMENT: &str = "placement";

@@ -1,7 +1,8 @@
 # Evaluates the home-manager and NixOS modules the way a user's configuration
 # would, and asserts what they produce: the config file, the systemd unit, the
-# D-Bus activation files, the default-browser associations (GEN-01, DEF-01,
-# DEF-02, DEF-04, DEF-07). Nothing here boots anything.
+# D-Bus activation files, the default-browser associations, the frontend
+# (GEN-01, DEF-01, DEF-02, DEF-04, DEF-07, ADV-12). Nothing here boots
+# anything; the frontend script runs on a scratch config directory.
 {
   pkgs,
   self,
@@ -102,6 +103,9 @@ let
         channel = config.programs.wye.channel;
         package = toString config.programs.wye.package;
         failed = failedAssertions config;
+        frontend = config.programs.wye.frontend;
+        # ADV-12: whether the GTK host's unit is declared (home-manager).
+        gtkUnit = config.systemd.user.services ? wye-gtk;
       };
     in
     {
@@ -113,6 +117,21 @@ let
         nixos = pick (nixos { });
         nixosGit = pick (nixos {
           channel = "git";
+        });
+        # ADV-12: the frontend option on both channels of both modules.
+        homeGnome = pick (home {
+          frontend = "gnome";
+        });
+        homeGitKde = pick (home {
+          channel = "git";
+          frontend = "kde";
+        });
+        nixosGnome = pick (nixos {
+          frontend = "gnome";
+        });
+        nixosGitKde = pick (nixos {
+          channel = "git";
+          frontend = "kde";
         });
         homeOverride = pick (home {
           package = pkgs.hello;
@@ -176,6 +195,9 @@ let
       uiUnit = config.systemd.user.services.wye-ui or null;
       activations = lib.attrNames (lib.filterAttrs (n: _: lib.hasPrefix "wye" n) config.home.activation);
       retirePlasmoid = config.home.activation.wyeRetirePlasmoid.data or null;
+      frontend = config.programs.wye.frontend;
+      gtkUnit = config.systemd.user.services.wye-gtk or null;
+      gtkDbus = config.xdg.dataFile."dbus-1/services/dev.soldunov.wye.Gtk.service".text or null;
     };
 
   enabled = homeFacts "enabled" {
@@ -195,6 +217,54 @@ let
       launchAtLogin = false;
     };
   };
+  # ADV-12: a writable file gets the frontend from the unit, a managed one
+  # from `settings`; every frontend but "kde" needs the GTK host's activation
+  # files.
+  gnome = homeFacts "gnome" {
+    wye = {
+      enable = true;
+      frontend = "gnome";
+    };
+  };
+  gnomeManaged = homeFacts "gnomeManaged" {
+    wye = {
+      enable = true;
+      frontend = "gnome";
+      settings.browsers.primary.picker = true;
+    };
+  };
+  kde = homeFacts "kde" {
+    wye = {
+      enable = true;
+      frontend = "kde";
+    };
+  };
+  # An unknown frontend, or one `settings` contradicts, fails evaluation.
+  homeThrows =
+    programs: !(builtins.tryEval (homeConfig programs).config.programs.wye.frontend).success;
+  frontendChecks = {
+    unknownThrows = homeThrows {
+      wye = {
+        enable = true;
+        frontend = "xfce";
+      };
+    };
+    disagreeingThrows = homeThrows {
+      wye = {
+        enable = true;
+        frontend = "kde";
+        settings.advanced.frontend = "gnome";
+      };
+    };
+    agreeingEvaluates =
+      !(homeThrows {
+        wye = {
+          enable = true;
+          frontend = "kde";
+          settings.advanced.frontend = "kde";
+        };
+      });
+  };
 
   nixos =
     (nixosConfig {
@@ -211,6 +281,13 @@ let
       };
     }).config;
   nixosOff = (nixosConfig { }).config;
+  nixosGnome =
+    (nixosConfig {
+      wye = {
+        enable = true;
+        frontend = "gnome";
+      };
+    }).config;
 
   nixosFacts = {
     systemPackages = map toString nixos.environment.systemPackages;
@@ -222,14 +299,25 @@ let
     quietEnvironment = nixosQuiet.systemd.user.services.wye.environment;
     mime = nixos.xdg.mime.defaultApplications;
     offHasUnit = nixosOff.systemd.user.services ? wye;
+    frontend = nixos.programs.wye.frontend;
+    execStartPre = nixos.systemd.user.services.wye.serviceConfig.ExecStartPre or null;
+    gnomeExecStartPre = nixosGnome.systemd.user.services.wye.serviceConfig.ExecStartPre or null;
     offPackages = map toString nixosOff.environment.systemPackages;
   };
 
   facts = pkgs.writeText "wye-module-facts.json" (
     builtins.toJSON {
       home = {
-        inherit enabled minimal quiet;
+        inherit
+          enabled
+          minimal
+          quiet
+          gnome
+          gnomeManaged
+          kde
+          ;
       };
+      inherit frontendChecks;
       nixos = nixosFacts;
       inherit channels;
       package = toString package;
@@ -247,7 +335,8 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
   for name in enabled minimal quiet; do
     check ".home.$name.unit.Service | .Type == \"dbus\" and .BusName == \"dev.soldunov.wye\" and .KillMode == \"process\" and .RestartPreventExitStatus == 75"
     check ".package as \$p | .home.$name.unit.Service.ExecStart == [\"\(\$p)/bin/wye service\"]"
-    check ".package as \$p | .home.$name.dataFiles == {
+    # The GTK host's D-Bus file is written by the module (ADV-12, checked below).
+    check ".package as \$p | .home.$name.dataFiles | del(.\"dbus-1/services/dev.soldunov.wye.Gtk.service\") == {
       \"dbus-1/services/dev.soldunov.wye.service\": \"\(\$p)/share/dbus-1/services/dev.soldunov.wye.service\",
       \"dbus-1/services/dev.soldunov.wye.Ui.service\": \"\(\$p)/share/dbus-1/services/dev.soldunov.wye.Ui.service\"
     }"
@@ -291,6 +380,69 @@ pkgs.runCommand "wye-modules-eval" { nativeBuildInputs = [ pkgs.jq ]; } ''
     | map({(.): ["dev.soldunov.wye.desktop"]}) | add)'
   check '.home.enabled.mimeAdded == (
     ["text/html", "application/xhtml+xml"] | map({(.): ["dev.soldunov.wye.desktop"]}) | add)'
+
+  # ADV-12: "auto" by default and leaves the file alone; another value is set
+  # in a writable file before the service starts, or written into a managed
+  # one; every frontend but "kde" makes the GTK host bus-activatable (GNOME
+  # sessions send their windows to it under "auto").
+  for name in enabled minimal quiet; do
+    check ".home.$name.frontend == \"auto\" and .home.$name.gtkUnit != null and .home.$name.gtkDbus != null"
+    check ".home.$name.unit.Service | has(\"ExecStartPre\") | not"
+  done
+  check '.home.gnome.configToml == null and .home.kde.configToml == null'
+  check '.home.gnome.unit.Service.ExecStartPre | length == 1 and (.[0] | startswith("-/nix/store/") and endswith("-wye-set-frontend gnome"))'
+  check '.home.kde.unit.Service.ExecStartPre | length == 1 and (.[0] | endswith("-wye-set-frontend kde"))'
+  check '.home.gnomeManaged.unit.Service | has("ExecStartPre") | not'
+  grep -qxF 'frontend = "gnome"' "$(jq -r '.home.gnomeManaged.configToml' "$facts")"
+  check '.package as $p | .home.gnome.gtkUnit | .Service.Type == "dbus" and .Service.BusName == "dev.soldunov.wye.Gtk" and .Service.ExecStart == ["\($p)/bin/wye-gtk"] and ((.Install.WantedBy // []) == [])'
+  check '.package as $p | .home.gnome.gtkDbus | contains("Name=dev.soldunov.wye.Gtk\n") and contains("Exec=\($p)/bin/wye-gtk\n") and contains("SystemdService=wye-gtk.service\n")'
+  check '.home.kde.gtkUnit == null and .home.kde.gtkDbus == null and .home.gnomeManaged.gtkUnit != null'
+  check '.frontendChecks | .unknownThrows and .disagreeingThrows and .agreeingEvaluates'
+  check '.nixos.frontend == "auto" and .nixos.execStartPre == null'
+  check '.nixos.gnomeExecStartPre | (if type == "array" then . else [.] end) | length == 1 and (.[0] | endswith("-wye-set-frontend gnome"))'
+  check '.channels.released
+    | (.homeGnome.frontend == "gnome" and .homeGnome.channel == "release" and .homeGnome.failed == [])
+    # A release package without wye-gtk (no passthru.hasGtk) gets no GTK
+    # host; the git package, which ships it, does.
+    and (.homeGnome.gtkUnit | not) and .homeGit.gtkUnit
+    and (.homeGitKde.frontend == "kde" and .homeGitKde.channel == "git" and .homeGitKde.failed == [])
+    and (.nixosGnome.frontend == "gnome" and .nixosGnome.channel == "release" and .nixosGnome.failed == [])
+    and (.nixosGitKde.frontend == "kde" and .nixosGitKde.channel == "git" and .nixosGitKde.failed == [])
+    and .home.frontend == "auto" and .nixos.frontend == "auto"'
+
+  # The script itself: sets the key and keeps the rest of the file, leaves a
+  # store link and a file that is not TOML alone, and creates a missing file.
+  script=$(jq -r '.home.gnome.unit.Service.ExecStartPre[0] | ltrimstr("-") | split(" ")[0]' "$facts")
+  export XDG_CONFIG_HOME=$PWD/scratch
+  mkdir -p scratch/wye
+  printf '# mine\n[extras]\nforce-https = true\n' > scratch/wye/config.toml
+  "$script" gnome
+  grep -qxF '# mine' scratch/wye/config.toml
+  grep -qxF 'force-https = true' scratch/wye/config.toml
+  grep -qxF 'frontend = "gnome"' scratch/wye/config.toml
+  "$script" kde
+  grep -qxF 'frontend = "kde"' scratch/wye/config.toml
+  if grep -qxF 'frontend = "gnome"' scratch/wye/config.toml; then exit 1; fi
+  printf '[extras\n' > scratch/wye/config.toml
+  "$script" gnome
+  [ "$(cat scratch/wye/config.toml)" = '[extras' ]
+  printf '[advanced]\n' > linked.toml
+  rm scratch/wye/config.toml
+  ln -s "$PWD/linked.toml" scratch/wye/config.toml
+  "$script" gnome
+  [ "$(cat linked.toml)" = '[advanced]' ]
+  rm -r scratch
+  "$script" gnome
+  grep -qxF 'frontend = "gnome"' scratch/wye/config.toml
+  # The file keeps its mode; one made read-only on purpose stays untouched.
+  chmod 640 scratch/wye/config.toml
+  "$script" kde
+  grep -qxF 'frontend = "kde"' scratch/wye/config.toml
+  [ "$(stat -c %a scratch/wye/config.toml)" = 640 ]
+  chmod 444 scratch/wye/config.toml
+  "$script" gnome
+  grep -qxF 'frontend = "kde"' scratch/wye/config.toml
+  [ "$(stat -c %a scratch/wye/config.toml)" = 444 ]
 
   # NixOS: the package's own files, wired in.
   check '.package as $p | .nixos.systemPackages | index($p) != null'

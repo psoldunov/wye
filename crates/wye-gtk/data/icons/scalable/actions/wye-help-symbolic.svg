@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- BLK-08: the help button's contextual-help mark, an "i" in a ring, as KDE's
+     ContextualHelpButton draws it. Fills only, so the theme recolours it. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <path fill="#2e3436" fill-rule="evenodd" d="M8 1 A7 7 0 1 1 8 15 A7 7 0 1 1 8 1Z M8 2.5 A5.5 5.5 0 1 0 8 13.5 A5.5 5.5 0 1 0 8 2.5Z"/>
+  <path fill="#2e3436" d="M8 3.9 A1 1 0 1 1 8 5.9 A1 1 0 1 1 8 3.9Z"/>
+  <path fill="#2e3436" d="M7.25 7.75 A0.75 0.75 0 0 1 8.75 7.75 V11.25 A0.75 0.75 0 0 1 7.25 11.25Z"/>
+</svg>

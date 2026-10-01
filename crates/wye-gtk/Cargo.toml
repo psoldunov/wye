@@ -1,0 +1,50 @@
+[package]
+name = "wye-gtk"
+description = "Wye's GTK 4 / libadwaita host: Settings, the other windows, the picker and the tray-menu popup"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+# gtk-rs 0.11 (gtk4, glib 0.22) needs 1.92, above the workspace minimum.
+rust-version = "1.92"
+publish.workspace = true
+
+[dependencies]
+adw.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+# `StreamExt` for the property-change streams `service::watch` follows.
+futures-lite.workspace = true
+# PICK-02 on X11: the picker's window ID, to move it to the pointer.
+gdk4-x11.workspace = true
+gtk.workspace = true
+# The picker and the tray-menu popup on wlroots compositors (02-picker.md).
+gtk4-layer-shell.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The script editor's code area (SCR-02: GNOME uses GtkSourceView 5).
+sourceview5.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+# The picker's URL line (PICK-09), through wye-ui's shared view.
+url.workspace = true
+wye-api.workspace = true
+wye-core.workspace = true
+# PICK-02 on X11: moving the picker's window, which GTK 4 does not do.
+x11rb.workspace = true
+zbus.workspace = true
+
+[build-dependencies]
+glib-build-tools.workspace = true
+
+# Used only by wye-ui's Qt-free files this crate compiles through `#[path]`
+# (`dispatch.rs` uses `thiserror`; `settings/patch.rs` and
+# `settings/hotkeys.rs` use `url`); cargo-machete scans this crate's own
+# directory and cannot see them.
+[package.metadata.cargo-machete]
+ignored = ["thiserror", "url"]
+
+[lints]
+workspace = true

@@ -250,6 +250,8 @@ pub struct Advanced {
     pub bypass_key: Modifiers,
     /// KEY-06: whether the service probes which modifiers are held.
     pub held_keys: HeldKeys,
+    /// ADV-12: which frontend shows the picker, the tray popup and windows.
+    pub frontend: Frontend,
 }
 
 impl Default for Advanced {
@@ -262,8 +264,24 @@ impl Default for Advanced {
             force_picker_from_extension: true,
             bypass_key: Modifiers::from_slice(&[Modifier::Alt]),
             held_keys: HeldKeys::Auto,
+            frontend: Frontend::Auto,
         }
     }
+}
+
+/// `advanced.frontend` (ADV-12): the frontend that shows the picker, the
+/// tray-menu popup and the windows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Frontend {
+    /// GNOME's frontend in a GNOME session, KDE's everywhere else.
+    #[default]
+    Auto,
+    /// `wye-ui` (Qt/Kirigami) on every desktop.
+    Kde,
+    /// The GNOME Shell extension while it runs, the GTK host otherwise, on
+    /// every desktop.
+    Gnome,
 }
 
 /// `advanced.held-keys` (KEY-06): probe held modifiers when a binding

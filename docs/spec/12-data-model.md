@@ -51,7 +51,7 @@ rule or mapping.
 | Picker | icon size (`small`, `medium`, `large`); show names; show URL; show profile badge; skip when locked; hotkey scheme; picker keys |
 | Rules | ordered rules |
 | Extras | strip tracking on open; strip tracking on copy; strip `mailto:` on copy; force HTTPS; Songlink on copy |
-| Advanced | expand URLs; expansion services and limits; global transform (enabled, script); global shortcuts; history enabled; force picker from extension; bypass key |
+| Advanced | expand URLs; expansion services and limits; global transform (enabled, script); global shortcuts; history enabled; force picker from extension; bypass key; frontend (`advanced.frontend`: `auto`, `kde`, `gnome`; default `auto`, an unknown value reads as `auto` with a warning; [ADV-12](10-advanced.md#interface)) |
 | Internal | dismissed callouts; last settings page; onboarding done; previous default browser |
 
 ## Storage
@@ -100,4 +100,7 @@ hotkeys = "per-target"
 open = ["Return", "KP_Enter", "space"]
 cancel = ["Escape"]
 private-modifier = ["Shift"]
+
+[advanced]
+frontend = "auto"
 ```

@@ -48,6 +48,8 @@
                 passthru = {
                   unwrapped = wye.package;
                   inherit (frontends) extension;
+                  # ADV-12: ships the GTK host (nix/channel.nix).
+                  inherit (wye.package) hasGtk;
                 };
               }
               ''
@@ -224,17 +226,22 @@
                 test -f ${wye.package}/lib/systemd/user/wye.service
                 test -f ${wye.package}/lib/systemd/user/wye-ui.service
                 test -f ${wye.package}/lib/systemd/user/wye-gtk.service
-                # The wrapped GTK launcher finds packaged Python and GI typelibs.
+                # The GTK host is the wrapped Rust binary, with GTK's run-time
+                # environment (wrapGAppsHook4) and no Python left.
                 test -x ${wye.package}/bin/wye-gtk
                 ${wye.package}/bin/wye-gtk --help > /dev/null
-                export PYTHONPYCACHEPREFIX=$TMPDIR/pycache
-                find ${wye.package}/lib/wye-gtk -name '*.py' -exec ${pkgs.python3}/bin/python -m py_compile {} +
-                grep -q 'PYTHONPATH' ${wye.package}/bin/wye-gtk
-                grep -q 'GI_TYPELIB_PATH' ${wye.package}/bin/wye-gtk
+                grep -q 'XDG_DATA_DIRS' ${wye.package}/bin/wye-gtk
+                # The Adwaita icons its windows name, whatever the desktop has.
+                grep -qF '${pkgs.adwaita-icon-theme}/share' ${wye.package}/bin/wye-gtk
+                if [ -e ${wye.package}/lib/wye-gtk ]; then exit 1; fi
                 # GNOME Shell finds the extension but package installation does not enable it.
                 extension=${wye.package}/share/gnome-shell/extensions/wye@dev.soldunov
                 jq -e '.uuid == "wye@dev.soldunov" and (."shell-version" | index("48"))' $extension/metadata.json > /dev/null
                 for file in extension.js picker.js model.mjs stylesheet.css; do test -f $extension/$file; done
+                # The whole directory ships, except its README and tests.
+                # (find, not a glob: stdenv sets nullglob, so an unmatched
+                # glob would leave a bare `ls` that succeeds.)
+                if [ -e $extension/README.md ] || [ -n "$(find $extension -name 'test-*')" ]; then exit 1; fi
                 node --check $extension/extension.js
                 node --check $extension/picker.js
                 node --check $extension/model.mjs
@@ -285,6 +292,34 @@
                 ${wye.package}/bin/wye-ui --self-test
                 touch $out
               '';
+          # Every surface of the installed wye-gtk shows its fixtures on a
+          # private Xvfb (cairo renderer) and logs no unexpected GTK, libadwaita
+          # or GLib warning (crates/wye-gtk/src/selftest).
+          gtk-selftest =
+            let
+              fonts = pkgs.makeFontsConf {
+                fontDirectories = [
+                  pkgs.adwaita-fonts
+                  pkgs.dejavu_fonts
+                ];
+              };
+            in
+            pkgs.runCommand "wye-gtk-selftest"
+              {
+                nativeBuildInputs = [ pkgs.xvfb ];
+                # What a GNOME session provides and the sandbox lacks: fonts
+                # and a UTF-8 locale. The icon theme is the wrapper's own, as
+                # on a desktop without one.
+                FONTCONFIG_FILE = fonts;
+                WYE_GTK_FONTCONFIG_FILE = fonts;
+                LANG = "C.UTF-8";
+              }
+              ''
+                export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
+                mkdir -m 700 $XDG_RUNTIME_DIR
+                ${wye.package}/bin/wye-gtk --self-test
+                touch $out
+              '';
           # Both browser families' extensions, unpacked and zipped, with the
           # manifest the family needs (BEXT-01, BEXT-02).
           extension-manifests =
@@ -327,7 +362,7 @@
       devShells = forAllSystems (
         pkgs:
         let
-          inherit ((mkBuild pkgs).wye) qt;
+          inherit ((mkBuild pkgs).wye) qt gtk;
         in
         {
           default = pkgs.mkShell {
@@ -348,9 +383,22 @@
               ])
               # qmllint and the other Qt tools come with qt.env.
               ++ qt.nativeBuildInputs
-              ++ [ qt.qmllint ];
-            inherit (qt) buildInputs;
+              ++ [ qt.qmllint ]
+              # glib-compile-resources for wye-gtk's build script, and Xvfb:
+              # `wye-gtk --self-test` runs its windows on a private headless
+              # X server when one is on PATH.
+              ++ gtk.nativeBuildInputs
+              ++ [ pkgs.xvfb ];
+            buildInputs = qt.buildInputs ++ gtk.buildInputs;
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+            # `wye-gtk --self-test` children draw with GNOME's fonts (Adwaita
+            # Sans), whatever the host's fontconfig has.
+            WYE_GTK_FONTCONFIG_FILE = pkgs.makeFontsConf {
+              fontDirectories = [
+                pkgs.adwaita-fonts
+                pkgs.dejavu_fonts
+              ];
+            };
             # `wye-ui --self-test --snapshots` loads the `kde` platform theme
             # from here: the desktop's copy is built against another Qt.
             WYE_SNAPSHOT_QT_PLUGIN_PATH = "${pkgs.kdePackages.plasma-integration}/${pkgs.qt6.qtbase.qtPluginPrefix}";

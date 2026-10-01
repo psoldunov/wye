@@ -1,5 +1,5 @@
-// The Advanced page (10-advanced.md): URL expansion, the global transform script, global keyboard shortcuts, history, and the
-// browser-extension override. ADV-01 to ADV-11.
+// The Advanced page (10-advanced.md): URL expansion, the global transform script, global keyboard shortcuts, history, the
+// browser-extension override, and the frontend. ADV-01 to ADV-12.
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Layouts
@@ -144,6 +144,32 @@ WyePage {
             modifiers: page.bypassKey
             path: "advanced.bypass-key"
             title: qsTr("Bypass key")
+        }
+    }
+
+    // ADV-12
+    WyeGroupCard {
+        title: qsTr("Interface")
+
+        WyeChoiceRow {
+            choices: [
+                {
+                    "value": "auto",
+                    "label": qsTr("Automatic")
+                },
+                {
+                    "value": "kde",
+                    "label": qsTr("KDE")
+                },
+                {
+                    "value": "gnome",
+                    "label": qsTr("GNOME")
+                }
+            ]
+            currentValue: page.value(path, "auto")
+            path: "advanced.frontend"
+            subtitle: qsTr("Automatic uses GNOME on GNOME and KDE everywhere else. Applies to windows opened after the change.")
+            title: qsTr("Frontend")
         }
     }
 

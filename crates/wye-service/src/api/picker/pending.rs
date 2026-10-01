@@ -6,6 +6,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use wye_core::Target;
 
+use super::frontend::Host;
 use crate::api::link::{Activation, PickerNeeded};
 
 /// A link waiting for the picker's choice.
@@ -28,6 +29,9 @@ pub(crate) struct Pending {
     pub offered: Vec<Target>,
     /// The request to redisplay if its host leaves while a choice is pending.
     pub request: String,
+    /// The host that shows it, once one did (ADV-12); `None` while it is
+    /// on its way.
+    pub shown_on: Option<Host>,
 }
 
 /// Whether the pending request offers a target.
@@ -75,8 +79,22 @@ impl Registry {
             link,
             offered,
             request,
+            shown_on: None,
         });
         (id, superseded)
+    }
+
+    /// Record that `host` shows request `id`; false when `id` is no longer
+    /// the current request.
+    pub fn mark_shown(&self, id: &str, host: Host) -> bool {
+        let mut slot = self.slot();
+        match slot.current.as_mut().filter(|pending| pending.id == id) {
+            Some(pending) => {
+                pending.shown_on = Some(host);
+                true
+            }
+            None => false,
+        }
     }
 
     /// Whether request `id` is pending and shows `target`; nothing is

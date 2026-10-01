@@ -6,7 +6,7 @@
 
 Every surface of Wye, as it looks on KDE Plasma 6 with Breeze. Switch GitHub to light or
 dark mode to see the other colour scheme. The browser profiles, rules and links in the
-images are demo data. Back to the [README](../README.md).
+images are demo data. Back to the [README](../README.md). On GNOME, see the [GNOME tour](tour-gnome.md).
 
 ## In action
 

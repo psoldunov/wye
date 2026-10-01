@@ -1,378 +1,505 @@
+// The picker (02-picker.md) drawn by the Shell: a floating panel at the
+// pointer that holds the keyboard until the user chooses or cancels. The
+// rules live in model.mjs and keys.mjs, the widgets in picker-view.js;
+// this file carries out what the user does and answers the service.
 import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
-import Pango from 'gi://Pango';
+import Shell from 'gi://Shell';
 import St from 'gi://St';
-import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
-import {parsePicker, keyAction, choiceOptions} from './model.mjs';
+import * as BoxPointer from 'resource:///org/gnome/shell/ui/boxpointer.js';
+import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
+import {eventTime} from './focus.js';
+import {gicon} from './icons.js';
+import {MenuPages, actionItem, headingItem, isLightStyle, pageItem, syncStyle, themeScale} from './menus.js';
+import * as Keys from './keys.mjs';
+import * as Model from './model.mjs';
+import {PickerView} from './picker-view.js';
 
-const SIZES = {small: 24, medium: 32, large: 40};
-const DEFAULT_KEYS = {actions: {
-    open: ['Return', 'KP_Enter', 'space'], cancel: ['Escape'],
-    next: ['Right', 'Tab'], previous: ['Left', 'Shift+Tab'],
-    first: ['Home'], last: ['End'], 'copy-link': ['Ctrl+c'],
-    more: ['Menu'], 'create-rule': ['Ctrl+r'],
-}, modifierActions: {private: ['Shift'], background: ['Ctrl'], 'new-window': ['Alt']}};
+// Margin from the work area's edges (PICK-02), CSS px.
+const SCREEN_MARGIN = 12;
+// PICK-13: what a row of tiles shares the panel's width with: its padding
+// and border, and the "⋯" column, CSS px.
+const PANEL_CHROME = 2 * 14 + 2 * 1 + 40;
+// PICK-24: the pointer must move this far before hover selects.
+const HOVER_SLOP = 3;
+// What an Open In page shares the screen with: the menu's padding, the
+// back row and its separator (logical px).
+const PAGE_CHROME = 72;
 
-function chord(event) {
-    const key = Clutter.keyval_name(event.get_key_symbol()) === 'ISO_Left_Tab'
-        ? 'Tab' : Clutter.keyval_name(event.get_key_symbol());
-    const state = event.get_state();
-    const prefixes = [];
-    if (state & Clutter.ModifierType.CONTROL_MASK)
-        prefixes.push('Ctrl');
-    if (state & Clutter.ModifierType.MOD1_MASK)
-        prefixes.push('Alt');
-    if (state & Clutter.ModifierType.SHIFT_MASK)
-        prefixes.push('Shift');
-    if (state & Clutter.ModifierType.SUPER_MASK)
-        prefixes.push('Super');
-    return [...prefixes, key].join('+');
+const MASKS = [
+    [Clutter.ModifierType.CONTROL_MASK, 'Ctrl'],
+    [Clutter.ModifierType.MOD1_MASK, 'Alt'],
+    [Clutter.ModifierType.SHIFT_MASK, 'Shift'],
+    [Clutter.ModifierType.SUPER_MASK, 'Super'],
+    [Clutter.ModifierType.MOD4_MASK, 'Super'],
+];
+
+/**
+ * The modifiers in a Clutter state mask, left and right alike (KEY-01).
+ *
+ * @param {number} state
+ */
+export function modifiersOf(state) {
+    return Keys.sortModifiers(MASKS.filter(([mask]) => state & mask).map(([, name]) => name));
 }
 
-function modifiers(event, keys, held) {
-    const state = event?.get_state() ?? 0;
-    const active = new Set(held);
-    if (state & Clutter.ModifierType.SHIFT_MASK)
-        active.add('Shift');
-    if (state & Clutter.ModifierType.CONTROL_MASK)
-        active.add('Ctrl');
-    if (state & Clutter.ModifierType.MOD1_MASK)
-        active.add('Alt');
-    if (state & Clutter.ModifierType.SUPER_MASK)
-        active.add('Super');
-    return Object.fromEntries(Object.entries(keys.modifierActions ?? {}).map(([name, bindings]) =>
-        [name, bindings?.some(binding => active.has(binding)) ?? false]));
+function keyEvent(event, mods) {
+    const name = Clutter.keyval_name(event.get_key_symbol()) ?? '';
+    const unicode = event.get_key_unicode();
+    const text = unicode && !/\p{Cc}/u.test(unicode) ? unicode : undefined;
+    return {
+        key: name === 'ISO_Left_Tab' ? 'Tab' : name,
+        text,
+        keycode: event.get_key_code(),
+        mods,
+    };
 }
 
 export class Picker {
-    constructor(call, logo) {
+    /**
+     * @param {object} params
+     * @param {(method: string, signature: string|null, args: any[]) => Promise} params.call
+     *   a method of the service
+     * @param {import('./focus.js').WindowActivator} params.activator
+     * @param {(desktopId: string|null, time: number) => string|null} params.token
+     */
+    constructor({call, activator, token}) {
         this._call = call;
-        this._logo = logo;
-        this._dialog = new ModalDialog.ModalDialog({
-            destroyOnClose: false, shouldFadeIn: false, shouldFadeOut: false,
-            styleClass: 'wye-picker',
+        this._activator = activator;
+        this._token = token;
+        this._id = null;
+        this._grab = null;
+        this._menus = [];
+        // Idle sources to remove when the picker goes.
+        this._idles = new Set();
+        this._root = new St.Widget({
+            reactive: true,
+            visible: false,
+            layout_manager: new Clutter.FixedLayout(),
+            name: 'wyePicker',
         });
-        this._dialog.connect('closed', () => {
-            if (this._id) {
-                const id = this._id;
-                this._id = null;
-                this._call('PickerCancelled', '(s)', [id])
-                    .catch(error => logError(error, 'Wye picker cancel'));
-            }
+        this._root.add_constraint(new Clutter.BindConstraint({
+            source: global.stage, coordinate: Clutter.BindCoordinate.ALL,
+        }));
+        Main.layoutManager.modalDialogGroup.add_child(this._root);
+        this._view = new PickerView({
+            hover: (index, event) => this._hover(index, event),
+            click: (index, button) => this._click(index, button),
+            more: () => this._openMore(false),
         });
-        this._dialog.connect('captured-event', (_actor, event) => this._onEvent(event));
-        this._appearance = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
-        this._appearanceId = this._appearance.connect('changed::color-scheme', () => this._updateAppearance());
-        this._updateAppearance();
+        this._root.add_child(this._view.actor);
+        // The tile menu opens at the pointer (PICK-30).
+        this._menuAnchor = new St.Widget({width: 1, height: 1, opacity: 0});
+        this._root.add_child(this._menuAnchor);
+        this._root.connect('button-press-event', (_actor, event) => this._pressed(event));
+        this._root.connect('key-press-event', (_actor, event) => this._key(event, true));
+        this._root.connect('key-release-event', (_actor, event) => this._key(event, false));
+        this._menuManager = new PopupMenu.PopupMenuManager(this._root,
+            {actionMode: Shell.ActionMode.SYSTEM_MODAL});
+        St.Settings.get().connectObject('notify::color-scheme', () => this._syncStyle(), this);
+        this._syncStyle();
     }
 
-    _updateAppearance() {
-        if (this._appearance.get_string('color-scheme') === 'prefer-light')
-            this._dialog.dialogLayout.add_style_class_name('wye-light');
-        else
-            this._dialog.dialogLayout.remove_style_class_name('wye-light');
+    get isOpen() {
+        return this._id !== null;
     }
 
+    _syncStyle() {
+        // PICK-12: the Shell's own light or dark style.
+        this._view.setLight(isLightStyle());
+    }
+
+    /**
+     * Shows a request, or replaces the one shown in place (PICK-27).
+     *
+     * @param {string} id
+     * @param {string} json `PickerRequest`
+     */
     show(id, json) {
         if (!id)
             throw new Error('Picker request ID is empty');
-        const request = parsePicker(json);
-        this._id = id; // A replacement supersedes the old request; never cancel its ID.
-        this._request = request;
-        this._keys = request.keys ?? DEFAULT_KEYS;
+        const picker = Model.parsePicker(json);
+        const replacing = this.isOpen;
+        this._closeMenus();
+        this._picker = picker;
+        this._keymap = Keys.keymap(picker.keys);
+        this._held = Keys.sortModifiers(picker.held.map(Keys.modifierName).filter(Boolean));
         this._selected = 0;
-        this._busy = false;
-        this._render();
-        this._dialog.setInitialKeyFocus(this._tiles[0] ?? this._dialog.dialogLayout);
-        if (this._dialog.state === ModalDialog.State.CLOSED && !this._dialog.open(global.get_current_time())) {
-            this._id = null;
-            throw new Error('Unable to grab keyboard for Wye picker');
+        this._hoverOrigin = null;
+        this._pointerMoved = false;
+        if (!replacing) {
+            const [x, y] = global.get_pointer();
+            this._pointer = {x, y};
         }
-        this._tiles[0]?.grab_key_focus();
+        const monitor = this._monitor();
+        const area = Main.layoutManager.getWorkAreaForMonitor(monitor.index);
+        // The work area is in stage pixels; the constants in CSS pixels.
+        const scale = themeScale();
+        this._root.visible = true;
+        this._view.setBlur(true);
+        this._view.build(picker, area.width - (2 * SCREEN_MARGIN + PANEL_CHROME) * scale);
+        this._refresh();
+        this._place(area);
+        if (!replacing && !this._grabKeyboard()) {
+            this._root.visible = false;
+            // No clone of the windows stays alive behind a hidden picker.
+            this._view.setBlur(false);
+            throw new Error('Unable to grab the keyboard for the Wye picker');
+        }
+        this._id = id;
+        this._root.grab_key_focus();
     }
 
+    // PICK-02: the monitor under the pointer.
+    _monitor() {
+        const {x, y} = this._pointer;
+        return Main.layoutManager.monitors.find(m =>
+            x >= m.x && x < m.x + m.width && y >= m.y && y < m.y + m.height) ??
+            Main.layoutManager.primaryMonitor;
+    }
+
+    // PICK-02: centred on the pointer, inside the work area.
+    _place(area) {
+        const [, width] = this._view.actor.get_preferred_width(-1);
+        const [, height] = this._view.actor.get_preferred_height(width);
+        const {x, y} = Model.place(this._pointer, {width, height}, area, SCREEN_MARGIN * themeScale());
+        this._view.setStagePosition(x, y);
+    }
+
+    _grabKeyboard() {
+        this._grab = Main.pushModal(this._root, {actionMode: Shell.ActionMode.SYSTEM_MODAL});
+        if (!this._grab)
+            return false;
+        // As a modal dialog does: open menus and notifications step aside.
+        Main.layoutManager.emit('system-modal-opened');
+        return true;
+    }
+
+    /**
+     * Closes without answering: the service asked (`ClosePicker`) or went
+     * away. Another request's ID is ignored.
+     *
+     * @param {string} [id]
+     */
     close(id) {
-        if (id && id !== this._id)
+        if (id !== undefined && id !== this._id)
             return;
+        this._hide();
+    }
+
+    _hide() {
         this._id = null;
-        if (this._dialog.state !== ModalDialog.State.CLOSED)
-            this._dialog.close(global.get_current_time());
+        this._closeMenus();
+        if (this._grab) {
+            Main.popModal(this._grab);
+            this._grab = null;
+        }
+        this._root.visible = false;
+        // Nothing of the request stays drawn, and no clone keeps painting.
+        this._view.setBlur(false);
     }
 
-    destroy() {
+    // The request ends here; `answer` reports it to the service.
+    _finish(answer) {
+        const id = this._id;
+        if (!id)
+            return;
+        this._hide();
+        answer(id).catch(error => console.error(`Wye picker: ${error.message}`));
+    }
+
+    _cancel() {
+        this._finish(id => this._call('PickerCancelled', '(s)', [id]));
+    }
+
+    _action(action) {
+        // PICK-31: the rule editor opens; raise it.
+        if (action === 'create-rule')
+            this._activator.expect();
+        this._finish(id => this._call('PickerAction', '(ss)', [id, action])
+            .then(() => action === 'create-rule' && this._activator.settle()));
+    }
+
+    _settings() {
         this._cancel();
-        this._appearance.disconnect(this._appearanceId);
-        this._dialog.destroy();
+        this._activator.expect();
+        this._call('ShowWindow', '(ss)', ['settings', ''])
+            .then(() => this._activator.settle())
+            .catch(error => console.error(`Wye settings: ${error.message}`));
     }
 
-    _onEvent(event) {
-        if (!this._id)
+    /**
+     * Opens the link in `entry` the `mode` way (PICK-20, PICK-21, PICK-29).
+     *
+     * @param {object} entry
+     * @param {string|null} mode
+     * @param {number} time the input event's timestamp
+     */
+    _choose(entry, mode, time) {
+        if (!entry || !this.isOpen)
+            return;
+        const {target, options} = Model.choose(entry, mode);
+        const variants = Object.fromEntries(Object.entries(options)
+            .map(([key, value]) => [key, new GLib.Variant('b', value)]));
+        // PICK-29: no token for a background launch; the service drops it.
+        if (!options.background) {
+            let token = null;
+            try {
+                token = this._token(Model.desktopId(target), time);
+            } catch (error) {
+                console.warn(`Wye picker: no activation token (${error.message})`);
+            }
+            if (token)
+                variants['activation-token'] = new GLib.Variant('s', token);
+        }
+        this._finish(id => this._call('PickerChose', '(ssa{sv})', [id, JSON.stringify(target), variants]));
+    }
+
+    _mode() {
+        return Keys.modeFor(this._keymap, this._held);
+    }
+
+    _refresh() {
+        const mode = this._mode();
+        this._view.setSelected(this._selected);
+        this._view.setDimmed(this._picker.tiles.map(entry => mode !== null && !Model.supports(mode, entry)));
+        this._view.setHint(mode ? Model.HINTS[mode] : '');
+    }
+
+    _select(index) {
+        this._selected = index;
+        this._refresh();
+    }
+
+    // PICK-22, PICK-24: hover selects once the pointer has really moved.
+    _hover(index, event) {
+        if (!this.isOpen)
+            return;
+        const [x, y] = event.get_coords();
+        if (!this._pointerMoved) {
+            if (!this._hoverOrigin) {
+                this._hoverOrigin = {x, y};
+                return;
+            }
+            if (Math.abs(x - this._hoverOrigin.x) < HOVER_SLOP &&
+                Math.abs(y - this._hoverOrigin.y) < HOVER_SLOP)
+                return;
+            this._pointerMoved = true;
+        }
+        if (index !== this._selected)
+            this._select(index);
+    }
+
+    // PICK-20, PICK-30, PICK-32, PICK-33.
+    _click(index, button) {
+        const entry = this._picker?.tiles[index];
+        const event = Clutter.get_current_event();
+        const time = eventTime(event);
+        if (!entry)
+            return;
+        if (button === Clutter.BUTTON_SECONDARY) {
+            this._select(index);
+            this._openTileMenu(index, event);
+            return;
+        }
+        if (button === Clutter.BUTTON_MIDDLE) {
+            this._choose(entry, 'background', time);
+            return;
+        }
+        const held = event ? modifiersOf(event.get_state()) : this._held;
+        this._choose(entry, Keys.modeFor(this._keymap, held), time);
+    }
+
+    // PICK-23: a click outside the panel cancels.
+    _pressed(event) {
+        if (!this.isOpen)
             return Clutter.EVENT_PROPAGATE;
-        if (event.type() === Clutter.EventType.BUTTON_PRESS &&
-            !this._dialog.dialogLayout.contains(event.get_source())) {
+        const source = global.stage.get_event_actor(event);
+        if (!source || source === this._root || !this._view.actor.contains(source)) {
             this._cancel();
             return Clutter.EVENT_STOP;
         }
-        if (event.type() !== Clutter.EventType.KEY_PRESS)
+        return Clutter.EVENT_PROPAGATE;
+    }
+
+    // PICK-21, PICK-22, KEY-13, KEY-22.
+    _key(event, pressed) {
+        if (!this.isOpen)
             return Clutter.EVENT_PROPAGATE;
-        const key = chord(event);
-        const bare = Clutter.keyval_name(event.get_key_symbol()) === 'ISO_Left_Tab'
-            ? 'Tab' : Clutter.keyval_name(event.get_key_symbol());
-        const prefixes = key.split('+').slice(0, -1);
-        const heldBindings = Object.values(this._keys.modifierActions ?? {}).flat();
-        const permitted = prefixes.every(prefix => heldBindings.includes(prefix));
-        const action = keyAction(this._keys, key) ??
-            (permitted ? keyAction(this._keys, bare) : null);
-        const inExtra = this._extraScroll?.visible &&
-            this._extra?.contains(global.stage.get_key_focus());
-        if (inExtra && (action === 'open' || action === 'next' || action === 'previous'))
+        const name = Clutter.keyval_name(event.get_key_symbol()) ?? '';
+        // Every key event says what is held now (KEY-13).
+        this._held = Keys.heldAfter(modifiersOf(event.get_state()), name, pressed);
+        if (!pressed || Keys.modifierOfKey(name) !== undefined) {
+            this._refresh();
+            return Clutter.EVENT_STOP;
+        }
+        const outcome = Keys.dispatch(this._keymap, keyEvent(event, this._held),
+            this._picker.tiles.map(entry => entry.hotkey));
+        const time = event.get_time();
+        if (!outcome)
             return Clutter.EVENT_PROPAGATE;
-        if (action === 'cancel')
+        if (outcome.index !== undefined) {
+            this._choose(this._picker.tiles[outcome.index], outcome.mode, time);
+            return Clutter.EVENT_STOP;
+        }
+        switch (outcome.action) {
+        case 'open':
+            this._choose(this._picker.tiles[this._selected], outcome.mode ?? this._mode(), time);
+            break;
+        case 'cancel':
             this._cancel();
-        else if (action === 'next' || action === 'previous')
-            this._select(this._selected + (action === 'next' ? 1 : -1));
-        else if (action === 'first' || action === 'last')
-            this._select(action === 'first' ? 0 : this._request.tiles.length - 1);
-        else if (action === 'open')
-            this._choose(this._request.tiles[this._selected], event);
-        else if (action === 'more')
-            this._more();
-        else if (action === 'copy-link' || action === 'create-rule')
-            this._action(action);
-        else {
-            const index = permitted ? this._request.tiles.findIndex(tile =>
-                tile.hotkey?.toLowerCase() === bare.toLowerCase()) : -1;
-            if (index < 0)
-                return Clutter.EVENT_PROPAGATE;
-            this._choose(this._request.tiles[index], event);
+            break;
+        case 'copy-link':
+        case 'create-rule':
+            this._action(outcome.action);
+            break;
+        case 'more':
+            this._openMore(true);
+            break;
+        default:
+            this._select(Keys.select(outcome.action, this._selected, this._picker.tiles.length));
         }
         return Clutter.EVENT_STOP;
     }
 
-    _cancel() {
-        const id = this._id;
-        this.close();
-        if (id)
-            this._call('PickerCancelled', '(s)', [id])
-                .catch(error => logError(error, 'Wye picker cancel'));
-    }
-
-    async _answer(method, signature, args) {
-        if (this._busy || !this._id)
-            return;
-        const id = this._id;
-        this._busy = true;
-        try {
-            await this._call(method, signature, [id, ...args]);
-            if (this._id === id)
-                this.close(id);
-        } catch (error) {
-            logError(error, `Wye ${method}`);
-            if (this._id === id) {
-                this._busy = false;
-                this._status.text = 'Could not complete action. Try again or press Escape.';
-            }
-        }
-    }
-
-    _choose(tile, event = null, overrides = {}) {
-        if (!tile || !this._id)
-            return;
-        const active = {...modifiers(event, this._keys, this._request.held ?? []), ...overrides};
-        for (const [name, enabled] of Object.entries(active)) {
-            const capability = name === 'new-window' ? 'newWindow' : name;
-            if (enabled && !tile.capabilities?.[capability]) {
-                this._status.text = `${tile.name} does not support ${name}`;
+    _newMenu(source, alignment, side = St.Side.TOP) {
+        const menu = new PopupMenu.PopupMenu(source, alignment, side);
+        menu.actor.add_style_class_name('wye-picker-menu');
+        syncStyle(menu.actor);
+        Main.uiGroup.add_child(menu.actor);
+        menu.actor.hide();
+        this._menuManager.addMenu(menu);
+        menu.connect('open-state-changed', (_menu, open) => {
+            if (open)
                 return;
-            }
-        }
-        const options = choiceOptions(active, tile.capabilities);
-        const variants = Object.fromEntries(Object.entries(options).map(([key, value]) =>
-            [key, new GLib.Variant('b', value)]));
-        this._answer('PickerChose', '(ssa{sv})', [JSON.stringify(tile.target), variants]);
-    }
-
-    _action(action) {
-        this._answer('PickerAction', '(ss)', [action]);
-    }
-
-    _select(index) {
-        const count = this._tiles.length;
-        if (!count)
-            return;
-        this._selected = (index + count) % count;
-        this._tiles.forEach((tile, i) => {
-            if (i === this._selected)
-                tile.add_style_pseudo_class('selected');
-            else
-                tile.remove_style_pseudo_class('selected');
+            // Back to the picker's keys once the menu lets go.
+            const idle = GLib.idle_add(GLib.PRIORITY_DEFAULT, () => {
+                this._idles.delete(idle);
+                if (this._menus.includes(menu)) {
+                    this._menus = this._menus.filter(m => m !== menu);
+                    menu.destroy();
+                }
+                if (this.isOpen)
+                    this._root.grab_key_focus();
+                return GLib.SOURCE_REMOVE;
+            });
+            this._idles.add(idle);
         });
-        this._tiles[this._selected].grab_key_focus();
+        this._menus.push(menu);
+        return menu;
     }
 
-    _render() {
-        this._dialog.contentLayout.remove_all_children();
-        this._tiles = [];
-        const request = this._request;
-        const settings = request.settings ?? {};
-        const iconSize = SIZES[settings.iconSize] ?? SIZES.medium;
-        const content = new St.BoxLayout({vertical: true, style_class: 'wye-picker-content'});
-        this._dialog.contentLayout.add_child(content);
-        const heading = new St.BoxLayout({style_class: 'wye-heading'});
-        heading.add_child(new St.Icon({gicon: this._logo, icon_size: 42}));
-        const headingText = new St.BoxLayout({vertical: true, style_class: 'wye-heading-text'});
-        headingText.add_child(new St.Label({text: 'Wye', style_class: 'wye-title'}));
-        headingText.add_child(new St.Label({text: 'Choose where to open', style_class: 'wye-subtitle'}));
-        heading.add_child(headingText);
-        content.add_child(heading);
-        this._brand = heading;
-        const tiles = request.tiles;
-        const heldActions = modifiers(null, this._keys, request.held ?? []);
-        for (let start = 0; start < tiles.length; start += 8) {
-            const row = new St.BoxLayout({style_class: 'wye-picker-row'});
-            content.add_child(row);
-            for (let i = start; i < Math.min(start + 8, tiles.length); i++) {
-                const tile = tiles[i];
-                const button = new St.Button({style_class: 'wye-tile', can_focus: true,
-                    accessible_name: `${tile.name}${tile.hotkey ? `, ${tile.hotkey}` : ''}`});
-                const body = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.CENTER,
-                    style_class: 'wye-tile-body'});
-                body.add_child(new St.Label({text: tile.hotkey?.toUpperCase() ?? ' ',
-                    style_class: 'wye-hotkey'}));
-                const iconFrame = new St.Widget({layout_manager: new Clutter.BinLayout(),
-                    style_class: 'wye-icon-frame'});
-                iconFrame.add_child(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
-                    [tile.icon ?? 'web-browser', 'web-browser']), icon_size: iconSize}));
-                if (settings.showBadge !== false && tile.badge?.initial) {
-                    const badge = new St.Label({text: tile.badge.initial,
-                        style_class: 'wye-badge', x_align: Clutter.ActorAlign.END,
-                        y_align: Clutter.ActorAlign.END});
-                    const color = tile.badge.color;
-                    if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) {
-                        const [r, g, b] = [1, 3, 5].map(offset =>
-                            parseInt(color.slice(offset, offset + 2), 16));
-                        badge.style = `background-color: ${color}; color: ${
-                            r * 0.2126 + g * 0.7152 + b * 0.0722 > 150 ? '#182333' : '#fff'};`;
-                    }
-                    iconFrame.add_child(badge);
-                }
-                body.add_child(iconFrame);
-                if (settings.showNames !== false) {
-                    const name = new St.Label({text: tile.name, style_class: 'wye-tile-name'});
-                    name.clutter_text.line_wrap = true;
-                    name.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
-                    body.add_child(name);
-                }
-                button.set_child(body);
-                if (Object.entries(heldActions).some(([name, enabled]) => enabled &&
-                    !tile.capabilities?.[name === 'new-window' ? 'newWindow' : name]))
-                    button.add_style_pseudo_class('unavailable');
-                button.connect('clicked', () => this._choose(tile));
-                button.connect('enter-event', () => this._select(i));
-                button.connect('button-press-event', (_actor, event) => {
-                    if (event.get_button() === 2) {
-                        this._choose(tile, event, {background: true});
-                        return Clutter.EVENT_STOP;
-                    }
-                    if (event.get_button() === 3) {
-                        this._context(tile);
-                        return Clutter.EVENT_STOP;
-                    }
-                    return Clutter.EVENT_PROPAGATE;
-                });
-                row.add_child(button);
-                this._tiles.push(button);
+    _closeMenus() {
+        for (const menu of this._menus) {
+            menu.close();
+            menu.destroy();
+        }
+        this._menus = [];
+    }
+
+    _openMenu(menu, keyboard) {
+        menu.open(BoxPointer.PopupAnimation.FULL);
+        if (keyboard)
+            menu.actor.navigate_focus(null, St.DirectionType.TAB_FORWARD, false);
+    }
+
+    // The tallest an Open In page may be: the work area's height, as the
+    // menu beside the "⋯" button may move up or down to fit (PICK-08).
+    _pageRoom() {
+        const area = Main.layoutManager.getWorkAreaForMonitor(this._monitor().index);
+        return area.height / themeScale() - 2 * SCREEN_MARGIN - PAGE_CHROME;
+    }
+
+    // PICK-30: the tile's menu, at the pointer.
+    _openTileMenu(index, event) {
+        this._closeMenus();
+        const entry = this._picker.tiles[index];
+        const [x, y] = event ? event.get_coords() : global.get_pointer();
+        this._menuAnchor.set_position(x, y);
+        const menu = this._newMenu(this._menuAnchor, 0);
+        const icons = {
+            'open': gicon(entry.icon),
+            'open-private': gicon('view-conceal-symbolic', []),
+            'open-new-window': gicon('window-new-symbolic', []),
+            'open-background': gicon('view-dual-symbolic', ['window-new-symbolic']),
+            'make-primary': gicon('starred-symbolic', []),
+        };
+        for (const {action, label} of Model.tileMenu(entry)) {
+            if (!action) {
+                menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+                continue;
             }
+            menu.addMenuItem(actionItem(label, icons[action], time => {
+                if (action === 'make-primary') {
+                    // The picker stays open (PICK-30).
+                    this._call('SetPrimary', '(s)', [JSON.stringify(entry.target)])
+                        .catch(error => console.error(`Wye primary browser: ${error.message}`));
+                    return;
+                }
+                this._choose(entry, Model.TILE_ACTION_MODES[action], time);
+            }));
         }
-        const more = new St.Button({label: 'More choices  ›', style_class: 'wye-more',
-            can_focus: true, accessible_name: 'More opening choices'});
-        more.connect('clicked', () => this._more());
-        content.add_child(more);
-        this._moreButton = more;
-        if (settings.showUrl && request.url) {
-            const footer = new St.BoxLayout({style_class: 'wye-footer'});
-            const source = request.source?.name ? `From ${request.source.name}` : 'Open link';
-            if (request.source?.icon)
-                footer.add_child(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
-                    [request.source.icon, 'application-x-executable']), icon_size: 18}));
-            footer.add_child(new St.Label({text: source, style_class: 'wye-source'}));
-            const link = new St.BoxLayout({style_class: 'wye-link'});
-            link.add_child(new St.Icon({icon_name: 'insert-link-symbolic', icon_size: 16}));
-            link.add_child(new St.Label({text: `${request.url.host ?? ''}${request.url.rest ?? ''}`,
-                style_class: 'wye-url', accessible_name: request.url.full}));
-            footer.add_child(link);
-            content.add_child(footer);
-            this._url = footer;
-        } else {
-            this._url = null;
-        }
-        const hint = Object.entries(heldActions).filter(([, enabled]) => enabled)
-            .map(([name]) => name === 'new-window' ? 'new window' : name).join(', ');
-        if (hint)
-            content.add_child(new St.Label({text: `Open in ${hint}`, style_class: 'wye-hint'}));
-        this._status = new St.Label({text: tiles.length ? '' : 'No browsers available',
-            style_class: 'wye-status'});
-        content.add_child(this._status);
-        this._extra = new St.BoxLayout({vertical: true, style_class: 'wye-extra'});
-        this._extraScroll = new St.ScrollView({style_class: 'wye-extra-scroll',
-            hscrollbar_policy: St.PolicyType.NEVER, vscrollbar_policy: St.PolicyType.AUTOMATIC});
-        this._extraScroll.add_child(this._extra);
-        this._extraScroll.hide();
-        content.add_child(this._extraScroll);
-        if (tiles.length)
-            this._select(0);
+        this._openMenu(menu, false);
     }
 
-    _extraButton(label, callback, icon = null) {
-        const button = new St.Button({can_focus: true, style_class: 'wye-extra-button',
-            accessible_name: label, x_expand: true});
-        const row = new St.BoxLayout({style_class: 'wye-extra-row', x_expand: true,
-            x_align: Clutter.ActorAlign.START});
-        if (icon)
-            row.add_child(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
-                [icon, 'web-browser']), icon_size: 20}));
-        row.add_child(new St.Label({text: label, style_class: 'wye-extra-label'}));
-        button.set_child(row);
-        button.connect('clicked', callback);
-        this._extra.add_child(button);
-    }
-
-    _more() {
-        if (this._extraScroll.visible && this._extraMode === 'more') {
-            this._extraScroll.hide();
-            this._moreButton.grab_key_focus();
+    // PICK-08, PICK-28, PICK-31, KEY-22: the "⋯" menu.
+    _openMore(keyboard) {
+        if (!this.isOpen)
             return;
-        }
-        this._extraMode = 'more';
-        this._extra.remove_all_children();
-        this._extraScroll.show();
-        for (const group of this._request.overflow) {
-            if (group.label)
-                this._extra.add_child(new St.Label({text: group.label, style_class: 'wye-group'}));
-            for (const tile of group.tiles)
-                this._extraButton(tile.name, () => this._choose(tile), tile.icon);
-        }
-        this._extraButton('Copy Link', () => this._action('copy-link'));
-        this._extraButton('Create Rule…', () => this._action('create-rule'));
-        this._extraButton('Settings…', () => this._call('ShowWindow', '(ss)', ['settings', ''])
-            .then(() => this._cancel()).catch(error => logError(error, 'Wye settings')));
-        this._extra.get_children().find(child => child.can_focus)?.grab_key_focus();
+        this._closeMenus();
+        // Beside the button, so it covers no tile and has the screen's
+        // height; on the other side when there is no room.
+        const menu = this._newMenu(this._view.moreButton, 0.5, St.Side.LEFT);
+        // The button stays pressed while its menu is open.
+        menu.connect('open-state-changed', (_menu, open) => this._view.moreButton.set_checked(open));
+        const rows = Model.openInRows(this._picker.overflow);
+        const pages = new MenuPages(menu, {
+            maxHeight: () => this._pageRoom(),
+            root: (section, self) => {
+                // PICK-28: Open In opens as a page in place of the menu.
+                const openIn = pageItem('open-in', 'Open In', fromKeys => self.open({
+                    title: 'Open In',
+                    key: 'open-in',
+                    fill: page => this._fillOpenIn(page, rows),
+                }, fromKeys));
+                openIn.insert_child_at_index(new St.Icon({gicon: gicon('document-open-symbolic', []),
+                    style_class: 'popup-menu-icon'}), 1);
+                openIn.setSensitive(rows.length > 0);
+                section.addMenuItem(openIn);
+                section.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+                section.addMenuItem(actionItem('Copy Link', gicon('edit-copy-symbolic', []), () => this._action('copy-link')));
+                section.addMenuItem(actionItem('Create Rule…', gicon('list-add-symbolic', []), () => this._action('create-rule')));
+                section.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+                section.addMenuItem(actionItem('Settings…', gicon('emblem-system-symbolic', []), () => this._settings()));
+            },
+        });
+        pages.render();
+        this._openMenu(menu, keyboard);
     }
 
-    _context(tile) {
-        this._extraMode = 'context';
-        this._extra.remove_all_children();
-        this._extraScroll.show();
-        this._extraButton(`Open ${tile.name}`, () => this._choose(tile), tile.icon);
-        for (const [name, option] of [['Private Window', 'private'],
-            ['New Window', 'newWindow'], ['Background', 'background']]) {
-            if (tile.capabilities?.[option])
-                this._extraButton(`Open in ${name}`, () => this._choose(tile, null,
-                    {[option === 'newWindow' ? 'new-window' : option]: true}));
+    // PICK-28: every group's heading, then its targets.
+    _fillOpenIn(section, rows) {
+        for (const row of rows) {
+            if (row.kind === 'header') {
+                section.addMenuItem(headingItem(row.label, true));
+                continue;
+            }
+            const entry = this._picker.overflow[row.group].entries[row.item];
+            section.addMenuItem(actionItem(row.label, gicon(row.icon), time =>
+                this._choose(entry, this._mode(), time)));
         }
-        this._extraButton('Make Primary Browser', () => this._call('SetPrimary', '(s)',
-            [JSON.stringify(tile.target)]).catch(error => logError(error, 'Wye primary browser')));
-        this._extra.get_children().find(child => child.can_focus)?.grab_key_focus();
+    }
+
+    destroy() {
+        if (this.isOpen)
+            this._cancel();
+        this._closeMenus();
+        for (const idle of this._idles)
+            GLib.source_remove(idle);
+        this._idles.clear();
+        St.Settings.get().disconnectObject(this);
+        this._root.destroy();
+        this._root = null;
     }
 }

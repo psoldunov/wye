@@ -35,6 +35,12 @@ pub struct PickerRequest {
     pub placement: Option<Placement>,
     /// Opened from Settings to preview; choosing opens nothing (PKS-06).
     pub preview: bool,
+    /// The activation token the link arrived with (Wayland xdg-activation,
+    /// else the X11 startup ID), so a picker window may take the focus
+    /// (PICK-01, LAUNCH-03). Absent when the link brought none; a host that
+    /// draws inside the compositor (the Shell extension) ignores it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub activation_token: Option<String>,
 }
 
 /// The link, split for display.
@@ -172,6 +178,18 @@ mod tests {
         let request: PickerRequest = serde_json::from_str("{}").expect("decodes");
         assert_eq!(request.settings.icon_size, IconSize::Medium);
         assert!(request.placement.is_none());
+    }
+
+    #[test]
+    fn the_activation_token_is_optional_on_the_wire() {
+        // Older hosts read requests without it; none is sent when absent.
+        let empty: PickerRequest = serde_json::from_str("{}").expect("decodes");
+        assert!(empty.activation_token.is_none());
+        let none = serde_json::to_value(PickerRequest::default()).expect("encodes");
+        assert!(none.get("activationToken").is_none(), "{none}");
+        let with: PickerRequest =
+            serde_json::from_str(r#"{"activationToken": "abc"}"#).expect("decodes");
+        assert_eq!(with.activation_token.as_deref(), Some("abc"));
     }
 
     #[test]

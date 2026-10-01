@@ -35,6 +35,7 @@ pub(crate) async fn announce(
     if saved || login_changed || first_managed {
         sync_autostart(ctx, after).await;
     }
+    crate::api::clipboard::config_changed(ctx, &after.config);
     // Decision 2: the picker just became reachable; start the UI host now.
     crate::api::picker::ready::config_changed(
         ctx,

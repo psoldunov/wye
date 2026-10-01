@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SCR-02: the script editor's light colours. GtkSourceView's Adwaita scheme,
+  plus the JavaScript it leaves plain: built-in methods and functions
+  (startsWith, slice, encodeURIComponent) and built-in properties (length),
+  as KDE's highlighting colours them. Loaded from the GResource
+  (src/script_editor/code.rs).
+-->
+<style-scheme id="wye-script" name="Wye Script" version="1.0" parent-scheme="Adwaita">
+  <metadata>
+    <property name="variant">light</property>
+    <property name="dark-variant">wye-script-dark</property>
+  </metadata>
+  <style name="def:builtin" foreground="#1C71D8"/>
+  <style name="js:built-in-property" foreground="#1A5FB4" italic="true"/>
+</style-scheme>

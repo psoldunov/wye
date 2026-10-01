@@ -7,6 +7,7 @@
 
 mod application;
 mod kwin;
+mod session_helper;
 mod ui;
 mod wye1;
 
@@ -16,6 +17,7 @@ use zbus::zvariant::Value;
 
 pub use application::ApplicationProxy;
 pub use kwin::KWin1Proxy;
+pub use session_helper::{ClipboardChanged, ClipboardChangedStream, SessionHelper1Proxy};
 pub use ui::{PickerHost1Proxy, Windows1Proxy};
 pub use wye1::Wye1Proxy;
 
@@ -69,6 +71,18 @@ mod tests {
         assert_eq!(
             defaults::<Windows1Proxy<'_>>(),
             (Some(names::WINDOWS_INTERFACE), ui.0, ui.1)
+        );
+    }
+
+    #[test]
+    fn the_session_helper_proxy_uses_the_documented_names() {
+        assert_eq!(
+            defaults::<SessionHelper1Proxy<'_>>(),
+            (
+                Some(names::SESSION_HELPER_INTERFACE),
+                Some(names::GNOME_BUS_NAME),
+                Some(names::GNOME_OBJECT_PATH)
+            )
         );
     }
 }

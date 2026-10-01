@@ -31,6 +31,15 @@ pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
     vec![tokio::spawn(rewrite::watch(ctx.clone()))]
 }
 
+/// The configuration changed: ask for clipboard changes only while a
+/// copy-time rewrite is on (EXT-12). Only a provider that has to ask for
+/// them (the GNOME Shell extension) does anything with this.
+pub(crate) fn config_changed(ctx: &ServiceContext, config: &wye_core::Config) {
+    ctx.platform()
+        .clipboard
+        .set_watching(rewrite::wanted(config));
+}
+
 /// `dev.soldunov.wye1.OpenClipboard` (IN-02 to IN-04): the link on the
 /// clipboard through the full pipeline. The source app is unknown, and
 /// `alternative` acts as if the alternative-browser key were held

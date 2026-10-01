@@ -8,12 +8,17 @@
 # ships: bin/wye, bin/wye-ui, bin/wye-native-host,
 # share/dbus-1/services/dev.soldunov.wye{,.Ui}.service, and
 # share/systemd/user/wye{,-ui}.service with lib/systemd/user links. Moving or
-# renaming any of these breaks the `release` channel until the next release.
-# Newer packages additionally ship bin/wye-gtk,
+# renaming any of these breaks the `release` channel until the next release;
+# add new paths instead, and have the modules use them only once a release
+# that ships them is recorded.
+#
+# Added since (ADV-12): bin/wye-gtk,
 # share/dbus-1/services/dev.soldunov.wye.Gtk.service,
-# share/systemd/user/wye-gtk.service, and
-# share/gnome-shell/extensions/wye@dev.soldunov; modules do not require those
-# paths until a release containing them is recorded.
+# share/systemd/user/wye-gtk.service with its lib/systemd/user link, and
+# share/gnome-shell/extensions/wye@dev.soldunov. A package that ships them
+# says so with `passthru.hasGtk = true`; the home-manager module declares
+# the GTK host only for such a package, and NixOS takes the files from the
+# package itself, so a release without them gets none.
 #
 # share/plasma/plasmoids/dev.soldunov.wye (the Plasma applet) is no longer
 # part of the contract: this flake's package has no applet, and the modules

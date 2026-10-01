@@ -1,0 +1,167 @@
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "light",
+        "now": 1789048800,
+        "query": "",
+        "fixture": {
+          "history": {
+            "enabled": true,
+            "entries": [
+              {
+                "id": 8,
+                "time": 1789047540,
+                "originalUrl": "https://old.reddit.com/r/gnome/comments/1fx2k9q/gnome_49_released/?utm_source=share&utm_medium=web",
+                "finalUrl": "https://old.reddit.com/r/gnome/comments/1fx2k9q/gnome_49_released/",
+                "entry": "handler",
+                "source": "com.slack.Slack.desktop",
+                "sourceName": "Slack",
+                "target": { "app": "app.zen_browser.zen.desktop" },
+                "targetName": "Zen Browser",
+                "reason": "picker choice",
+                "cleaned": true,
+                "expanded": false
+              },
+              {
+                "id": 7,
+                "time": 1789047360,
+                "originalUrl": "https://github.com/psoldunov/wye/pull/8?notification_referrer_id=NT_kwDOA",
+                "finalUrl": "https://github.com/psoldunov/wye/pull/8",
+                "entry": "handler",
+                "source": "org.gnome.Ptyxis.desktop",
+                "sourceName": "Terminal",
+                "target": { "app": "firefox.desktop" },
+                "targetName": "Firefox",
+                "reason": "primary browser",
+                "cleaned": true,
+                "expanded": false
+              },
+              {
+                "id": 6,
+                "time": 1789046100,
+                "originalUrl": "https://linear.app/acme/issue/ENG-1042",
+                "finalUrl": "https://linear.app/acme/issue/ENG-1042",
+                "entry": "handler",
+                "source": "com.slack.Slack.desktop",
+                "sourceName": "Slack",
+                "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } },
+                "targetName": "Work (Google Chrome)",
+                "reason": "rule “Work links from Slack”",
+                "cleaned": false,
+                "expanded": false
+              },
+              {
+                "id": 5,
+                "time": 1789044720,
+                "originalUrl": "https://meet.google.com/abc-defg-hij",
+                "finalUrl": "https://meet.google.com/abc-defg-hij",
+                "entry": "handler",
+                "source": "org.mozilla.thunderbird.desktop",
+                "sourceName": "Thunderbird",
+                "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } },
+                "targetName": "Work (Google Chrome)",
+                "reason": "rule “Meetings”",
+                "cleaned": false,
+                "expanded": false
+              },
+              {
+                "id": 4,
+                "time": 1788981000,
+                "originalUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&si=Xy12",
+                "finalUrl": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                "entry": "handler",
+                "source": "org.telegram.desktop.desktop",
+                "sourceName": "Telegram",
+                "target": { "app": "brave-browser.desktop" },
+                "targetName": "Brave Web Browser",
+                "reason": "rule “Videos in Brave”",
+                "cleaned": true,
+                "expanded": false
+              },
+              {
+                "id": 3,
+                "time": 1788971100,
+                "originalUrl": "https://bit.ly/3xYzAbC",
+                "finalUrl": "https://www.example.org/a/very/long/path/that/keeps/going/and/going/until/it/needs/cutting/in/the/middle/article-title-2026?ref=newsletter&section=world",
+                "entry": "clipboard",
+                "target": { "picker": true },
+                "targetName": "Picker",
+                "reason": "picker choice",
+                "cleaned": false,
+                "expanded": true
+              },
+              {
+                "id": 2,
+                "time": 1788882000,
+                "originalUrl": "https://discord.com/channels/1/2",
+                "finalUrl": "https://discord.com/channels/1/2",
+                "entry": "handler",
+                "source": "org.gnome.Ptyxis.desktop",
+                "sourceName": "Terminal",
+                "target": { "app": "com.discordapp.Discord.desktop" },
+                "targetName": "Discord",
+                "reason": "web app “Discord”",
+                "cleaned": false,
+                "expanded": false
+              },
+              {
+                "id": 1,
+                "time": 1788258600,
+                "originalUrl": "https://en.wikipedia.org/wiki/Wye_(rail)",
+                "finalUrl": "https://en.wikipedia.org/wiki/Wye_(rail)",
+                "entry": "handler",
+                "source": "org.gnome.Papers.desktop",
+                "sourceName": "Papers",
+                "target": { "profile": { "app": "firefox.desktop", "id": "research" } },
+                "targetName": "Research (Firefox)",
+                "reason": "alternative browser key",
+                "cleaned": false,
+                "expanded": false
+              }
+            ]
+          },
+          "targets": {
+            "targets": [
+              { "target": { "picker": true }, "kind": "picker", "name": "Picker" },
+              { "target": { "app": "firefox.desktop" }, "kind": "app", "name": "Firefox", "icon": "firefox" },
+              { "target": { "profile": { "app": "firefox.desktop", "id": "research" } }, "kind": "profile", "name": "Research (Firefox)", "icon": "firefox", "badge": { "initial": "R", "color": "#2e7d32" }, "browser": "firefox.desktop" },
+              { "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } }, "kind": "profile", "name": "Work (Google Chrome)", "icon": "google-chrome", "badge": { "initial": "W", "color": "#336699" }, "browser": "google-chrome.desktop" },
+              { "target": { "app": "app.zen_browser.zen.desktop" }, "kind": "app", "name": "Zen Browser", "icon": "app.zen_browser.zen" },
+              { "target": { "app": "brave-browser.desktop" }, "kind": "app", "name": "Brave Web Browser", "icon": "brave-browser" },
+              { "target": { "app": "com.discordapp.Discord.desktop" }, "kind": "app", "name": "Discord", "icon": "discord" }
+            ]
+          }
+        }
+      }
+    },
+    { "action": "show", "key": "history", "argument": { "scheme": "dark" } },
+    { "action": "show", "key": "history", "argument": { "scheme": "light", "query": "slack chrome" } },
+    { "action": "show", "key": "history", "argument": { "scheme": "dark", "query": "slack chrome" } },
+    { "action": "show", "key": "history", "argument": { "scheme": "dark", "query": "nothing matches this" } },
+    { "action": "show", "key": "history", "argument": { "scheme": "light", "query": "", "menu": 1 } },
+    { "action": "show", "key": "history", "argument": { "scheme": "light", "query": "", "confirm": true } },
+    { "action": "show", "key": "history", "argument": { "scheme": "dark", "query": "", "confirm": true } },
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "light",
+        "query": "",
+        "fixture": { "history": { "enabled": true, "entries": [] } }
+      }
+    },
+    { "action": "show", "key": "history", "argument": { "scheme": "dark" } },
+    {
+      "action": "show",
+      "key": "history",
+      "argument": {
+        "scheme": "dark",
+        "fixture": { "history": { "enabled": false, "entries": [] } }
+      }
+    },
+    { "action": "show", "key": "history", "argument": { "scheme": "light" } }
+  ]
+}

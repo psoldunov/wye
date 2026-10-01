@@ -1,75 +1,110 @@
-.wye-warning { color: #f5c211; }
-.wye-shortcut { color: #a9afbc; padding-left: 24px; }
-.wye-picker .modal-dialog {
-    border-radius: 20px;
-    background-color: #252a34;
-    box-shadow: 0 16px 36px rgba(0, 0, 0, 0.28);
+/* Wye for GNOME Shell. Dark is the default; `.wye-light` follows the
+ * Shell's light style (PICK-12). Menus keep the Shell's own popup style. */
+
+/* ---- Picker panel (PICK-01) ---- */
+.wye-picker-shadow {
+    border-radius: 16px;
+    background-color: #2a2a2e;
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.42);
 }
-.wye-picker .modal-dialog .modal-dialog-content-box { max-width: 56em; padding-top: 0; }
-.wye-picker-content { padding: 12px 18px 8px; spacing: 14px; min-width: 540px; }
-.wye-heading { spacing: 12px; padding-bottom: 4px; }
-.wye-heading-text { spacing: 1px; }
-.wye-title { font-size: 19px; font-weight: bold; color: #f5f7fb; }
-.wye-subtitle { font-size: 12px; color: #c1c9d6; }
-.wye-picker-row { spacing: 6px; }
+.wye-picker-panel {
+    padding: 14px;
+    spacing: 4px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    background-color: #2a2a2e;
+    color: #ffffff;
+}
+.wye-blurred .wye-picker-panel { background-color: rgba(40, 40, 44, 0.78); }
+
+.wye-picker-top { spacing: 4px; }
+.wye-tile-grid { spacing: 4px; }
+.wye-tile-row { spacing: 2px; }
+
+/* ---- Tiles (PICK-04 to PICK-07) ---- */
 .wye-tile {
-    min-width: 94px; max-width: 110px; padding: 10px 7px;
-    border-radius: 14px; background-color: rgba(255, 255, 255, 0.045);
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid transparent;
+    color: #ffffff;
+    transition-duration: 0ms;
 }
-.wye-tile:selected, .wye-tile:focus, .wye-tile:hover {
-    background-color: st-transparentize(-st-accent-color, 0.68);
-    box-shadow: inset 0 0 0 2px -st-accent-color;
-}
-.wye-tile:unavailable { opacity: 0.45; }
-.wye-tile-body { spacing: 7px; }
-.wye-hotkey { color: #b9c5d5; font-size: 11px; font-weight: bold; text-align: center; }
-.wye-icon-frame { min-width: 48px; min-height: 48px; }
-.wye-tile-name { width: 105px; text-align: center; color: #f5f7fb; }
-.wye-badge {
-    border-radius: 12px; background-color: #275c99; color: #fff;
-    border: 2px solid #252a34; font-size: 11px; font-weight: bold;
-    padding: 1px 5px;
-}
-.wye-more {
-    border-radius: 9px; padding: 7px 12px; color: #dce8f7;
-    background-color: rgba(255, 255, 255, 0.06);
-}
-.wye-more:hover, .wye-more:focus, .wye-extra-button:hover, .wye-extra-button:focus {
+.wye-tile:selected {
     background-color: st-transparentize(-st-accent-color, 0.7);
-    box-shadow: inset 0 0 0 2px -st-accent-color;
+    border-color: st-transparentize(-st-accent-color, 0.15);
 }
-.wye-footer {
-    spacing: 12px; padding: 12px 2px 2px;
-    border-top: 1px solid rgba(255, 255, 255, 0.16);
+.wye-tile:selected:active { background-color: st-transparentize(-st-accent-color, 0.55); }
+.wye-tile-box { spacing: 4px; }
+.wye-hotkey {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
 }
-.wye-source { color: #c1c9d6; }
-.wye-link { spacing: 6px; color: #e0e8f5; }
-.wye-url { max-width: 390px; text-overflow: ellipsis; color: #e0e8f5; font-weight: bold; }
-.wye-hint { color: #c1c9d6; }
-.wye-status { color: #ffc2bd; }
-.wye-extra { spacing: 3px; }
-.wye-extra-scroll { max-height: 230px; min-width: 280px; }
-.wye-extra-button { padding: 7px 12px; border-radius: 9px; }
-.wye-extra-row { spacing: 12px; }
-.wye-extra-label { color: #f5f7fb; }
-.wye-group { font-weight: bold; color: #b9c5d5; padding: 9px 10px 3px; }
-.wye-tray-heading { spacing: 10px; padding: 7px 12px 12px; }
-.wye-tray-title { font-weight: bold; font-size: 17px; color: #f5f7fb; }
-.wye-tray-subtitle { font-size: 11px; color: #c1c9d6; }
-.wye-tray-icon { padding-right: 5px; }
-.wye-tray-item { min-width: 260px; }
-.wye-light.modal-dialog { background-color: #f9fbff; box-shadow: 0 16px 36px rgba(32, 44, 68, 0.18); }
-.wye-light .wye-title, .wye-light .wye-tile-name, .wye-light .wye-extra-label { color: #202a3a; }
-.wye-light .wye-subtitle, .wye-light .wye-source, .wye-light .wye-hint { color: #48566a; }
-.wye-light .wye-hotkey, .wye-light .wye-group { color: #435a75; }
-.wye-light .wye-tile, .wye-light .wye-more { background-color: rgba(32, 54, 85, 0.06); }
-.wye-light .wye-tile:selected, .wye-light .wye-tile:focus, .wye-light .wye-tile:hover {
-    background-color: st-transparentize(-st-accent-color, 0.83);
+.wye-tile:selected .wye-hotkey { color: rgba(255, 255, 255, 0.9); }
+.wye-tile-name { font-size: 0.9em; text-align: center; }
+
+.wye-badge { border-color: #2c2c30; border-style: solid; background-color: -st-accent-color; }
+.wye-badge-initial { font-weight: 800; }
+.wye-badge-light .wye-badge-initial { color: #ffffff; }
+.wye-badge-dark .wye-badge-initial { color: #1e1e22; }
+
+/* ---- "⋯" (PICK-08) ---- */
+.wye-more-column { padding: 6px 2px; spacing: 4px; }
+.wye-more-button {
+    width: 28px;
+    height: 28px;
+    border-radius: 14px;
+    color: rgba(255, 255, 255, 0.82);
 }
-.wye-light .wye-more { color: #263c56; }
-.wye-light .wye-footer { border-top: 1px solid rgba(32, 54, 85, 0.18); }
-.wye-light .wye-link, .wye-light .wye-url { color: #22354c; }
-.wye-light .wye-badge { border-color: #f9fbff; }
-.wye-light .wye-status { color: #a33227; }
-.wye-tray-light .wye-tray-title { color: #202a3a; }
-.wye-tray-light .wye-tray-subtitle, .wye-tray-light .wye-shortcut { color: #48566a; }
+.wye-more-button:hover { background-color: rgba(255, 255, 255, 0.1); color: #ffffff; }
+.wye-more-button:active, .wye-more-button:checked { background-color: rgba(255, 255, 255, 0.16); }
+
+/* ---- Lines under the tiles (PICK-09, PICK-14, PKS-06) ---- */
+.wye-hint { color: -st-accent-color; font-weight: 600; padding-top: 2px; }
+.wye-url-line { padding-top: 6px; font-size: 0.9em; }
+.wye-url-icon { margin-right: 5px; }
+.wye-url-source { color: rgba(255, 255, 255, 0.62); margin-right: 10px; }
+.wye-url-host { font-weight: bold; }
+.wye-url-rest { color: rgba(255, 255, 255, 0.55); }
+.wye-preview { font-size: 0.9em; color: rgba(255, 255, 255, 0.55); padding-top: 4px; }
+.wye-empty { padding: 4px 8px; spacing: 2px; }
+.wye-empty-title { font-weight: 600; }
+.wye-empty-body { font-size: 0.9em; color: rgba(255, 255, 255, 0.62); }
+
+/* ---- Light (PICK-12) ---- */
+.wye-light .wye-picker-shadow { background-color: #f6f6f8; box-shadow: 0 10px 32px rgba(0, 0, 0, 0.2); }
+.wye-light .wye-picker-panel {
+    background-color: #f6f6f8;
+    border-color: rgba(0, 0, 0, 0.1);
+    color: #222226;
+}
+.wye-light.wye-blurred .wye-picker-panel { background-color: rgba(250, 250, 252, 0.86); }
+.wye-light .wye-tile { color: #222226; }
+.wye-light .wye-tile:selected {
+    background-color: st-transparentize(-st-accent-color, 0.8);
+    border-color: st-transparentize(-st-accent-color, 0.3);
+}
+.wye-light .wye-hotkey { color: rgba(0, 0, 0, 0.5); }
+.wye-light .wye-tile:selected .wye-hotkey { color: rgba(0, 0, 0, 0.82); }
+.wye-light .wye-badge { border-color: #f4f4f6; }
+.wye-light .wye-more-button { color: rgba(0, 0, 0, 0.7); }
+.wye-light .wye-more-button:hover { background-color: rgba(0, 0, 0, 0.07); color: #222226; }
+.wye-light .wye-more-button:active { background-color: rgba(0, 0, 0, 0.12); }
+.wye-light .wye-url-source, .wye-light .wye-empty-body { color: rgba(0, 0, 0, 0.58); }
+.wye-light .wye-url-rest, .wye-light .wye-preview { color: rgba(0, 0, 0, 0.5); }
+
+/* ---- Menus: the Shell's popups plus a few Wye columns ---- */
+.wye-menu-heading { padding-top: 6px; padding-bottom: 3px; }
+.wye-menu-heading-label { font-size: 0.9em; font-weight: bold; color: rgba(255, 255, 255, 0.5); }
+.wye-menu-shortcut { color: rgba(255, 255, 255, 0.5); padding-left: 24px; }
+.wye-menu-icon { margin-right: 2px; }
+.wye-tray-menu .popup-menu-content { min-width: 17em; }
+/* Pages (TRAY-15, PICK-28): the back row with the page's title centred,
+ * as in GTK's popover menus. */
+.wye-back-label { font-weight: bold; }
+.wye-back-balance { width: 16px; }
+
+/* ONB-11: the warning emblem on the panel icon. */
+.wye-tray-emblem { icon-size: 10px; color: #f8e45c; }
+.wye-light .wye-menu-heading-label, .wye-light .wye-menu-shortcut { color: rgba(0, 0, 0, 0.5); }
+.wye-light .wye-tray-emblem { color: #c88800; }

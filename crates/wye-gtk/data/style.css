@@ -1,0 +1,567 @@
+/*
+ * wye-gtk's own styles, on top of libadwaita's. AdwApplication loads this
+ * file from the GResource by itself (resource base path /dev/soldunov/wye).
+ * Colours come from libadwaita's variables only, so light, dark, high
+ * contrast and the user's accent colour all follow the system.
+ */
+
+/* SET-03: the selected page's switcher item is tinted with the accent:
+ * a rounded highlight behind it, icon and label in the accent colour. */
+window.wye-settings viewswitcher button.toggle:checked,
+window.wye-settings viewswitcherbar button.toggle:checked {
+  color: var(--accent-color);
+  background-color: color-mix(in srgb, var(--accent-bg-color) 14%, transparent);
+}
+
+window.wye-settings viewswitcher button.toggle:checked:hover,
+window.wye-settings viewswitcherbar button.toggle:checked:hover {
+  background-color: color-mix(in srgb, var(--accent-bg-color) 20%, transparent);
+}
+
+/* BLK-08: the round contextual-help button before a row's control, the same
+ * size everywhere; its mark is dimmed until the pointer or the focus is on
+ * it, or its popover is open. */
+menubutton.wye-help-button > button,
+button.wye-help-button {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+  border-radius: 9999px;
+}
+
+menubutton.wye-help-button > button image,
+button.wye-help-button > image {
+  opacity: 0.65;
+  transition: opacity 150ms ease-out;
+}
+
+menubutton.wye-help-button > button:hover image,
+menubutton.wye-help-button > button:focus-visible image,
+menubutton.wye-help-button > button:checked image,
+button.wye-help-button:hover > image,
+button.wye-help-button:focus-visible > image {
+  opacity: 1;
+}
+
+popover.wye-help-popover > contents {
+  padding: 12px 14px;
+}
+
+/* BLK-09: the callout, an inline information card in the page's column. */
+.wye-callout {
+  border-radius: 12px;
+  padding: 12px 6px 12px 14px;
+  background-color: color-mix(in srgb, var(--accent-bg-color) 12%, var(--card-bg-color));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-bg-color) 28%, transparent);
+}
+
+.wye-callout image.wye-callout-icon {
+  color: var(--accent-color);
+}
+
+/* BLK-04 / TGT-03, PICK-06: a profile badge over a browser icon, as the KDE
+ * picker draws it. A circle on the profile's colour (the accent without one),
+ * or the profile's picture cropped to a circle, with a ring in the colour of
+ * what the icon sits on. Rows are cards, so the ring is the card colour; a
+ * popover sets its own. Size, ring width and the profile colour come from
+ * icon.rs. */
+window {
+  --wye-badge-ring: var(--card-bg-color);
+}
+
+popover {
+  --wye-badge-ring: var(--popover-bg-color);
+}
+
+.wye-badge {
+  border-radius: 9999px;
+}
+
+/* The ring of the circle is an inset shadow, which takes no room, so the
+ * circle is exactly its size and the initial can be centred in it. A picture
+ * has a real border: the shadow would lie under the image. */
+box.wye-badge-ring-1 { box-shadow: inset 0 0 0 1px var(--wye-badge-ring); }
+box.wye-badge-ring-2 { box-shadow: inset 0 0 0 2px var(--wye-badge-ring); }
+box.wye-badge-ring-3 { box-shadow: inset 0 0 0 3px var(--wye-badge-ring); }
+
+picture.wye-badge {
+  border-style: solid;
+  border-color: var(--wye-badge-ring);
+}
+
+picture.wye-badge-ring-1 { border-width: 1px; }
+picture.wye-badge-ring-2 { border-width: 2px; }
+picture.wye-badge-ring-3 { border-width: 3px; }
+
+box.wye-badge {
+  padding: 0;
+  color: var(--accent-fg-color);
+  background-color: var(--accent-bg-color);
+}
+
+/* The initial stays legible on any colour. */
+box.wye-badge.wye-badge-on-light { color: #1e1e22; }
+box.wye-badge.wye-badge-on-dark { color: #ffffff; }
+
+/* BLK-04: the header of a section of the target menu. */
+.wye-target-menu-header {
+  padding: 8px 12px 4px 12px;
+  font-size: 0.85em;
+  font-weight: 700;
+}
+
+/* BLK-13: the bar attached to the bottom of a list card. */
+.wye-list-card {
+  border-radius: 12px;
+}
+
+.wye-list-card > list.boxed-list {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.wye-list-toolbar {
+  padding: 6px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+  background-color: var(--card-bg-color);
+  box-shadow: inset 0 1px var(--border-color);
+}
+
+/* BLK-15: rows being dragged, and the row a drop would land on. */
+row.wye-drop-above {
+  box-shadow: inset 0 2px var(--accent-bg-color);
+}
+
+row.wye-drop-below {
+  box-shadow: inset 0 -2px var(--accent-bg-color);
+}
+
+image.wye-drag-handle {
+  opacity: 0.55;
+}
+
+image.wye-drag-handle:hover {
+  opacity: 1;
+}
+
+/* BLK-16: the shortcut recorder's dialog, in the style of GNOME Settings. */
+.wye-shortcut-dialog .wye-shortcut-keyboard {
+  opacity: 0.55;
+}
+
+/* BLK-16: one stored binding as a removable chip. */
+.wye-shortcut-chip {
+  padding: 2px 2px 2px 8px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.wye-shortcut-chip > button {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 0;
+}
+
+/* BLK-11: the optional note pinned under a sheet's body. */
+.wye-sheet-note {
+  padding: 8px 18px 10px 18px;
+}
+
+/* Browsers and Apps pages */
+
+/* DLG-APP-02: "Flatpak" / "Snap" after an app's name, a quiet pill. */
+label.wye-packaging-badge {
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: color-mix(in srgb, currentColor 65%, transparent);
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+/* SHOWN-04: the hotkey popup of a shown browser, one width for every row
+ * so the column lines up. */
+menubutton.wye-hotkey-button > button {
+  min-width: 64px;
+}
+
+popover.wye-hotkey-popover > contents {
+  padding: 8px;
+}
+
+/* SHOWN-04: one key of the hotkey grid, a square key cap. */
+button.wye-key-cap {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+  font-weight: 600;
+  font-feature-settings: "tnum";
+}
+
+/* SHOWN-08: the room of a remove button on a row that has none, as wide as
+ * a flat circular image button, so the hotkey popups line up. */
+image.wye-remove-room {
+  min-width: 34px;
+  min-height: 34px;
+}
+
+/* A key another row has: choosing it moves it here. */
+button.wye-key-cap.wye-key-cap-used {
+  color: color-mix(in srgb, currentColor 45%, transparent);
+}
+
+/* TGT-02: the target menu's sections sit close together, a thin line
+ * between them, as a menu's do; an untitled section adds no gap. */
+row.combo.wye-target-row popover listview > header {
+  padding: 0;
+  min-height: 0;
+}
+
+row.combo.wye-target-row popover listview > header > separator {
+  margin: 4px 0;
+}
+
+/* Picker, Extras and Advanced pages */
+
+/* BLK-10, KEY-06: a row the session cannot offer keeps its help button
+ * working; only its text is dimmed (the control is insensitive). */
+row.wye-unavailable .title,
+row.wye-unavailable .subtitle {
+  opacity: 0.55;
+}
+
+/* ADV-08: the note under the Keyboard Shortcuts card, aligned with the
+ * group titles. */
+label.wye-group-note {
+  margin-top: 12px;
+}
+
+/* BLK-17: dimmed text with links (a row's subtitle, a group's note) is drawn
+ * in a solid dim colour instead of libadwaita's opacity, which would dim its
+ * links as well; the links take the accent colour, as libadwaita's do. The
+ * colour is mixed with the window's background and made opaque: GTK draws a
+ * label's links with the alpha of the label's colour (the card's background
+ * and the light style's text colour are translucent). */
+row label.subtitle.wye-links,
+label.dimmed.wye-links,
+label.wye-group-note.wye-links {
+  opacity: 1;
+  color: rgb(from color-mix(in srgb, var(--window-fg-color) 55%, var(--window-bg-color)) r g b);
+}
+
+label.wye-links link {
+  color: var(--accent-color);
+}
+
+/* Rules page */
+
+/* RUL-07: a turned-off rule is dimmed; its switch and buttons are not. */
+row.wye-rule-row.wye-rule-off box.title,
+row.wye-rule-row.wye-rule-off .wye-rule-target {
+  opacity: 0.5;
+}
+
+/* RUL-07: the delete button is a quiet glyph until it is aimed at. */
+button.wye-rule-delete {
+  color: color-mix(in srgb, currentColor 70%, transparent);
+}
+
+button.wye-rule-delete:hover,
+button.wye-rule-delete:focus-visible {
+  color: var(--error-color);
+}
+
+/* RUL-04: the row being dragged stays as a faint gap. */
+row.wye-rule-row.wye-dragged {
+  opacity: 0.4;
+}
+
+/* RUL-18: why Save is disabled, a calm warning card above the fields. */
+.wye-rule-blocker {
+  padding: 10px 14px;
+  border-radius: 12px;
+  background-color: color-mix(in srgb, var(--warning-bg-color) 14%, var(--card-bg-color));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning-bg-color) 30%, transparent);
+}
+
+.wye-rule-blocker image {
+  color: var(--warning-color);
+}
+
+/* RUL-14: a URL matcher row: kind, Match entry, remove; its error below. */
+.wye-matcher-row {
+  padding: 8px 6px 8px 12px;
+}
+
+.wye-matcher-error {
+  margin-left: 2px;
+}
+
+/* The kind reads as a value, like the entry beside it, not as a command. */
+.wye-matcher-row dropdown > button {
+  font-weight: normal;
+}
+
+/* RUL-19: the help button's first-use arrow. */
+image.wye-help-arrow {
+  -gtk-icon-size: 14px;
+}
+
+/* RUL-19, DLG-TST-02: the bar pinned at the bottom of a sheet. */
+.wye-sheet-footer {
+  padding: 6px 12px 8px 12px;
+}
+
+/* DLG-TST-02: one step of the tester's trace. */
+.wye-trace-row {
+  padding: 10px 12px;
+}
+
+/* History */
+
+/* DLG-HIS-02: one opened link, two lines beside the target's icon. */
+.wye-history-row {
+  padding: 10px 6px 10px 12px;
+}
+
+/* The host is what the eye looks for; the rest of the link is dimmed. */
+label.wye-history-host {
+  font-weight: 700;
+}
+
+/* DLG-HIS-02: why the link went there, and what changed it, as small
+ * pills: rules in the accent, web apps in green, the alternative key and
+ * changed links in amber, the rest quiet. */
+label.wye-history-pill {
+  padding: 0 7px;
+  border-radius: 9999px;
+  font-size: 0.8em;
+  font-weight: 600;
+  color: color-mix(in srgb, currentColor 70%, transparent);
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+label.wye-history-pill.wye-history-rule {
+  color: var(--accent-color);
+  background-color: color-mix(in srgb, var(--accent-bg-color) 14%, transparent);
+}
+
+label.wye-history-pill.wye-history-mapping {
+  color: var(--success-color);
+  background-color: color-mix(in srgb, var(--success-bg-color) 14%, transparent);
+}
+
+label.wye-history-pill.wye-history-alternative,
+label.wye-history-pill.wye-history-changed {
+  color: var(--warning-color);
+  background-color: color-mix(in srgb, var(--warning-bg-color) 14%, transparent);
+}
+
+/* Picker */
+
+/* 02-picker.md "Linux notes": the picker and the tray-menu popup draw in a
+ * transparent window (a layer surface covering the output where the
+ * compositor has layer shell). Without one, the window holds only the panel
+ * with room for its shadow. */
+window.wye-overlay {
+  background: none;
+  box-shadow: none;
+}
+
+window.wye-overlay.wye-windowed .wye-picker-surface {
+  padding: 24px;
+}
+
+/* PICK-01, PICK-12: a rounded panel in the popover colours of the light or
+ * dark style, slightly translucent so a compositor blur rule shows through
+ * (README), a hairline border and a soft shadow. Metrics as the Shell
+ * extension's (frontends/gnome-shell/stylesheet.css). */
+.wye-picker-panel {
+  --wye-badge-ring: var(--popover-bg-color);
+  padding: 14px;
+  border-radius: 16px;
+  color: var(--popover-fg-color);
+  background-color: color-mix(in srgb, var(--popover-bg-color) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--popover-fg-color) 14%, transparent);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.42);
+}
+
+/* PICK-04 to PICK-07: a tile; the selected one is tinted with the accent and
+ * outlined. */
+.wye-tile {
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+
+.wye-tile.wye-selected {
+  background-color: color-mix(in srgb, var(--accent-bg-color) 30%, transparent);
+  border-color: color-mix(in srgb, var(--accent-bg-color) 85%, transparent);
+}
+
+.wye-tile-hotkey {
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.55;
+}
+
+.wye-tile.wye-selected .wye-tile-hotkey {
+  opacity: 0.9;
+}
+
+.wye-tile-name {
+  font-size: 0.9em;
+}
+
+/* PICK-08: the round "⋯" button, centred on the icons. */
+.wye-picker-more-column {
+  padding: 6px 2px;
+}
+
+button.wye-picker-more {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
+/* PICK-14: what the held modifiers do, in the accent. */
+.wye-picker-hint {
+  color: var(--accent-color);
+  font-weight: 600;
+  padding-top: 2px;
+}
+
+/* PICK-09: "from Slack", then the link (host bold, the rest dimmed by its
+ * markup, panel.rs). */
+.wye-picker-url {
+  padding-top: 6px;
+  font-size: 0.9em;
+}
+
+.wye-picker-url-source,
+.wye-picker-dim {
+  opacity: 0.62;
+}
+
+.wye-picker-preview {
+  opacity: 0.55;
+  font-size: 0.9em;
+  padding-top: 4px;
+}
+
+/* Tray menu */
+
+/* TRAY-08: the popup's surface holds only the menu. GTK commits no buffer
+ * for a window that draws nothing, and a layer surface without one is never
+ * mapped, so it would get no keyboard focus: draw an invisible film. */
+.wye-menu-surface {
+  background-color: rgba(0, 0, 0, 0.004);
+}
+
+/* TRAY-08: the tray menu's popup, as wide as the Shell's tray menu. */
+popover.wye-tray-menu > contents {
+  min-width: 17em;
+}
+
+/* Onboarding */
+
+/* ONB-06: the footer under the steps: Back, the dots, the step's button. */
+.wye-onboarding-footer {
+  padding: 12px 18px 18px 18px;
+}
+
+.wye-onboarding-footer button {
+  min-width: 96px;
+}
+
+.wye-onboarding-footer button.flat {
+  min-width: 0;
+}
+
+/* ONB-06: one progress dot; the current step's is wider and in the accent. */
+.wye-onboarding-dot {
+  min-width: 8px;
+  min-height: 8px;
+  border-radius: 9999px;
+  background-color: color-mix(in srgb, currentColor 22%, transparent);
+  transition: min-width 200ms ease-out, background-color 200ms ease-out;
+}
+
+.wye-onboarding-dot.wye-onboarding-dot-current {
+  min-width: 22px;
+  background-color: var(--accent-bg-color);
+}
+
+/* Script editor */
+
+/* SCR-02: the code area, a rounded card with a hairline frame that turns to
+ * the focus ring while the code has the focus, as an entry does. */
+scrolledwindow.wye-script-code {
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  outline: 0 solid transparent;
+  outline-offset: -1px;
+  transition: outline-color 200ms ease-out, outline-width 200ms ease-out;
+}
+
+scrolledwindow.wye-script-code:focus-within {
+  border-color: transparent;
+  outline: 2px solid color-mix(in srgb, var(--accent-color) 50%, transparent);
+}
+
+/* The line numbers sit a little apart from the code. */
+scrolledwindow.wye-script-code gutter {
+  padding-left: 6px;
+}
+
+/* SCR-06: a code sample in the Reference, framed as the code area is. */
+textview.wye-script-sample {
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  font-size: 0.85em;
+}
+
+/* SCR-06: a parameter's name reads as code. */
+row.wye-script-parameter label.title {
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+/* SCR-04: the result's icon and words in the colour of what happened. */
+row.wye-script-result.changed image {
+  color: var(--success-color);
+}
+
+row.wye-script-result.failed image,
+row.wye-script-result.failed label.subtitle {
+  color: var(--error-color);
+}
+
+row.wye-script-result.unchanged image,
+row.wye-script-result.unchanged label.subtitle {
+  color: color-mix(in srgb, currentColor 55%, transparent);
+}
+
+/* SCR-04: the Source app popup at the end of the Link row reads as part of
+ * the row: a plain label and arrow, tinted only under the pointer. */
+dropdown.wye-script-source > button {
+  font-weight: inherit;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+dropdown.wye-script-source > button:hover {
+  background-color: color-mix(in srgb, currentColor 7%, transparent);
+}
+
+dropdown.wye-script-source > button:checked,
+dropdown.wye-script-source > button:active {
+  background-color: color-mix(in srgb, currentColor 14%, transparent);
+}
+
+/* SCR-20: console.log output, as the script wrote it. */
+row.wye-script-log label.subtitle {
+  font-family: monospace;
+  font-size: 0.9em;
+}

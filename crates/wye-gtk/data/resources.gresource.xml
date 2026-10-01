@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The GResource of wye-gtk (build.rs). The prefix is the application's
+  resource base path, so AdwApplication loads style.css by itself and
+  GtkApplication adds icons/ to the icon theme: `wye-*-symbolic` and the app
+  icon resolve by name like any theme icon. styles/ holds the script editor's
+  GtkSourceView schemes (src/script_editor/code.rs adds it to the search path).
+-->
+<gresources>
+  <gresource prefix="/dev/soldunov/wye">
+    <file>style.css</file>
+    <file>icons/scalable/actions/wye-browsers-symbolic.svg</file>
+    <file>icons/scalable/actions/wye-apps-symbolic.svg</file>
+    <file>icons/scalable/actions/wye-rules-symbolic.svg</file>
+    <file>icons/scalable/actions/wye-extras-symbolic.svg</file>
+    <file>icons/scalable/actions/wye-advanced-symbolic.svg</file>
+    <file>icons/scalable/actions/wye-help-symbolic.svg</file>
+    <file>styles/wye-script.xml</file>
+    <file>styles/wye-script-dark.xml</file>
+    <file alias="icons/scalable/apps/dev.soldunov.wye.svg">dev.soldunov.wye.svg</file>
+  </gresource>
+</gresources>

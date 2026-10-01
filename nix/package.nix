@@ -12,10 +12,14 @@
   stdenvNoCC,
   writeShellApplication,
   findutils,
+  glib,
   gtk4,
+  gtk4-layer-shell,
+  gtksourceview5,
   libadwaita,
-  python3,
   wrapGAppsHook4,
+  adwaita-icon-theme,
+  hicolor-icon-theme,
 }:
 let
   root = ../.;
@@ -34,9 +38,21 @@ let
     ln -s ${llvmPackages.bintools}/bin/ld.lld $out/bin/lld
   '';
 
-  # The GTK host uses system-style PyGObject modules, not pip packages.  Its
-  # wrapper combines this interpreter with wrapGAppsHook4's GI typelib paths.
-  gtkPython = python3.withPackages (ps: [ ps.pygobject3 ]);
+  # GTK 4, libadwaita and GtkSourceView 5 for the GNOME window host `wye-gtk`
+  # (crates/wye-gtk): its -sys crates find them with pkg-config, and its
+  # build script compiles the GResource with `glib-compile-resources` (glib's
+  # dev output). gtk4-layer-shell puts the picker and the tray-menu popup on
+  # the overlay layer of wlroots compositors (02-picker.md, "Linux notes").
+  # The checks and the dev shell use the same set.
+  gtk = {
+    nativeBuildInputs = [ glib ];
+    buildInputs = [
+      gtk4
+      gtk4-layer-shell
+      libadwaita
+      gtksourceview5
+    ];
+  };
 
   qt = rec {
     # cxx-qt-build reads Qt's whole layout (headers, libraries,
@@ -172,6 +188,8 @@ let
       ../data/expansion.toml
       ../data/tracking-parameters.toml
       ../data/applications/dev.soldunov.wye.desktop
+      # wye-gtk's GResource bundles the app icon for its About dialog.
+      ../data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg
       # The D-Bus service-file templates crates/wye/tests/e2e.rs activates.
       ../data/dbus
       # The KWin query script wye-service embeds with include_str!.
@@ -179,6 +197,9 @@ let
       (lib.fileset.maybeMissing ../crates/wye-ui/qml)
       (lib.fileset.maybeMissing ../crates/wye-ui/cpp)
       (lib.fileset.maybeMissing ../crates/wye-ui/fixtures)
+      # wye-gtk's GResource sources (CSS, icons) and self-test fixtures.
+      (lib.fileset.maybeMissing ../crates/wye-gtk/data)
+      (lib.fileset.maybeMissing ../crates/wye-gtk/fixtures)
     ];
   };
 
@@ -187,10 +208,12 @@ let
     strictDeps = true;
     pname = "wye";
     version = (lib.importTOML ../Cargo.toml).workspace.package.version;
-    inherit (qt) nativeBuildInputs buildInputs;
+    nativeBuildInputs = qt.nativeBuildInputs ++ gtk.nativeBuildInputs;
+    buildInputs = qt.buildInputs ++ gtk.buildInputs;
     preBuild = qt.exportQmake;
-    # The Qt wrapper goes on wye-ui alone (postFixup below): `wye` launches
-    # browsers, which must not inherit Qt's plugin and QML paths.
+    # The Qt wrapper goes on wye-ui alone and the GTK one on wye-gtk alone
+    # (postFixup below): `wye` launches browsers, which must not inherit
+    # either toolkit's plugin, QML or GI paths.
     dontWrapQtApps = true;
   };
 
@@ -200,19 +223,20 @@ let
     commonArgs
     // {
       inherit cargoArtifacts;
-      cargoExtraArgs = "--locked --package wye --package wye-native-host --package wye-ui";
+      cargoExtraArgs = "--locked --package wye --package wye-native-host --package wye-ui --package wye-gtk";
       nativeBuildInputs = commonArgs.nativeBuildInputs ++ [
         qt6.wrapQtAppsHook
         wrapGAppsHook4
-      ];
-      buildInputs = commonArgs.buildInputs ++ [
-        gtk4
-        libadwaita
       ];
       # Each frontend wrapper is applied explicitly in postFixup.
       dontWrapGApps = true;
       # Tests run as their own flake check.
       doCheck = false;
+      # ADV-12: this package ships the GTK host (bin/wye-gtk and its D-Bus
+      # and systemd files). The home-manager module declares the host's
+      # unit only for a package that says so, so an older release package
+      # without it gets nothing that names a missing binary.
+      passthru.hasGtk = true;
       # nixpkgs' fixup would move lib/systemd/user to share/systemd/user, where
       # NixOS' `systemd.packages` does not look; the unit lives in share and
       # lib/systemd/user links to it (see postInstall).
@@ -243,23 +267,17 @@ let
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg
         install -Dm644 ${../data/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg} \
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg
-        # The GTK settings host runs as a module from the package's own source.
-        for source in ${../frontends/gtk/wye_gtk}/*.py; do
-          install -Dm644 "$source" $out/lib/wye-gtk/wye_gtk/"''${source##*/}"
-        done
         # GNOME Shell discovers extensions here. Installation deliberately does
         # not enable it: each user chooses whether Shell owns the picker/tray.
-        for source in \
-          ${../frontends/gnome-shell/extension.js} \
-          ${../frontends/gnome-shell/picker.js} \
-          ${../frontends/gnome-shell/model.mjs} \
-          ${../frontends/gnome-shell/metadata.json} \
-          ${../frontends/gnome-shell/stylesheet.css} \
-          ${../frontends/gnome-shell/wye-logo.svg} \
-          ${../frontends/gnome-shell/wye-picker-symbolic.svg}; do
-          install -Dm644 "$source" \
-            $out/share/gnome-shell/extensions/wye@dev.soldunov/"''${source##*/}"
-        done
+        # The whole directory ships except its README and its tests
+        # (test-*.mjs), so the extension can add files without an edit here.
+        extension=$out/share/gnome-shell/extensions/wye@dev.soldunov
+        mkdir -p $extension
+        cp -r ${../frontends/gnome-shell}/. $extension/
+        chmod -R u+w $extension
+        rm -f $extension/README.md $extension/test-*.mjs
+        find $extension -type d -exec chmod 755 {} +
+        find $extension -type f -exec chmod 644 {} +
         # D-Bus activation (DEF-04) and the systemd user units of the service
         # and the UI host, with the absolute path of this package's binaries.
         for template in \
@@ -281,12 +299,13 @@ let
       '';
       postFixup = ''
         wrapQtApp $out/bin/wye-ui ${lib.escapeShellArgs qt.wrapperArgs}
-        # `gappsWrapperArgs` supplies GTK, libadwaita and GI typelib lookup;
-        # source stays separate so Python can import the un-packaged frontend.
-        makeWrapper ${gtkPython}/bin/python $out/bin/wye-gtk \
-          --prefix PYTHONPATH : $out/lib/wye-gtk \
-          "''${gappsWrapperArgs[@]}" \
-          --add-flags '-m wye_gtk'
+        # GTK's run-time environment (GSettings schemas, gdk-pixbuf loaders,
+        # XDG_DATA_DIRS) from wrapGAppsHook4, on the GTK host alone. The
+        # Adwaita icons its windows name come along, after the session's own
+        # data directories: a window manager without them shows no
+        # missing-image icons.
+        wrapGApp $out/bin/wye-gtk \
+          --suffix XDG_DATA_DIRS : ${adwaita-icon-theme}/share:${hicolor-icon-theme}/share
       '';
       meta = {
         description = "Native Linux browser picker";
@@ -304,5 +323,6 @@ in
     cargoArtifacts
     package
     qt
+    gtk
     ;
 }

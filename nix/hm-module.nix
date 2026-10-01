@@ -16,6 +16,7 @@ let
       pkgs
       ;
   } cfg;
+  frontend = import ./frontend.nix { inherit lib pkgs; } cfg;
   tomlFormat = pkgs.formats.toml { };
   desktopId = "dev.soldunov.wye.desktop";
   # The Plasma applet that packages before the StatusNotifierItem tray
@@ -39,8 +40,16 @@ let
   ++ lib.optionals localHtml htmlTypes;
 
   # The file is managed (a read-only store link) only when `settings` asks.
-  # Login start is the unit's `WantedBy` alone (GEN-01, `launchAtLogin`).
+  # Login start is the unit's `WantedBy` alone (GEN-01, `launchAtLogin`), and
+  # `frontend` alone never makes the file read-only either (ADV-12).
   managedConfig = cfg.settings != { };
+  # ADV-12: the GTK host serves the picker and windows of a GNOME session
+  # under "auto", and of every desktop under "gnome", so unless "kde" is
+  # chosen it is made bus-activatable through its own unit, like wye-ui.
+  # Only a package that ships it says so (`passthru.hasGtk`, channel.nix):
+  # an older release package gets no unit or D-Bus file naming a missing
+  # binary, and the service keeps to Qt.
+  gtkFrontend = cfg.frontend != "kde" && (cfg.package.passthru.hasGtk or false);
   loginManaged = if cfg.launchAtLogin then "on" else "off";
 
   # Browsers launched from desktop entries with a bare `Exec=firefox` are
@@ -70,6 +79,8 @@ in
 {
   options.programs.wye = channel.options // {
     enable = lib.mkEnableOption "Wye, a native browser picker that sends every link to the right browser";
+
+    frontend = frontend.option;
 
     settings = lib.mkOption {
       inherit (tomlFormat) type;
@@ -118,20 +129,29 @@ in
   config = lib.mkIf cfg.enable (
     lib.mkMerge [
       {
-        inherit (channel) assertions;
+        assertions = channel.assertions ++ frontend.assertions;
 
         home.packages = [ cfg.package ];
 
         xdg.configFile."wye/config.toml" = lib.mkIf managedConfig {
-          source = tomlFormat.generate "wye-config.toml" cfg.settings;
+          source = tomlFormat.generate "wye-config.toml" (lib.recursiveUpdate cfg.settings frontend.settings);
         };
 
         # Route D-Bus activation through the package's own files, so the
         # session bus finds them even when the profile is not on
         # XDG_DATA_DIRS. `dev.soldunov.wye` starts the systemd unit.
-        xdg.dataFile = lib.genAttrs (map (name: "dbus-1/services/${name}") serviceFiles) (path: {
-          source = "${cfg.package}/share/${path}";
-        });
+        xdg.dataFile =
+          lib.genAttrs (map (name: "dbus-1/services/${name}") serviceFiles) (path: {
+            source = "${cfg.package}/share/${path}";
+          })
+          // lib.optionalAttrs gtkFrontend {
+            "dbus-1/services/dev.soldunov.wye.Gtk.service".text = ''
+              [D-BUS Service]
+              Name=dev.soldunov.wye.Gtk
+              Exec=${lib.getExe' cfg.package "wye-gtk"}
+              SystemdService=wye-gtk.service
+            '';
+          };
 
         systemd.user.services.wye = {
           Unit = sessionUnit "Wye browser picker service";
@@ -152,6 +172,11 @@ in
               # tells Settings which way it is set.
               "WYE_LOGIN_MANAGED=${loginManaged}"
             ];
+          }
+          # ADV-12: the declared frontend, set in the writable config.toml; a
+          # managed one carries it already.
+          // lib.optionalAttrs (!managedConfig && frontend.execStartPre != [ ]) {
+            ExecStartPre = frontend.execStartPre;
           };
           Install.WantedBy = lib.optional cfg.launchAtLogin "graphical-session.target";
         };
@@ -164,6 +189,20 @@ in
             Type = "dbus";
             BusName = "dev.soldunov.wye.Ui";
             ExecStart = lib.getExe' cfg.package "wye-ui";
+            Restart = "on-failure";
+            RestartSec = 2;
+          };
+        };
+
+        # ADV-12: the GTK host (picker, windows, tray-menu popup) of the
+        # GNOME frontend ("auto" in a GNOME session, or "gnome"), D-Bus
+        # activated like wye-ui; never at login.
+        systemd.user.services.wye-gtk = lib.mkIf gtkFrontend {
+          Unit = sessionUnit "Wye GTK picker and windows";
+          Service = {
+            Type = "dbus";
+            BusName = "dev.soldunov.wye.Gtk";
+            ExecStart = lib.getExe' cfg.package "wye-gtk";
             Restart = "on-failure";
             RestartSec = 2;
           };

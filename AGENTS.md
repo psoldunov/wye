@@ -17,12 +17,14 @@ window or desktop app, or asks with a small picker. The specification is in
 | `crates/wye` | The `wye` binary and CLI. Its `tests/e2e.rs` runs the real service on a private bus. |
 | `crates/wye-native-host` | The browser extension's native-messaging host `wye-native-host` (library and binary); `wye extension install\|remove` uses its `install` module. |
 | `crates/wye-ui` | The Qt/Kirigami UI host `wye-ui` (cxx-qt): picker, tray-menu popup, Settings, script editor, onboarding, about and history windows. UI conventions: [crates/wye-ui/README.md](crates/wye-ui/README.md). |
+| `crates/wye-gtk` | The GTK 4 / libadwaita host `wye-gtk` (`dev.soldunov.wye.Gtk`): Settings, About and the other windows, plus the picker and the tray-menu popup (gtk4-layer-shell on wlroots compositors and KDE, an undecorated window elsewhere), the widget kit, `--self-test` on a private Xvfb. Conventions: [crates/wye-gtk/README.md](crates/wye-gtk/README.md). |
+| `frontends/gnome-shell/` | The GNOME Shell extension `wye@dev.soldunov` (Shell 48+, tested on 50): draws the picker and the panel tray menu on GNOME. See its README. |
 | `frontends/extension/` | The Firefox and Chromium extension (one set of files, one manifest per family). See its README. |
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`); `kwin/` the KWin query script. |
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `.github/workflows/` | `ci.yml` (`nix flake check`, advisories), `rust-doctor.yml`, `release.yml` (tag build, GitHub release, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
-| `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session (its README). |
+| `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session, `gnome/stage/` the GNOME ones in a headless GNOME Shell session (their READMEs). |
 
 Every requirement in the spec has an ID such as `PIPE-06`. Cite the ID in code comments,
 tests and commit bodies.
@@ -53,7 +55,8 @@ Run in this order. Every gate must pass before a change is ready.
 5. `nix develop -c cargo deny check` (advisories need the network).
 6. `nix flake check -L --keep-going`. Beyond the Rust checks (`clippy`, `test`, `fmt`, `deny`,
    `machete`) it runs `installed-desktop-entry` and `installed-dbus-files` (the installed
-   files name this package's binaries), `qmllint` and `ui-selftest` (wye-ui),
+   files name this package's binaries), `qmllint` and `ui-selftest` (wye-ui), `gtk-selftest`
+   (wye-gtk),
    `extension-manifests` (the browser extension), `modules-eval` (both Nix modules and both
    channels, evaluated with a fake `release.json`) and `nix-fmt`. `cargo test` includes
    `crates/wye/tests/e2e.rs`: the real `wye service` on a private `dbus-daemon`, activated

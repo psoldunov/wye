@@ -1,0 +1,100 @@
+# The demo stage's configuration: made-up profiles and rules for the screenshots.
+[general]
+launch-at-login = true
+tray-icon = "wye"
+show-tray-icon = true
+
+[browsers]
+alternative-key = ["Shift"]
+
+[browsers.primary]
+picker = true
+
+[browsers.alternative]
+private = "firefox.desktop"
+
+[[browsers.shown]]
+target = { app = "firefox.desktop" }
+hotkey = "f"
+
+[[browsers.shown]]
+target = { profile = { app = "google-chrome.desktop", id = "Default" } }
+hotkey = "w"
+
+[[browsers.shown]]
+target = { profile = { app = "google-chrome.desktop", id = "Profile 1" } }
+hotkey = "a"
+
+[[browsers.shown]]
+target = { app = "zen.desktop" }
+hotkey = "z"
+
+[[browsers.shown]]
+target = { app = "brave-browser.desktop" }
+hotkey = "b"
+
+[[browsers.shown]]
+target = { profile = { app = "firefox.desktop", id = "Profiles/p7m4r8tc.research" } }
+hotkey = "r"
+
+[[rules]]
+id = "work-from-slack"
+name = "Work links from Slack"
+target = { profile = { app = "google-chrome.desktop", id = "Default" } }
+url-matchers = [
+  { kind = "domain", pattern = "linear.app" },
+  { kind = "domain", pattern = "notion.so" },
+  { kind = "prefix", pattern = "docs.google.com" },
+]
+source-apps = ["slack.desktop"]
+
+[[rules]]
+id = "acme"
+name = "Acme in its own profile"
+target = { profile = { app = "google-chrome.desktop", id = "Profile 1" } }
+url-matchers = [{ kind = "domain", pattern = "acme-corp.example" }]
+
+[[rules]]
+id = "videos"
+name = "Videos in Brave"
+target = { app = "brave-browser.desktop" }
+url-matchers = [
+  { kind = "domain", pattern = "youtube.com" },
+  { kind = "domain", pattern = "youtu.be" },
+]
+open-in-background = true
+
+[[rules]]
+id = "code-review"
+name = "Merge requests in Firefox"
+target = { app = "firefox.desktop" }
+url-matchers = [
+  { kind = "domain", pattern = "gitlab.com" },
+  { kind = "domain", pattern = "codeberg.org" },
+]
+held-keys = ["Ctrl"]
+
+[[rules]]
+id = "banking"
+name = "Banking in a private window"
+enabled = false
+target = { private = "firefox.desktop" }
+url-matchers = [{ kind = "domain", pattern = "bank.example" }]
+
+[picker]
+icon-size = "large"
+show-names = true
+show-url = true
+show-profile-badge = true
+skip-when-locked = false
+hotkeys = "per-target"
+
+[extras]
+strip-tracking-on-open = true
+strip-tracking-on-copy = true
+force-https = true
+
+[advanced]
+expand-urls = true
+transform = true
+history = true

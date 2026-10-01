@@ -9,6 +9,7 @@
 
 mod activation;
 mod choice;
+mod frontend;
 pub(crate) mod host;
 mod pending;
 pub(crate) mod ready;
@@ -22,6 +23,7 @@ use wye_core::picker::SourceLabel;
 use wye_core::{Modifiers, SourceApp, Target};
 use wye_desktop::Locale;
 
+use self::frontend::Host;
 use self::pending::{Offer, Pending, PendingLink, Registry};
 use super::link::{self, Activation, PickerNeeded, Snapshot};
 use super::{Caller, Dict, Result};
@@ -56,6 +58,10 @@ pub(crate) async fn show_link(
     let placement = ctx.platform().pointer.pointer().await;
     let locale = locale(ctx)?;
     let for_request = needed.clone();
+    let activation_token = activation
+        .token
+        .clone()
+        .or_else(|| activation.startup_id.clone());
     let text = link::with_snapshot(ctx, move |snapshot| {
         let input = request::Input {
             config: snapshot.pipeline.config(),
@@ -65,6 +71,7 @@ pub(crate) async fn show_link(
             held: for_request.request.held,
             placement,
             preview: false,
+            activation_token,
         };
         encode(&input)
     })
@@ -75,7 +82,7 @@ pub(crate) async fn show_link(
         offered,
         text.clone(),
     );
-    if let Some(old) = superseded {
+    if let Some(old) = &superseded {
         tracing::info!(
             old = old.id,
             new = id,
@@ -84,7 +91,7 @@ pub(crate) async fn show_link(
     }
     let ctx = ctx.clone();
     tokio::spawn(async move {
-        if let Err(error) = deliver(&ctx, id, &text).await {
+        if let Err(error) = deliver(&ctx, id, &text, superseded).await {
             tracing::warn!(%error, "cannot open the link without the picker");
         }
     });
@@ -92,10 +99,20 @@ pub(crate) async fn show_link(
 }
 
 /// Send request `id` to the UI host; when it cannot show it, close it there
-/// and open the link through the stand-in.
-async fn deliver(ctx: &ServiceContext, id: String, text: &str) -> Result<()> {
-    let Err(error) = host::show_picker(ctx, &id, text).await else {
-        return Ok(());
+/// and open the link through the stand-in. `superseded` is the request `id`
+/// replaced (PICK-27).
+async fn deliver(
+    ctx: &ServiceContext,
+    id: String,
+    text: &str,
+    superseded: Option<Pending>,
+) -> Result<()> {
+    let error = match host::show_picker(ctx, &id, text).await {
+        Ok(host) => {
+            shown(ctx, &id, host, superseded);
+            return Ok(());
+        }
+        Err(error) => error,
     };
     tracing::warn!(%error, "cannot show the picker");
     // A UI that answers late must not show a picker for a link the
@@ -120,15 +137,59 @@ async fn deliver(ctx: &ServiceContext, id: String, text: &str) -> Result<()> {
     }
 }
 
-/// Redisplay the still-pending request when Shell disappears (PICK-27).
-/// `deliver` handles the stand-in if Qt is also unavailable.
+/// Redisplay the still-pending request when Shell disappears (PICK-27),
+/// on the next host `advanced.frontend` names (ADV-12). `deliver` handles
+/// the stand-in if no host is available.
 pub(super) async fn shell_left(ctx: &ServiceContext) {
+    // PKS-07: the Shell switches its extensions off while the screen is
+    // locked; the lock closes the picker and holds its link instead.
+    if *ctx.platform().lock.locked().borrow() {
+        return;
+    }
     let Some(pending) = ctx.picker().pending.current() else {
         return;
     };
-    if let Err(error) = deliver(ctx, pending.id, &pending.request).await {
-        tracing::warn!(%error, "cannot hand the picker to Qt");
+    // Only a request the Shell shows; one on its way there finds the Shell
+    // gone and goes on by itself.
+    if pending.shown_on != Some(Host::Shell) {
+        return;
     }
+    if let Err(error) = deliver(ctx, pending.id, &pending.request, None).await {
+        tracing::warn!(%error, "cannot hand the picker to the next host");
+    }
+}
+
+/// ADV-12, PICK-27: record that `host` shows request `id`, and close what a
+/// newer request left on another host: the request `id` replaced, or `id`
+/// itself when a newer one replaced it on the way. A host that shows the
+/// newer request has replaced the older one already, so it is left alone.
+fn shown(ctx: &ServiceContext, id: &str, host: Host, superseded: Option<Pending>) {
+    let pending = &ctx.picker().pending;
+    if pending.mark_shown(id, host) {
+        if let Some(old) = superseded.filter(|old| old.shown_on != Some(host)) {
+            close_in_background(ctx, old.id, move |other| other != host);
+        }
+        return;
+    }
+    let newer = pending.current().and_then(|current| current.shown_on);
+    if newer.is_some_and(|newer| newer != host) {
+        close_in_background(ctx, id.to_owned(), move |other| other == host);
+    }
+}
+
+/// `ClosePicker(id)` on the running hosts `which` accepts, in the
+/// background.
+fn close_in_background(
+    ctx: &ServiceContext,
+    id: String,
+    which: impl Fn(Host) -> bool + Send + 'static,
+) {
+    let ctx = ctx.clone();
+    tokio::spawn(async move {
+        if let Err(error) = host::close_running(&ctx, &id, which).await {
+            tracing::debug!(%error, "cannot close a replaced picker");
+        }
+    });
 }
 
 /// The stand-in opens the link and a notification says why (PIPE-13).
@@ -162,17 +223,23 @@ pub async fn preview_picker(ctx: &ServiceContext) -> Result<()> {
             held: Modifiers::NONE,
             placement,
             preview: true,
+            activation_token: None,
         };
         encode(&input)
     })
     .await??;
     let (text, offered) = text;
-    let (id, _) = ctx.picker().pending.open(None, offered, text.clone());
-    let shown = host::show_picker(ctx, &id, &text).await;
-    if shown.is_err() {
-        ctx.picker().pending.take(&id);
+    let (id, superseded) = ctx.picker().pending.open(None, offered, text.clone());
+    match host::show_picker(ctx, &id, &text).await {
+        Ok(host) => {
+            shown(ctx, &id, host, superseded);
+            Ok(())
+        }
+        Err(error) => {
+            ctx.picker().pending.take(&id);
+            Err(error)
+        }
     }
-    shown
 }
 
 /// `dev.soldunov.wye1.PickerChose` (PIPE-13, PICK-20, PICK-21, PICK-29,

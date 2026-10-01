@@ -1,0 +1,2073 @@
+{
+ "cases": [
+  {
+   "action": "show",
+   "key": "large-hotkeys",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "hotkey": "f",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      },
+      "hotkey": "w",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    },
+    "selfTest": {
+     "scheme": "dark"
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "large-names",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Default"
+       }
+      },
+      "name": "Personal",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "P",
+       "color": "#f6d32d"
+      }
+     },
+     {
+      "target": {
+       "app": "zen.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "many-small-held",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "browser1.desktop"
+      },
+      "name": "Browser 1",
+      "icon": "internet-web-browser",
+      "hotkey": "1",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser2.desktop"
+      },
+      "name": "Browser 2",
+      "icon": "internet-web-browser",
+      "hotkey": "2",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser3.desktop"
+      },
+      "name": "Browser 3",
+      "icon": "internet-web-browser",
+      "hotkey": "3",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser4.desktop"
+      },
+      "name": "Browser 4",
+      "icon": "internet-web-browser",
+      "hotkey": "4",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser5.desktop"
+      },
+      "name": "Browser 5",
+      "icon": "internet-web-browser",
+      "hotkey": "5",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser6.desktop"
+      },
+      "name": "Browser 6",
+      "icon": "internet-web-browser",
+      "hotkey": "6",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser7.desktop"
+      },
+      "name": "Browser 7",
+      "icon": "internet-web-browser",
+      "hotkey": "7",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser8.desktop"
+      },
+      "name": "Browser 8",
+      "icon": "internet-web-browser",
+      "hotkey": "8",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "browser9.desktop"
+      },
+      "name": "Browser 9",
+      "icon": "internet-web-browser",
+      "hotkey": "9",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [],
+    "settings": {
+     "iconSize": "small",
+     "showNames": false,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [
+     "Shift"
+    ],
+    "preview": false
+   }
+  },
+  {
+   "action": "show",
+   "key": "medium-url",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/blob/master/docs/spec/02-picker.md?plain=1&utm=none#L1-L80-a-long-anchor-to-cut",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/blob/master/docs/spec/02-picker.md?plain=1&utm=none#L1-L80-a-long-anchor-to-cut"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "hotkey": "f",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      },
+      "hotkey": "w",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "medium",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [],
+    "preview": false
+   }
+  },
+  {
+   "action": "show",
+   "key": "many-medium-url",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/blob/master/docs/spec/02-picker.md?plain=1&utm=none#L1-L80-a-long-anchor-to-cut",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/blob/master/docs/spec/02-picker.md?plain=1&utm=none#L1-L80-a-long-anchor-to-cut"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "b0.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "a"
+     },
+     {
+      "target": {
+       "app": "b1.desktop"
+      },
+      "name": "Firefox Nightly",
+      "icon": "firefox-nightly",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "b"
+     },
+     {
+      "target": {
+       "app": "b2.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "c"
+     },
+     {
+      "target": {
+       "app": "b3.desktop"
+      },
+      "name": "Chromium",
+      "icon": "chromium",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "d"
+     },
+     {
+      "target": {
+       "app": "b4.desktop"
+      },
+      "name": "Google Chrome",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "e"
+     },
+     {
+      "target": {
+       "app": "b5.desktop"
+      },
+      "name": "Vivaldi",
+      "icon": "vivaldi",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "f"
+     },
+     {
+      "target": {
+       "app": "b6.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "g"
+     },
+     {
+      "target": {
+       "app": "b7.desktop"
+      },
+      "name": "LibreWolf",
+      "icon": "librewolf",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "h"
+     },
+     {
+      "target": {
+       "app": "b8.desktop"
+      },
+      "name": "Microsoft Edge",
+      "icon": "microsoft-edge",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "i"
+     },
+     {
+      "target": {
+       "app": "b9.desktop"
+      },
+      "name": "Tor Browser",
+      "icon": "torbrowser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "j"
+     },
+     {
+      "target": {
+       "app": "b10.desktop"
+      },
+      "name": "GNOME Web",
+      "icon": "org.gnome.Epiphany",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "k"
+     },
+     {
+      "target": {
+       "app": "b11.desktop"
+      },
+      "name": "Konqueror",
+      "icon": "konqueror",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      },
+      "hotkey": "l"
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "medium",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false
+   }
+  },
+  {
+   "action": "show",
+   "key": "small-names-url",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Default"
+       }
+      },
+      "name": "Personal",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "P",
+       "color": "#f6d32d"
+      }
+     },
+     {
+      "target": {
+       "app": "zen.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "small",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false
+   }
+  },
+  {
+   "action": "show",
+   "key": "overflow-menu",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Default"
+       }
+      },
+      "name": "Personal",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "P",
+       "color": "#f6d32d"
+      }
+     },
+     {
+      "target": {
+       "app": "zen.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    },
+    "selfTest": {
+     "menu": "overflow"
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "tile-menu",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Default"
+       }
+      },
+      "name": "Personal",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "P",
+       "color": "#f6d32d"
+      }
+     },
+     {
+      "target": {
+       "app": "zen.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    },
+    "selfTest": {
+     "menu": "tile"
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "open-in",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Default"
+       }
+      },
+      "name": "Personal",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "P",
+       "color": "#f6d32d"
+      }
+     },
+     {
+      "target": {
+       "app": "zen.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        },
+        "badge": {
+         "initial": "S",
+         "color": "#2a7f62"
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": false,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    },
+    "selfTest": {
+     "menu": "open-in"
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "large-names-light",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Default"
+       }
+      },
+      "name": "Personal",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "P",
+       "color": "#f6d32d"
+      }
+     },
+     {
+      "target": {
+       "app": "zen.desktop"
+      },
+      "name": "Zen Browser",
+      "icon": "zen-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "large",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "held": [],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    },
+    "selfTest": {
+     "scheme": "light"
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "medium-held",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [
+     {
+      "target": {
+       "app": "brave-browser.desktop"
+      },
+      "name": "Brave Web Browser",
+      "icon": "brave-browser",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "app": "firefox.desktop"
+      },
+      "name": "Firefox",
+      "icon": "firefox",
+      "capabilities": {
+       "private": true,
+       "newWindow": true,
+       "background": true
+      }
+     },
+     {
+      "target": {
+       "profile": {
+        "app": "google-chrome.desktop",
+        "id": "Profile 1"
+       }
+      },
+      "name": "Work Chrome Profile",
+      "icon": "google-chrome",
+      "capabilities": {
+       "private": false,
+       "newWindow": true,
+       "background": true
+      },
+      "badge": {
+       "initial": "W",
+       "color": "#336699"
+      }
+     }
+    ],
+    "overflow": [
+     {
+      "label": "Browsers",
+      "tiles": [
+       {
+        "target": {
+         "app": "brave.desktop"
+        },
+        "name": "Brave",
+        "icon": "brave",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Private Browsing",
+      "tiles": [
+       {
+        "target": {
+         "private": "firefox.desktop"
+        },
+        "name": "Firefox Private",
+        "icon": "firefox",
+        "capabilities": {
+         "private": true,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "Google Chrome",
+      "tiles": [
+       {
+        "target": {
+         "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 3"
+         }
+        },
+        "name": "School",
+        "icon": "google-chrome",
+        "capabilities": {
+         "private": false,
+         "newWindow": true,
+         "background": true
+        }
+       }
+      ]
+     },
+     {
+      "label": "",
+      "tiles": [
+       {
+        "target": {
+         "app": "org.gnome.Epiphany.desktop"
+        },
+        "name": "Other…",
+        "icon": "document-open",
+        "capabilities": {
+         "private": false,
+         "newWindow": false,
+         "background": false
+        }
+       }
+      ]
+     }
+    ],
+    "settings": {
+     "iconSize": "medium",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "held": [
+     "Ctrl"
+    ],
+    "preview": false,
+    "placement": {
+     "output": "offscreen",
+     "x": 400,
+     "y": 300
+    }
+   }
+  },
+  {
+   "action": "show",
+   "key": "empty-preview",
+   "argument": {
+    "url": {
+     "full": "https://github.com/psoldunov/wye/pulls?q=is%3Aopen",
+     "host": "github.com",
+     "rest": "/psoldunov/wye/pulls?q=is%3Aopen"
+    },
+    "source": {
+     "name": "Slack",
+     "icon": "slack"
+    },
+    "tiles": [],
+    "overflow": [],
+    "settings": {
+     "iconSize": "medium",
+     "showNames": true,
+     "showUrl": true,
+     "showBadge": true
+    },
+    "keys": {
+     "actions": {
+      "open": [
+       "Return",
+       "KP_Enter",
+       "space"
+      ],
+      "cancel": [
+       "Escape"
+      ],
+      "next": [
+       "Right",
+       "Tab"
+      ],
+      "previous": [
+       "Left",
+       "Shift+Tab"
+      ],
+      "first": [
+       "Home"
+      ],
+      "last": [
+       "End"
+      ],
+      "copy-link": [
+       "Ctrl+c"
+      ],
+      "more": [
+       "Menu"
+      ],
+      "create-rule": [
+       "Ctrl+r"
+      ]
+     },
+     "modifierActions": {
+      "private": [
+       "Shift"
+      ],
+      "background": [
+       "Ctrl"
+      ],
+      "new-window": [
+       "Alt"
+      ]
+     }
+    },
+    "held": [],
+    "preview": true,
+    "selfTest": {
+     "scheme": "dark"
+    }
+   }
+  },
+  {
+   "action": "close",
+   "key": "empty-preview"
+  }
+ ]
+}

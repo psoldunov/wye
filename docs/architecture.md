@@ -12,6 +12,8 @@
 | `crates/wye-native-host` | The browser extension's native-messaging host `wye-native-host` (library and binary); `wye extension install\|remove` uses its `install` module. |
 | `crates/wye-script` | The transform-script engine (QuickJS through `rquickjs`) for the global and per-rule scripts, with its limits, the `URL` prelude and the result diff. Used by the service. |
 | `crates/wye-ui` | The Qt/Kirigami UI host (cxx-qt) that owns `dev.soldunov.wye.Ui` and shows the picker, the tray-menu popup, Settings, the script editor and the onboarding, about and history windows. A D-Bus client of the service; holds no routing logic. |
+| `crates/wye-gtk` | The GTK 4 / libadwaita host `wye-gtk` that owns `dev.soldunov.wye.Gtk` and serves `Windows1` (Settings, the script editor, the onboarding, about and history windows) and `PickerHost1` (the picker and the tray-menu popup, with gtk4-layer-shell on wlroots compositors and KDE, an undecorated window elsewhere). A D-Bus client of the service; holds no routing logic. Shares wye-ui's Qt-free models from source. |
+| `frontends/gnome-shell/` | The GNOME Shell extension `wye@dev.soldunov` (Shell 48+): owns `dev.soldunov.wye.Gnome`, serves `PickerHost1`, and draws the picker and the panel tray menu inside the Shell. |
 | `frontends/extension/` | The Firefox and Chromium browser extension: one set of files, a manifest per family. |
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user units (`data/systemd/wye.service.in`, `data/systemd/wye-ui.service.in`). |
 | `nix/`, `flake.nix` | Package (crane; `frontends.nix` adds the extension zips), the `programs.wye` modules for home-manager and NixOS (`hm-module.nix`, `nixos-module.nix`, shared `channel.nix`), the release record `release.json` and the checks: clippy, tests (including `crates/wye/tests/e2e.rs`), fmt, deny, machete, source and installed desktop entry, installed D-Bus files, qmllint, the UI self-test, the extension manifests, module evaluation for both channels and nixfmt. Also the dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
@@ -33,6 +35,8 @@ API in [dbus-api.md](dbus-api.md). KDE Plasma comes first.
 |---------|--------|----------|------------|
 | Service | `wye service` (crate `wye` over the `wye-service` library) | `dev.soldunov.wye` | D-Bus activation (`SystemdService=wye.service`); at login, the unit's `WantedBy=graphical-session.target` when a Nix module installs it (`WYE_LOGIN_MANAGED=1`), else the XDG autostart entry when "Launch at login" is on |
 | UI host | `wye-ui` (cxx-qt, Kirigami) | `dev.soldunov.wye.Ui` | D-Bus activation by the service (`SystemdService=wye-ui.service`, never at login); stays resident once started |
+| GTK host | `wye-gtk` (GTK 4, libadwaita) | `dev.soldunov.wye.Gtk` | D-Bus activation by the service (`SystemdService=wye-gtk.service`, never at login); stays resident once started |
+| GNOME Shell extension | `frontends/gnome-shell/` | `dev.soldunov.wye.Gnome` | GNOME Shell, when the extension is enabled; never bus-activatable |
 | Tray | StatusNotifierItem inside the service | ksni's own | the service at start, on every desktop, unless an external tray host called `RegisterTray` |
 | Link handler fallback | `wye open %U` | none | launchers that do not honour `DBusActivatable` |
 
@@ -103,9 +107,60 @@ is locked waits for the unlock (PKS-07), a newer one replacing it.
 
 A link that needs the picker goes to one function, `to_picker`, which hands it to the
 picker broker (`api/picker.rs`): a `PickerRequest` sent with `PickerHost1.ShowPicker` to
-`wye-ui`, answered with `PickerChose`, `PickerCancelled` or `PickerAction`. A newer link
-replaces the pending one (PICK-27). When the UI host cannot be reached, the link opens with
-the stand-in (see "Picker fallback").
+the frontend's picker host (see "Frontends"), answered with `PickerChose`,
+`PickerCancelled` or `PickerAction`. A newer link replaces the pending one (PICK-27). When
+no UI host can be reached, the link opens with the stand-in (see "Picker fallback").
+
+### Frontends (ADV-12)
+
+Two frontends serve the same internal interfaces: KDE's `wye-ui` (`dev.soldunov.wye.Ui`,
+`PickerHost1` and `Windows1`), and GNOME's Shell extension (`dev.soldunov.wye.Gnome`,
+`PickerHost1`, never bus-activatable) with the GTK host `wye-gtk` (`dev.soldunov.wye.Gtk`,
+`Windows1` and `PickerHost1`). `advanced.frontend` orders them;
+`crates/wye-service/src/api/picker/frontend.rs` is the pure table and
+`crates/wye-service/src/api/picker/host.rs` makes the calls:
+
+| `advanced.frontend` | Session | Picker and tray popup, in order | Windows, in order |
+|---|---|---|---|
+| `auto` (default) | GNOME Shell | Shell, GTK, Qt | GTK, Qt |
+| `auto` | any other | Qt | Qt |
+| `kde` | any | Qt, Shell, GTK | Qt, GTK |
+| `gnome` | any | Shell, GTK, Qt | GTK, Qt |
+
+A GNOME Shell session is one where `org.gnome.Shell` has an owner on the session bus
+(`platform/gnome_shell.rs`, asked at each call): Budgie and GNOME Flashback name GNOME in
+`XDG_CURRENT_DESKTOP` but run no Shell, so `auto` keeps Qt there. With the extension off,
+the GTK host shows the picker as well as the windows, so one toolkit serves both.
+
+A host that is neither running nor activatable is skipped, and the last one is always
+called. A picker host that fails in any way, `UnknownInterface` from a GTK host without
+`PickerHost1` included, hands the call to the next one with a warning: a link must reach
+someone (PIPE-13). A window host only hands over when it cannot be reached; an error it
+answers with is reported. A chain shares one 10 s deadline: each host before the last gets
+half of what is left and the last all of it, so a single host (KDE under `auto`) keeps the
+whole deadline and a chain of hanging hosts reaches the stand-in no later than one host did.
+`ClosePicker` goes to every running host, since a request may have reached any of them
+before the setting changed or a host left; a host without `PickerHost1` counts as closed,
+and one whose name cannot be checked is skipped. The service records which host shows the
+pending request: when a newer request shows on another host, the older one is closed where
+it shows (PICK-27); when the Shell leaves the bus while it shows the pending request, the
+request is shown on the next host, unless the screen is locked (the lock closes the picker
+and holds its link; GNOME switches extensions off while locked). After the unlock, the held
+link's picker waits up to 2 s for the Shell's name when the Shell heads the hosts (PKS-07).
+The setting is read from the cached configuration at each call, so a change applies to the
+next picker, popup or window. The warm-up (PICK-25, `ready.rs`) starts the first host that
+would show the next picker, none while the Shell runs it; a running host whose
+introspection lacks `PickerHost1`, or a host that does not start, is passed over, so with
+`gnome` on a desktop without the Shell both the GTK host (windows) and `wye-ui` (picker)
+are kept ready. It runs again when the setting changes and when a host it keeps ready
+leaves the bus; another host leaving neither restarts anything nor delays the next restart.
+
+The Nix modules set the key with `programs.wye.frontend` (`nix/frontend.nix`): into the
+managed file when home-manager's `settings` makes one, else from an `ExecStartPre` of the
+`wye` unit that writes it into the writable file at each start (`auto` writes nothing; a
+read-only file is left alone, and the file keeps its mode). Unless `kde` is chosen, the
+home-manager module also declares the `wye-gtk` unit and its D-Bus activation file, for a
+package that ships the GTK host (`passthru.hasGtk`, `nix/channel.nix`).
 
 ### Configuration and state
 
@@ -187,7 +242,7 @@ none (KEY-06: modifier choosers are disabled without one).
   closes the connection, which destroys the surface and returns focus. The mask is read with
   xkbcommon and the compositor's keymap (`platform/modifiers/xkb.rs`): pressed or latched
   Shift, Control, Mod1/Alt and Mod4/Super count; locks do not. On Plasma 6.7 a probe takes
-  about 3 ms. GNOME has no layer shell, so held keys are unavailable there.
+  about 3 ms. GNOME has no layer shell; the Shell extension answers there (below).
 - **Held modifiers on X11** (`platform/modifiers/x11.rs`, mechanism `x11`): the mask of
   `QueryPointer`, with Mod1 as Alt and Mod4 as Super.
 - **Pointer and focused window on Plasma** (`platform/kwin.rs`, mechanism `kwin-script`):
@@ -205,6 +260,16 @@ none (KEY-06: modifier choosers are disabled without one).
 - **Pointer and focused window on other X11 sessions** (`platform/x11.rs`, mechanism
   `x11`): `QueryPointer` and the RandR monitor under it; `_NET_ACTIVE_WINDOW`, then
   `_NET_WM_PID`, `_KDE_NET_WM_DESKTOP_FILE` or `_GTK_APPLICATION_ID`, and `WM_CLASS`.
+- **GNOME** (`platform/gnome_shell.rs`, mechanism `gnome-shell`): on a GNOME Shell
+  session (`org.gnome.Shell` has an owner when the service starts), whatever no mechanism
+  above provides (on Wayland: the clipboard, held modifiers, the pointer and the focused
+  app) is asked of the Shell
+  extension's `SessionHelper1` ([dbus-api.md](dbus-api.md)). The helper follows
+  `dev.soldunov.wye.Gnome`: it is unavailable while the extension does not run or serve
+  the interface, and used again as soon as it does. It asks for clipboard changes only
+  while a copy-time rewrite is on (`ClipboardProvider::set_watching`, from each
+  configuration load), and the extension sends them to the service alone. Plasma never
+  reaches this path, so nothing changes there.
 
 Every probe gives up after 150 ms: the modifiers and the source app are then unknown and the
 picker is centred. `advanced.held-keys = "off"` in `config.toml` (default `"auto"`) switches
@@ -229,7 +294,7 @@ follows short links too unless the tester passes `skip-network`. Songlink (EXT-1
 
 The clipboard provider is chosen at start (risk 9): Wayland data control
 (`ext-data-control-v1`, which KWin 6 offers, else `zwlr-data-control-v1`), else XFIXES on
-X11, else Klipper over D-Bus, else none. The Wayland and X11 providers run a worker thread
+X11, else Klipper over D-Bus, else on GNOME the Shell extension, else none. The Wayland and X11 providers run a worker thread
 that owns the connection, reads each new selection that offers plain text (never one with
 `x-kde-passwordManagerHint` or an image), and serves Wye's own writes from a data source it
 keeps alive until another client takes the clipboard. Only one line of text is passed on.
@@ -405,11 +470,6 @@ at run time by `wye-native-host --install`, not by Nix.
 
 ## Not yet implemented
 
-- The GNOME Shell extension (decision 1): the tray on GNOME needs the AppIndicator
-  extension for the StatusNotifierItem, and held keys, the pointer and the focused window
-  have no GNOME source. The reserved `PickerHost1`, `SessionHelper1` and `RegisterTray`
-  contract is where it will plug in.
-- The `SessionHelper1` interface (reserved for that extension; no implementation)
 - Focused window and pointer on Sway and Hyprland (compositor IPC); held keys there come
   from layer shell only
 - Global shortcuts by X11 key grabs; shortcuts need the `GlobalShortcuts` portal

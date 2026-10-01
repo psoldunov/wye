@@ -1,0 +1,186 @@
+{
+  "surface": "settings",
+  "cases": [
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "browsers",
+        "scheme": "light",
+        "fixture": {
+          "config": {
+            "general": {"launch-at-login": true, "tray-icon": "primary-browser", "show-tray-icon": true, "open-local-html": false},
+            "browsers": {
+              "primary": {"picker": true},
+              "alternative": {"private": "firefox.desktop"},
+              "alternative-key": ["Shift"],
+              "shown": [
+                {"target": {"app": "firefox.desktop"}, "hotkey": "f"},
+                {"target": {"profile": {"app": "google-chrome.desktop", "id": "Profile 1"}}, "hotkey": "c"},
+                {"target": {"app": "org.kde.konsole.desktop"}},
+                {"target": {"custom": "/opt/tool/bin/tool"}}
+              ]
+            },
+            "apps": {
+              "discord": {"app": "com.discordapp.Discord.desktop"},
+              "google-meet": {"profile": {"app": "google-chrome.desktop", "id": "Profile 1"}},
+              "linear": {"app": "gone.desktop"},
+              "figma": {"private": "firefox.desktop"}
+            },
+            "picker": {
+              "hotkeys": "per-target", "icon-size": "medium", "skip-when-locked": true,
+              "keys": {"open": ["Return", "KP_Enter", "space"], "cancel": ["Escape"], "next": ["Right", "Tab"], "previous": ["Left", "Shift+Tab"], "first": ["Home"], "last": ["End"], "copy-link": ["Ctrl+c"], "more": ["Menu"], "create-rule": ["Ctrl+r"], "private-modifier": ["Shift"], "background-modifier": ["Ctrl"], "new-window-modifier": ["Alt"]}
+            },
+            "advanced": {"history": true, "force-picker-from-extension": true, "bypass-key": ["Alt"], "expansion": {"disabled": ["t.co"], "custom-short-links": ["mine.link"], "timeout-ms": 2000, "max-redirects": 5, "notify-on-failure": false}},
+            "shortcuts": {"toggle-menu": "Ctrl+Alt+o"},
+            "extras": {"strip-tracking-on-open": true, "strip-tracking-on-copy": true, "force-https": false}
+          },
+          "revision": 1,
+          "status": {
+            "defaultBrowser": {"isDefault": true},
+            "config": {"path": "/home/user/.config/wye/config.toml", "writable": true, "lossless": true, "warnings": []},
+            "capabilities": {"heldKeys": "wayland-layer-shell"},
+            "uiState": {"onboardingDone": true, "dismissedCallouts": [], "lastPage": "browsers"}
+          },
+          "targets": {
+            "targets": [
+              {"target": {"picker": true}, "kind": "picker", "name": "Picker"},
+              {"target": {"app": "firefox.desktop"}, "kind": "app", "name": "Firefox", "icon": "firefox", "capabilities": {"private": true, "newWindow": true, "background": true}, "packaging": "native"},
+              {"target": {"app": "google-chrome.desktop"}, "kind": "app", "name": "Google Chrome", "icon": "google-chrome", "capabilities": {"private": true, "newWindow": true, "background": true}, "packaging": "native"},
+              {"target": {"app": "app.zen_browser.zen.desktop"}, "kind": "app", "name": "Zen", "icon": "app.zen_browser.zen", "capabilities": {"private": true, "newWindow": true, "background": true}, "packaging": "flatpak"},
+              {"target": {"app": "org.gnome.Epiphany.desktop"}, "kind": "app", "name": "Web", "icon": "org.gnome.Epiphany", "capabilities": {"private": true, "newWindow": true, "background": true}, "packaging": "native"},
+              {"target": {"app": "org.kde.konsole.desktop"}, "kind": "app", "name": "Konsole", "icon": "utilities-terminal", "capabilities": {"private": false, "newWindow": false, "background": true}, "packaging": "native"},
+              {"target": {"app": "com.discordapp.Discord.desktop"}, "kind": "app", "name": "Discord", "icon": "discord", "packaging": "flatpak"},
+              {"target": {"private": "firefox.desktop"}, "kind": "private", "name": "Firefox (Private)", "icon": "firefox", "browser": "firefox.desktop", "capabilities": {"private": true, "newWindow": false, "background": true}},
+              {"target": {"private": "google-chrome.desktop"}, "kind": "private", "name": "Google Chrome (Private)", "icon": "google-chrome", "browser": "google-chrome.desktop", "capabilities": {"private": true, "newWindow": false, "background": true}},
+              {"target": {"profile": {"app": "google-chrome.desktop", "id": "Profile 1"}}, "kind": "profile", "name": "Work (Google Chrome)", "shortName": "Work", "icon": "google-chrome", "badge": {"initial": "W", "color": "#336699"}, "browser": "google-chrome.desktop"},
+              {"target": {"profile": {"app": "google-chrome.desktop", "id": "Default"}}, "kind": "profile", "name": "Personal (Google Chrome)", "shortName": "Personal", "icon": "google-chrome", "badge": {"initial": "P", "color": "#993366"}, "browser": "google-chrome.desktop"},
+              {"target": {"profile": {"app": "firefox.desktop", "id": "Research"}}, "kind": "profile", "name": "Research (Firefox)", "shortName": "Research", "icon": "firefox", "badge": {"initial": "R", "color": "#2e7d32"}, "browser": "firefox.desktop"},
+              {"target": {"profile": {"app": "firefox.desktop", "id": "Shopping"}}, "kind": "profile", "name": "Shopping (Firefox)", "shortName": "Shopping", "icon": "firefox", "badge": {"initial": "S", "color": "#c2410c"}, "browser": "firefox.desktop"},
+              {"target": {"custom": "/opt/tool/bin/tool"}, "kind": "custom", "name": "tool"},
+              {"target": {"app": "gone.desktop"}, "kind": "app", "name": "gone.desktop", "missing": true}
+            ]
+          },
+          "services": {
+            "services": [
+              {"id": "airtable", "name": "Airtable", "target": {"default": true}},
+              {"id": "amazon-chime", "name": "Amazon Chime", "target": {"default": true}},
+              {"id": "asana", "name": "Asana", "target": {"default": true}},
+              {"id": "claude", "name": "Claude", "target": {"default": true}},
+              {"id": "clickup", "name": "ClickUp", "target": {"default": true}},
+              {"id": "discord", "name": "Discord", "icon": "discord", "installedApp": {"id": "com.discordapp.Discord.desktop", "name": "Discord", "icon": "discord"}, "target": {"app": "com.discordapp.Discord.desktop"}},
+              {"id": "element", "name": "Element (Matrix)", "target": {"default": true}},
+              {"id": "figma", "name": "Figma", "target": {"private": "firefox.desktop"}},
+              {"id": "google-meet", "name": "Google Meet", "target": {"profile": {"app": "google-chrome.desktop", "id": "Profile 1"}}},
+              {"id": "linear", "name": "Linear", "target": {"app": "gone.desktop"}},
+              {"id": "slack", "name": "Slack", "target": {"default": true}},
+              {"id": "spotify", "name": "Spotify", "target": {"default": true}},
+              {"id": "zoom", "name": "Zoom", "target": {"default": true}}
+            ]
+          },
+          "apps": {
+            "apps": [
+              {"id": "firefox.desktop", "name": "Firefox", "icon": "firefox", "isBrowser": true, "keywords": ["web", "internet"]},
+              {"id": "google-chrome.desktop", "name": "Google Chrome", "icon": "google-chrome", "isBrowser": true},
+              {"id": "org.gnome.Epiphany.desktop", "name": "Web", "icon": "org.gnome.Epiphany", "isBrowser": true, "genericName": "Web Browser"},
+              {"id": "com.discordapp.Discord.desktop", "name": "Discord", "icon": "discord", "packaging": "flatpak", "isBrowser": false, "keywords": ["chat"]},
+              {"id": "com.slack.Slack.desktop", "name": "Slack", "icon": "slack", "packaging": "flatpak", "isBrowser": false},
+              {"id": "org.gnome.Console.desktop", "name": "Console", "icon": "org.gnome.Console", "isBrowser": false, "genericName": "Terminal"},
+              {"id": "org.gnome.TextEditor.desktop", "name": "Text Editor", "icon": "org.gnome.TextEditor", "isBrowser": false},
+              {"id": "thunderbird.desktop", "name": "Thunderbird", "icon": "thunderbird", "isBrowser": false, "genericName": "Email Client"},
+              {"id": "snap-tool_tool.desktop", "name": "Snap Tool", "packaging": "snap", "isBrowser": false}
+            ],
+            "recentSources": ["com.slack.Slack.desktop", "thunderbird.desktop"]
+          }
+        }
+      }
+    },
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "target-menu"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "alternative-menu"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "shown-browsers"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "shown-hotkey"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "app-chooser"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "app-chooser:zzz"}},
+    {"action": "show", "key": "settings", "argument": {"page": "apps", "sheet": "service-menu:discord"}},
+    {"action": "show", "key": "settings", "argument": {"page": "apps", "sheet": "app-chooser:linear"}},
+
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "scheme": "dark"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "target-menu"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "shown-browsers"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "shown-hotkey"}},
+    {"action": "show", "key": "settings", "argument": {"page": "browsers", "sheet": "app-chooser"}},
+    {"action": "show", "key": "settings", "argument": {"page": "apps", "sheet": "service-menu:google-meet"}},
+
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "browsers",
+        "scheme": "light",
+        "sheet": "shown-browsers",
+        "fixture": {
+          "config": {
+            "browsers": {
+              "primary": {"app": "firefox.desktop"},
+              "alternative": {"picker": true},
+              "alternative-key": [],
+              "shown": [
+                {"target": {"app": "firefox.desktop"}},
+                {"target": {"profile": {"app": "google-chrome.desktop", "id": "Profile 1"}}},
+                {"target": {"app": "google-chrome.desktop"}}
+              ]
+            },
+            "picker": {"hotkeys": "numbers"}
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "browsers",
+        "sheet": "shown-browsers",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {"isDefault": true},
+            "config": {"path": "/home/user/.config/wye/config.toml", "writable": false, "lossless": true, "warnings": []},
+            "uiState": {"onboardingDone": true, "dismissedCallouts": ["apps-read-first"], "lastPage": "browsers"}
+          }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "browsers",
+        "sheet": "shown-browsers",
+        "fixture": {
+          "status": {
+            "defaultBrowser": {"isDefault": true},
+            "config": {"path": "/home/user/.config/wye/config.toml", "writable": true, "lossless": true, "warnings": []},
+            "uiState": {"onboardingDone": true, "dismissedCallouts": [], "lastPage": "browsers"}
+          },
+          "config": {"browsers": {"primary": {"picker": true}, "alternative": {"picker": true}, "alternative-key": ["Ctrl", "Alt"]}},
+          "targets": {"targets": [{"target": {"picker": true}, "kind": "picker", "name": "Picker"}]},
+          "services": {"services": []}
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "browsers",
+        "fixture": {
+          "targets": {"targets": [
+            {"target": {"picker": true}, "kind": "picker", "name": "Picker"},
+            {"target": {"app": "firefox.desktop"}, "kind": "app", "name": "Firefox", "icon": "firefox"},
+            {"target": {"profile": {"app": "firefox.desktop", "id": "Research"}}, "kind": "profile", "name": "Research (Firefox)", "shortName": "Research", "icon": "firefox", "badge": {"initial": "R", "color": "#2e7d32"}, "browser": "firefox.desktop"}
+          ]}
+        }
+      }
+    }
+  ]
+}

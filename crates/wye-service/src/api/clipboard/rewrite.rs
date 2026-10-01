@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use tokio::sync::broadcast::error::RecvError;
 use url::Url;
+use wye_core::Config;
 use wye_core::clean::TrackingRules;
 use wye_core::clipboard::{
     ClipboardOffer, OwnWrites, Rewrite, RewriteOptions, decide, songlink_api_url, songlink_page,
@@ -46,6 +47,14 @@ pub(crate) async fn watch(ctx: ServiceContext) {
         tracing::info!("the clipboard cannot be watched; copy-time rewrites are off");
         return;
     };
+    // The probes may have come after the configuration's first load.
+    match super::super::config::current(&ctx).await {
+        Ok(current) => ctx
+            .platform()
+            .clipboard
+            .set_watching(wanted(&current.config)),
+        Err(error) => tracing::warn!(%error, "cannot tell whether a copy-time rewrite is on"),
+    }
     let tracking = Arc::new(TrackingRules::shipped());
     loop {
         let text = match changes.recv().await {
@@ -60,6 +69,12 @@ pub(crate) async fn watch(ctx: ServiceContext) {
             tracing::warn!(%error, "cannot rewrite the clipboard");
         }
     }
+}
+
+/// Whether `config` switches on a copy-time rewrite, so clipboard changes
+/// are wanted at all (EXT-12).
+pub(crate) fn wanted(config: &Config) -> bool {
+    RewriteOptions::from_extras(&config.extras).any()
 }
 
 /// One clipboard change: decide and, when something changes, write once.

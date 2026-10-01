@@ -43,8 +43,9 @@ pub const PICKER_HOST_INTERFACE: &str = "dev.soldunov.wye.PickerHost1";
 /// Opens the UI host's windows.
 pub const WINDOWS_INTERFACE: &str = "dev.soldunov.wye.Windows1";
 
-/// Reserved for the GNOME Shell extension (pointer, modifiers, focus,
-/// clipboard). Not implemented yet.
+/// The GNOME Shell extension's session helper on [`GNOME_OBJECT_PATH`]:
+/// pointer, modifiers, focus and clipboard where Mutter offers no protocol
+/// for them.
 pub const SESSION_HELPER_INTERFACE: &str = "dev.soldunov.wye.SessionHelper1";
 
 /// Wye's desktop entry.

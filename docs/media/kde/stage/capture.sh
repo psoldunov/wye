@@ -105,7 +105,22 @@ tray() {
     # shellcheck disable=SC2046
     set -- $(shot changed "$work/tray-before.png" "$work/tray-more.png")
     cut tray-more "$work/tray-more.png" "$1" "$2" $((screen_width * scale - $1)) $((screen_height * scale - $2))
-    drive key:esc sleep:200 key:esc sleep:200 key:esc sleep:600
+    # Recent Links, the second row of More: what changed since the menu
+    # opened is the submenu (and the More row), so its corner is the submenu's.
+    # Into the submenu along the More row, up to Recent Links, then along that
+    # row. Plasma fills a submenu only when Qt first tries to show it, and Qt
+    # shows no empty menu, so the submenu opens on the next pointer motion
+    # (the second glide over More above does the same).
+    # shellcheck disable=SC2046
+    set -- $(shot changed "$work/tray.png" "$work/tray-more.png")
+    drive "glide:$(($1 / scale + 70)),$((y / scale + 317)),300" sleep:300 \
+        "glide:$(($1 / scale + 70)),$(($2 / scale + 47)),300" sleep:300 \
+        "glide:$(($1 / scale + 100)),$(($2 / scale + 47)),200" sleep:1500
+    shot screen "$work/tray-recent.png"
+    # shellcheck disable=SC2046
+    set -- $(shot changed "$work/tray-before.png" "$work/tray-recent.png")
+    cut tray-recent "$work/tray-recent.png" "$1" "$2" $((screen_width * scale - $1)) $((screen_height * scale - $2))
+    drive key:esc sleep:200 key:esc sleep:200 key:esc sleep:200 key:esc sleep:600
 }
 
 settings_pages() {
@@ -144,9 +159,7 @@ windows() {
     sleep 2
     place "Transform Script — Global — Wye" 680 548
     activate "Transform Script — Global — Wye"
-    # A link the script changes, typed into the Test field.
-    drive glide:680,512,300 sleep:300 click sleep:400 down:ctrl key:a up:ctrl sleep:200 \
-        "type:https://www.reddit.com/r/kde/comments/1fx2k9q/plasma_67_is_out/" sleep:2000
+    # The test link is the last opened one, a Reddit link the script changes.
     window_shot script-editor "Transform Script — Global — Wye"
     close_window "Transform Script — Global — Wye"
 

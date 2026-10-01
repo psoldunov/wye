@@ -41,6 +41,18 @@ enter() {
     export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share"
     export XDG_CACHE_HOME="$HOME/.cache" XDG_STATE_HOME="$HOME/.local/state"
     export XDG_RUNTIME_DIR="$stage/runtime"
+    # The look-and-feel defaults are the stage's own, first, as startplasma
+    # sets them: plasma-apply-lookandfeel writes the Plasma style and the icon
+    # theme there. The host session's kdedefaults would bring its own.
+    local dirs dir
+    IFS=: read -ra dirs <<<"${XDG_CONFIG_DIRS:-/etc/xdg}"
+    XDG_CONFIG_DIRS=$XDG_CONFIG_HOME/kdedefaults
+    for dir in "${dirs[@]}"; do
+        if [[ -n $dir && $dir != */kdedefaults ]]; then
+            XDG_CONFIG_DIRS+=:$dir
+        fi
+    done
+    export XDG_CONFIG_DIRS
     # The checkout's package comes first: its desktop entry, icons and D-Bus
     # activation files win over an installed Wye.
     case ${XDG_DATA_DIRS:-} in

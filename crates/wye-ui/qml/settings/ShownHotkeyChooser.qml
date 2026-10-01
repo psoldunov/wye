@@ -40,8 +40,6 @@ QQC2.ComboBox {
     displayText: hotkeyLabel
     enabled: perBrowser
     model: [none].concat(choices.map(choice => choice.label), [other])
-    // The list is a window of its own, so it is never cut off by the sheet or the window.
-    popup.popupType: QQC2.Popup.Window
     // Scrolling the list over the box must not change the hotkey.
     wheelEnabled: false
 

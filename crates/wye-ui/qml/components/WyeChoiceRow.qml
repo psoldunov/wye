@@ -31,8 +31,6 @@ WyeRow {
         Layout.preferredWidth: Math.max(Kirigami.Units.gridUnit * 10, Math.min(implicitWidth, Kirigami.Units.gridUnit * 16))
         currentIndex: row.choices.findIndex(choice => choice.value === row.currentValue)
         model: row.choices.map(choice => choice.label)
-        // The menu is a window of its own, so it is never cut off by the Settings window.
-        popup.popupType: QQC2.Popup.Window
         // Scrolling the page over the box must not change the setting.
         wheelEnabled: false
 

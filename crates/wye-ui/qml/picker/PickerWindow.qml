@@ -188,9 +188,9 @@ Window {
     LayerShell.Window.wantsToBeOnActiveScreen: !backend.placed
     // PICK-15: KWin gives a surface the window type its scope names, and zooms and fades every
     // new surface of the normal type (the type of an unknown scope) into view. It animates no
-    // utility window, so the panel appears at once. (An on-screen display is not animated
-    // either, but KWin takes the keyboard focus straight back from one, which cancels the
-    // picker, PICK-23.)
+    // utility window, so the panel appears at once. (Not an on-screen display: Fading Popups
+    // fades one in, and KWin takes the keyboard focus straight back from one, which cancels
+    // the picker, PICK-23.)
     LayerShell.Window.scope: "utility"
 
     PickerBackend {

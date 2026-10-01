@@ -27,7 +27,7 @@ Item {
     property int padding: Kirigami.Units.smallSpacing + Kirigami.Units.smallSpacing / 2
     // Hotkey character size (02-picker.md; the window's, which measures it
     // for `hotkeyHeight`) and highlight corner radius.
-    property int hotkeyPixels: 12
+    property int hotkeyPixels: 10
     readonly property int highlightRadius: 12
     // Where the icon's centre is, from the tile's top; the "⋯" button lines
     // up with it (PICK-08).

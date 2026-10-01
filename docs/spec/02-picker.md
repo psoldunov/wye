@@ -36,12 +36,12 @@ Target metrics:
 | Name text | caption | caption | caption |
 | Profile badge | 14 px | 18 px | 24 px |
 
-Every icon is about a quarter smaller than the reference's Large (52 px icons, 64 px pitch, body
-text), which reads too large on a Linux desktop; Small and Medium keep its proportions. The pitch
-is one and a half icons, so tiles without names (and the badges overlapping their icons) keep
-clear of each other. At every
-size: hotkey character about 10 px text; selection highlight corner radius about 12 px; panel
-padding about 12–16 px; panel corner radius about 14 px; overflow button about 14 px.
+The reference specifies only Large (52 px icons, 64 px pitch, body text), which reads too large
+on a Linux desktop. Large here is about a quarter smaller; Small and Medium icons are 60% and
+80% of Large's. The pitch is one and a half icons, so tiles without names (and the badges
+overlapping their icons) keep clear of each other. At every size: hotkey character about 10 px
+text; selection highlight corner radius about 12 px; panel padding about 12–16 px; panel corner
+radius about 14 px; overflow button about 14 px.
 
 ## Interaction
 
@@ -81,8 +81,8 @@ padding about 12–16 px; panel corner radius about 14 px; overflow button about
 - **No open animation (PICK-15).** KWin types a layer-shell surface by its scope, and its
   Scale effect zooms and fades every new surface of the normal type, which an unknown scope
   gets. The picker asks for the `utility` scope, which neither Scale nor Fading Popups
-  animates. (The `on-screen-display` scope is not animated either, but KWin takes the
-  keyboard focus back from it at once, which cancels the picker.)
+  animates. (Not `on-screen-display`: Fading Popups fades such a surface in, and KWin takes
+  the keyboard focus back from it at once, which cancels the picker.)
 - **Focus of the launched browser.** On Wayland, pass an xdg-activation token from the
   picker's key press or click to the launched browser (`XDG_ACTIVATION_TOKEN`), or the
   compositor may refuse to raise it.

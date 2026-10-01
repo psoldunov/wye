@@ -22,7 +22,7 @@ window or desktop app, or asks with a small picker. The specification is in
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `.github/workflows/` | `ci.yml` (`nix flake check`, advisories), `rust-doctor.yml`, `release.yml` (tag build, GitHub release, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
-| `docs/media/` | Screenshots and the demo GIF; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session (its README). |
+| `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session (its README). |
 
 Every requirement in the spec has an ID such as `PIPE-06`. Cite the ID in code comments,
 tests and commit bodies.

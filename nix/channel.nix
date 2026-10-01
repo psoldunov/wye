@@ -8,9 +8,12 @@
 # ships: bin/wye, bin/wye-ui, bin/wye-native-host,
 # share/dbus-1/services/dev.soldunov.wye{,.Ui}.service, and
 # share/systemd/user/wye{,-ui}.service with lib/systemd/user links. Moving or
-# renaming any of these breaks the `release` channel until the next release;
-# add new paths instead, and have the modules use them only once a release
-# that ships them is recorded.
+# renaming any of these breaks the `release` channel until the next release.
+# Newer packages additionally ship bin/wye-gtk,
+# share/dbus-1/services/dev.soldunov.wye.Gtk.service,
+# share/systemd/user/wye-gtk.service, and
+# share/gnome-shell/extensions/wye@dev.soldunov; modules do not require those
+# paths until a release containing them is recorded.
 #
 # share/plasma/plasmoids/dev.soldunov.wye (the Plasma applet) is no longer
 # part of the contract: this flake's package has no applet, and the modules
@@ -52,7 +55,7 @@ in
       default =
         if cfg.channel == "release" then packages.wye-release or packages.wye-git else packages.wye-git;
       defaultText = lib.literalExpression "wye.packages.\${system}.wye-release or wye.packages.\${system}.wye-git, by channel";
-      description = "Package providing the `wye` and `wye-ui` binaries and the D-Bus and systemd files.";
+      description = "Package providing the Wye hosts, GNOME Shell extension, and D-Bus and systemd files.";
     };
   };
 

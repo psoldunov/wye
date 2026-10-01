@@ -8,19 +8,11 @@
 //! `ActivateTrayItem`. `MenuRequested` goes out first, for a tray host that
 //! can open its own menu.
 
-use std::time::Duration;
-
+use crate::api::{Result, picker::host};
+use crate::context::ServiceContext;
 use serde_json::Value;
 use wye_api::Error;
 use wye_api::picker::Placement;
-use wye_api::proxy::PickerHost1Proxy;
-
-use crate::api::Result;
-use crate::context::ServiceContext;
-
-/// Longest the UI host may take, bus activation of a cold `wye-ui`
-/// included.
-const UI_DEADLINE: Duration = Duration::from_secs(10);
 
 /// The key of the pointer in the `ShowMenu` payload.
 const PLACEMENT: &str = "placement";
@@ -38,7 +30,7 @@ pub async fn toggle_menu(ctx: &ServiceContext) -> Result<()> {
     let tray = super::super::tray::tray_json(ctx).await?;
     let placement = ctx.platform().pointer.pointer().await;
     let payload = payload(&tray, placement.as_ref())?;
-    show_menu(ctx, &payload).await
+    host::show_menu(ctx, &payload).await
 }
 
 /// The `Tray` JSON with the pointer added as `placement`.
@@ -58,29 +50,6 @@ fn payload(tray: &str, placement: Option<&Placement>) -> Result<String> {
         .chain(placement.map(|placement| (PLACEMENT.to_owned(), placement)))
         .collect();
     Ok(Value::Object(payload).to_string())
-}
-
-/// `PickerHost1.ShowMenu` on the UI host.
-async fn show_menu(ctx: &ServiceContext, payload: &str) -> Result<()> {
-    let connection = ctx
-        .connection()
-        .ok_or_else(|| Error::Unavailable("the service is not on the session bus".to_owned()))?;
-    let call = async {
-        PickerHost1Proxy::new(connection)
-            .await?
-            .show_menu(payload)
-            .await
-    };
-    match tokio::time::timeout(UI_DEADLINE, call).await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(Error::Bus(error))) => Err(Error::Unavailable(format!(
-            "the UI host cannot be reached: {error}"
-        ))),
-        Ok(Err(error)) => Err(error),
-        Err(_) => Err(Error::Unavailable(format!(
-            "the UI host did not answer ShowMenu within {UI_DEADLINE:?}"
-        ))),
-    }
 }
 
 #[cfg(test)]

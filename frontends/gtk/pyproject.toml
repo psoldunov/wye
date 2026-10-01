@@ -1,0 +1,9 @@
+[project]
+name = "wye-gtk"
+version = "0.1.0"
+description = "Native GTK/libadwaita companion frontend for Wye"
+requires-python = ">=3.11"
+
+[tool.pyright]
+reportMissingImports = false
+reportMissingModuleSource = false

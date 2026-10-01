@@ -26,6 +26,8 @@ pub(crate) struct Pending {
     /// Every target the request shows, tiles and **Open In** alike: the
     /// only ones `PickerChose` accepts.
     pub offered: Vec<Target>,
+    /// The request to redisplay if its host leaves while a choice is pending.
+    pub request: String,
 }
 
 /// Whether the pending request offers a target.
@@ -63,6 +65,7 @@ impl Registry {
         &self,
         link: Option<PendingLink>,
         offered: Vec<Target>,
+        request: String,
     ) -> (String, Option<Pending>) {
         let mut slot = self.slot();
         slot.last += 1;
@@ -71,6 +74,7 @@ impl Registry {
             id: id.clone(),
             link,
             offered,
+            request,
         });
         (id, superseded)
     }
@@ -88,6 +92,11 @@ impl Registry {
             Some(_) => Offer::NotOffered,
             None => Offer::NotPending,
         }
+    }
+
+    /// Snapshot the current request without taking it (host handoff).
+    pub fn current(&self) -> Option<Pending> {
+        self.slot().current.clone()
     }
 
     /// Remove and return the request `id`, when it is still the current one.
@@ -118,9 +127,9 @@ mod tests {
     fn a_new_request_supersedes_the_pending_one() {
         // PICK-27: the old request's answer then finds nothing.
         let registry = Registry::default();
-        let (first, none) = registry.open(None, Vec::new());
+        let (first, none) = registry.open(None, Vec::new(), String::new());
         assert!(none.is_none());
-        let (second, superseded) = registry.open(None, Vec::new());
+        let (second, superseded) = registry.open(None, Vec::new(), String::new());
         assert_ne!(first, second);
         assert_eq!(superseded.map(|pending| pending.id), Some(first.clone()));
         assert!(registry.take(&first).is_none());
@@ -133,7 +142,7 @@ mod tests {
         let registry = Registry::default();
         let offered = Target::App(wye_core::DesktopId::new("a.desktop").expect("id"));
         let other = Target::App(wye_core::DesktopId::new("b.desktop").expect("id"));
-        let (id, _) = registry.open(None, vec![offered.clone()]);
+        let (id, _) = registry.open(None, vec![offered.clone()], String::new());
         assert_eq!(registry.offers(&id, &offered), Offer::Offered);
         assert_eq!(registry.offers(&id, &other), Offer::NotOffered);
         assert_eq!(registry.offers("0", &offered), Offer::NotPending);
@@ -143,7 +152,7 @@ mod tests {
     #[test]
     fn take_current_empties_the_slot() {
         let registry = Registry::default();
-        registry.open(None, Vec::new());
+        registry.open(None, Vec::new(), String::new());
         assert!(registry.take_current().is_some());
         assert!(registry.take_current().is_none());
     }

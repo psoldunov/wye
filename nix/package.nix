@@ -12,6 +12,10 @@
   stdenvNoCC,
   writeShellApplication,
   findutils,
+  gtk4,
+  libadwaita,
+  python3,
+  wrapGAppsHook4,
 }:
 let
   root = ../.;
@@ -29,6 +33,10 @@ let
     ln -s ${llvmPackages.bintools}/bin/ld.lld $out/bin/ld.lld
     ln -s ${llvmPackages.bintools}/bin/ld.lld $out/bin/lld
   '';
+
+  # The GTK host uses system-style PyGObject modules, not pip packages.  Its
+  # wrapper combines this interpreter with wrapGAppsHook4's GI typelib paths.
+  gtkPython = python3.withPackages (ps: [ ps.pygobject3 ]);
 
   qt = rec {
     # cxx-qt-build reads Qt's whole layout (headers, libraries,
@@ -193,7 +201,16 @@ let
     // {
       inherit cargoArtifacts;
       cargoExtraArgs = "--locked --package wye --package wye-native-host --package wye-ui";
-      nativeBuildInputs = commonArgs.nativeBuildInputs ++ [ qt6.wrapQtAppsHook ];
+      nativeBuildInputs = commonArgs.nativeBuildInputs ++ [
+        qt6.wrapQtAppsHook
+        wrapGAppsHook4
+      ];
+      buildInputs = commonArgs.buildInputs ++ [
+        gtk4
+        libadwaita
+      ];
+      # Each frontend wrapper is applied explicitly in postFixup.
+      dontWrapGApps = true;
       # Tests run as their own flake check.
       doCheck = false;
       # nixpkgs' fixup would move lib/systemd/user to share/systemd/user, where
@@ -226,25 +243,48 @@ let
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg
         install -Dm644 ${../data/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg} \
           $out/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg
+        # The GTK settings host runs as a module from the package's own source.
+        for source in ${../frontends/gtk/wye_gtk}/*.py; do
+          install -Dm644 "$source" $out/lib/wye-gtk/wye_gtk/"''${source##*/}"
+        done
+        # GNOME Shell discovers extensions here. Installation deliberately does
+        # not enable it: each user chooses whether Shell owns the picker/tray.
+        for source in \
+          ${../frontends/gnome-shell/extension.js} \
+          ${../frontends/gnome-shell/picker.js} \
+          ${../frontends/gnome-shell/model.mjs} \
+          ${../frontends/gnome-shell/metadata.json} \
+          ${../frontends/gnome-shell/stylesheet.css}; do
+          install -Dm644 "$source" \
+            $out/share/gnome-shell/extensions/wye@dev.soldunov/"''${source##*/}"
+        done
         # D-Bus activation (DEF-04) and the systemd user units of the service
         # and the UI host, with the absolute path of this package's binaries.
         for template in \
           ${../data/dbus/dev.soldunov.wye.service.in}:share/dbus-1/services/dev.soldunov.wye.service \
           ${../data/dbus/dev.soldunov.wye.Ui.service.in}:share/dbus-1/services/dev.soldunov.wye.Ui.service \
+          ${../data/dbus/dev.soldunov.wye.Gtk.service.in}:share/dbus-1/services/dev.soldunov.wye.Gtk.service \
           ${../data/systemd/wye.service.in}:share/systemd/user/wye.service \
-          ${../data/systemd/wye-ui.service.in}:share/systemd/user/wye-ui.service; do
+          ${../data/systemd/wye-ui.service.in}:share/systemd/user/wye-ui.service \
+          ${../data/systemd/wye-gtk.service.in}:share/systemd/user/wye-gtk.service; do
           target=$out/''${template#*:}
           install -Dm644 "''${template%%:*}" "$target"
           substituteInPlace "$target" --replace-fail '@bindir@' "$out/bin"
         done
         # NixOS' `systemd.packages` reads lib/systemd/user, not share/.
         mkdir -p $out/lib/systemd/user
-        for unit in wye.service wye-ui.service; do
+        for unit in wye.service wye-ui.service wye-gtk.service; do
           ln -s ../../../share/systemd/user/$unit $out/lib/systemd/user/$unit
         done
       '';
       postFixup = ''
         wrapQtApp $out/bin/wye-ui ${lib.escapeShellArgs qt.wrapperArgs}
+        # `gappsWrapperArgs` supplies GTK, libadwaita and GI typelib lookup;
+        # source stays separate so Python can import the un-packaged frontend.
+        makeWrapper ${gtkPython}/bin/python $out/bin/wye-gtk \
+          --prefix PYTHONPATH : $out/lib/wye-gtk \
+          "''${gappsWrapperArgs[@]}" \
+          --add-flags '-m wye_gtk'
       '';
       meta = {
         description = "Native Linux browser picker";

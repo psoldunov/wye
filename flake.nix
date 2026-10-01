@@ -184,36 +184,68 @@
           # The D-Bus activation files and the systemd user unit the package
           # installs (DEF-04): absolute paths to this package's binaries, and
           # bus activation of the service handed to systemd.
-          installed-dbus-files = pkgs.runCommand "wye-installed-dbus-files" { } ''
-            services=${wye.package}/share/dbus-1/services
-            grep -qxF 'Name=dev.soldunov.wye' $services/dev.soldunov.wye.service
-            grep -qxF 'Exec=${wye.package}/bin/wye service' $services/dev.soldunov.wye.service
-            grep -qxF 'SystemdService=wye.service' $services/dev.soldunov.wye.service
-            grep -qxF 'Name=dev.soldunov.wye.Ui' $services/dev.soldunov.wye.Ui.service
-            grep -qxF 'Exec=${wye.package}/bin/wye-ui' $services/dev.soldunov.wye.Ui.service
-            grep -qxF 'SystemdService=wye-ui.service' $services/dev.soldunov.wye.Ui.service
-            unit=${wye.package}/share/systemd/user/wye.service
-            grep -qxF 'Type=dbus' $unit
-            grep -qxF 'BusName=dev.soldunov.wye' $unit
-            grep -qxF 'ExecStart=${wye.package}/bin/wye service' $unit
-            grep -qxF 'KillMode=process' $unit
-            # The UI host: bus-activated through systemd, never at login.
-            ui=${wye.package}/share/systemd/user/wye-ui.service
-            grep -qxF 'Type=dbus' $ui
-            grep -qxF 'BusName=dev.soldunov.wye.Ui' $ui
-            grep -qxF 'ExecStart=${wye.package}/bin/wye-ui' $ui
-            if grep -q '^\[Install\]' $ui; then exit 1; fi
-            # NixOS' `systemd.packages` finds both units under lib/.
-            test -f ${wye.package}/lib/systemd/user/wye.service
-            test -f ${wye.package}/lib/systemd/user/wye-ui.service
-            # No template placeholder left anywhere.
-            if grep -rF '@bindir@' ${wye.package}/share; then exit 1; fi
-            test -x ${wye.package}/bin/wye
-            test -x ${wye.package}/bin/wye-ui
-            # The extension's native-messaging host (BEXT-04) ships with it.
-            test -x ${wye.package}/bin/wye-native-host
-            touch $out
-          '';
+          installed-dbus-files =
+            pkgs.runCommand "wye-installed-dbus-files"
+              {
+                nativeBuildInputs = [
+                  pkgs.jq
+                  pkgs.nodejs
+                ];
+              }
+              ''
+                services=${wye.package}/share/dbus-1/services
+                grep -qxF 'Name=dev.soldunov.wye' $services/dev.soldunov.wye.service
+                grep -qxF 'Exec=${wye.package}/bin/wye service' $services/dev.soldunov.wye.service
+                grep -qxF 'SystemdService=wye.service' $services/dev.soldunov.wye.service
+                grep -qxF 'Name=dev.soldunov.wye.Ui' $services/dev.soldunov.wye.Ui.service
+                grep -qxF 'Exec=${wye.package}/bin/wye-ui' $services/dev.soldunov.wye.Ui.service
+                grep -qxF 'SystemdService=wye-ui.service' $services/dev.soldunov.wye.Ui.service
+                grep -qxF 'Name=dev.soldunov.wye.Gtk' $services/dev.soldunov.wye.Gtk.service
+                grep -qxF 'Exec=${wye.package}/bin/wye-gtk' $services/dev.soldunov.wye.Gtk.service
+                grep -qxF 'SystemdService=wye-gtk.service' $services/dev.soldunov.wye.Gtk.service
+                unit=${wye.package}/share/systemd/user/wye.service
+                grep -qxF 'Type=dbus' $unit
+                grep -qxF 'BusName=dev.soldunov.wye' $unit
+                grep -qxF 'ExecStart=${wye.package}/bin/wye service' $unit
+                grep -qxF 'KillMode=process' $unit
+                # The UI host: bus-activated through systemd, never at login.
+                ui=${wye.package}/share/systemd/user/wye-ui.service
+                grep -qxF 'Type=dbus' $ui
+                grep -qxF 'BusName=dev.soldunov.wye.Ui' $ui
+                grep -qxF 'ExecStart=${wye.package}/bin/wye-ui' $ui
+                if grep -q '^\[Install\]' $ui; then exit 1; fi
+                # The GTK host is bus-activated, never enabled at login.
+                gtk=${wye.package}/share/systemd/user/wye-gtk.service
+                grep -qxF 'Type=dbus' $gtk
+                grep -qxF 'BusName=dev.soldunov.wye.Gtk' $gtk
+                grep -qxF 'ExecStart=${wye.package}/bin/wye-gtk' $gtk
+                if grep -q '^\[Install\]' $gtk; then exit 1; fi
+                # NixOS' `systemd.packages` finds every unit under lib/.
+                test -f ${wye.package}/lib/systemd/user/wye.service
+                test -f ${wye.package}/lib/systemd/user/wye-ui.service
+                test -f ${wye.package}/lib/systemd/user/wye-gtk.service
+                # The wrapped GTK launcher finds packaged Python and GI typelibs.
+                test -x ${wye.package}/bin/wye-gtk
+                ${wye.package}/bin/wye-gtk --help > /dev/null
+                export PYTHONPYCACHEPREFIX=$TMPDIR/pycache
+                find ${wye.package}/lib/wye-gtk -name '*.py' -exec ${pkgs.python3}/bin/python -m py_compile {} +
+                grep -q 'PYTHONPATH' ${wye.package}/bin/wye-gtk
+                grep -q 'GI_TYPELIB_PATH' ${wye.package}/bin/wye-gtk
+                # GNOME Shell finds the extension but package installation does not enable it.
+                extension=${wye.package}/share/gnome-shell/extensions/wye@dev.soldunov
+                jq -e '.uuid == "wye@dev.soldunov" and (."shell-version" | index("48"))' $extension/metadata.json > /dev/null
+                for file in extension.js picker.js model.mjs stylesheet.css; do test -f $extension/$file; done
+                node --check $extension/extension.js
+                node --check $extension/picker.js
+                node --check $extension/model.mjs
+                # No template placeholder left anywhere.
+                if grep -rF '@bindir@' ${wye.package}/share; then exit 1; fi
+                test -x ${wye.package}/bin/wye
+                test -x ${wye.package}/bin/wye-ui
+                # The extension's native-messaging host (BEXT-04) ships with it.
+                test -x ${wye.package}/bin/wye-native-host
+                touch $out
+              '';
           # Every QML file of wye-ui against the types its imports and its own
           # cxx-qt bridges declare; any warning fails.
           qmllint = craneLib.mkCargoDerivation (

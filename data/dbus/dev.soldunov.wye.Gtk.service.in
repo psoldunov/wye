@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=dev.soldunov.wye.Gtk
+Exec=@bindir@/wye-gtk
+SystemdService=wye-gtk.service

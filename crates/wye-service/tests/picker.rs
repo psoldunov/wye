@@ -9,10 +9,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use support::{Service, TWO, eventually};
-use wye_api::names::{UI_BUS_NAME, UI_OBJECT_PATH};
+use wye_api::names::{
+    GNOME_BUS_NAME, GNOME_OBJECT_PATH, GTK_BUS_NAME, GTK_OBJECT_PATH, UI_BUS_NAME, UI_OBJECT_PATH,
+};
 use wye_api::picker::PickerRequest;
 use wye_api::proxy::Wye1Proxy;
 use wye_api::{Error, context};
+use wye_service::run;
 use zbus::zvariant::Value;
 
 const URL: &str = "https://example.com/";
@@ -28,6 +31,7 @@ enum Call {
     Close {
         id: String,
     },
+    Menu,
     Window {
         window: String,
         argument: String,
@@ -84,8 +88,8 @@ impl PickerHost {
     }
 
     fn show_menu(&self, menu: &str) {
-        // The tray-menu popup is not the picker; nothing to record.
         let _ = menu;
+        self.0.record(Call::Menu);
     }
 }
 
@@ -107,6 +111,20 @@ impl Windows {
     fn quit(&self) {}
 }
 
+struct BrokenWindows;
+
+#[allow(
+    clippy::unused_self,
+    reason = "the D-Bus test host always rejects window requests"
+)]
+#[zbus::interface(name = "dev.soldunov.wye.Windows1")]
+impl BrokenWindows {
+    fn show_window(&self, window: &str, argument: &str) -> zbus::fdo::Result<()> {
+        let _ = (window, argument);
+        Err(zbus::fdo::Error::Failed("GTK failed".to_owned()))
+    }
+}
+
 /// The fake UI host, owning its name on the service's bus.
 async fn fake_ui(service: &Service) -> (FakeUi, zbus::Connection) {
     let ui = FakeUi::default();
@@ -121,6 +139,30 @@ async fn fake_ui(service: &Service) -> (FakeUi, zbus::Connection) {
         .await
         .expect("served");
     connection.request_name(UI_BUS_NAME).await.expect("name");
+    (ui, connection)
+}
+
+async fn gnome_picker(service: &Service) -> (FakeUi, zbus::Connection) {
+    let ui = FakeUi::default();
+    let connection = service.bus.connect().await;
+    connection
+        .object_server()
+        .at(GNOME_OBJECT_PATH, PickerHost(ui.clone()))
+        .await
+        .expect("served");
+    connection.request_name(GNOME_BUS_NAME).await.expect("name");
+    (ui, connection)
+}
+
+async fn gtk_windows(service: &Service) -> (FakeUi, zbus::Connection) {
+    let ui = FakeUi::default();
+    let connection = service.bus.connect().await;
+    connection
+        .object_server()
+        .at(GTK_OBJECT_PATH, Windows(ui.clone()))
+        .await
+        .expect("served");
+    connection.request_name(GTK_BUS_NAME).await.expect("name");
     (ui, connection)
 }
 
@@ -141,6 +183,119 @@ async fn shown_count(ui: &FakeUi, count: usize) {
         ui.shown().len() >= count
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gnome_prefers_live_shell_and_falls_back_to_qt_without_losing_a_request() {
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    run::use_environment(&service.ctx, service.desktop.environment_on("ubuntu:GNOME"));
+    let (qt, _qt_connection) = fake_ui(&service).await;
+    let (shell, shell_connection) = gnome_picker(&service).await;
+    let proxy = wye(&service).await;
+    proxy.open_link(URL, cli()).await.expect("routed");
+    shown_count(&shell, 1).await;
+    proxy.toggle_menu().await.expect("Shell menu");
+    assert!(shell.calls().contains(&Call::Menu));
+    assert!(qt.calls().is_empty(), "shell owns the picker and menu");
+    let first = shell.shown().remove(0).0;
+    // Let the service's name-owner subscription settle before removing Shell.
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    shell_connection
+        .release_name(GNOME_BUS_NAME)
+        .await
+        .expect("released");
+    shown_count(&qt, 1).await;
+    assert_eq!(qt.shown()[0].0, first, "pending request handed to Qt");
+    proxy
+        .open_link("https://example.com/new", cli())
+        .await
+        .expect("routed");
+    shown_count(&qt, 2).await;
+    let second = qt.shown()[1].0.clone();
+    assert!(matches!(
+        proxy.picker_cancelled(&first).await,
+        Err(Error::NotFound(_))
+    ));
+    proxy
+        .picker_chose(&second, &two(), HashMap::new())
+        .await
+        .expect("chosen");
+    assert_eq!(
+        service.launched(),
+        [vec![
+            "fake-two".to_owned(),
+            "https://example.com/new".to_owned()
+        ]]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gnome_windows_use_gtk_and_qt_when_gtk_is_missing() {
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    run::use_environment(&service.ctx, service.desktop.environment_on("GNOME"));
+    let (qt, _qt_connection) = fake_ui(&service).await;
+    let (gtk, gtk_connection) = gtk_windows(&service).await;
+    let proxy = wye(&service).await;
+    proxy
+        .show_window("settings", "general")
+        .await
+        .expect("GTK window");
+    assert_eq!(gtk.calls().len(), 1);
+    assert!(qt.calls().is_empty());
+    gtk_connection
+        .release_name(GTK_BUS_NAME)
+        .await
+        .expect("released");
+    proxy.show_window("history", "").await.expect("Qt window");
+    assert_eq!(qt.calls().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn broken_gtk_does_not_silently_switch_to_qt() {
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    run::use_environment(&service.ctx, service.desktop.environment_on("GNOME"));
+    let (qt, _qt_connection) = fake_ui(&service).await;
+    let gtk_connection = service.bus.connect().await;
+    gtk_connection
+        .object_server()
+        .at(GTK_OBJECT_PATH, BrokenWindows)
+        .await
+        .expect("served");
+    gtk_connection
+        .request_name(GTK_BUS_NAME)
+        .await
+        .expect("name");
+    let result = wye(&service).await.show_window("settings", "").await;
+    assert!(result.is_err(), "GTK failure must be reported");
+    assert!(
+        qt.calls().is_empty(),
+        "Qt must not hide an installed GTK failure"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn kde_keeps_qt_even_when_gnome_hosts_are_present() {
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    run::use_environment(&service.ctx, service.desktop.environment_on("KDE"));
+    let (qt, _qt_connection) = fake_ui(&service).await;
+    let (shell, _shell_connection) = gnome_picker(&service).await;
+    let (gtk, _gtk_connection) = gtk_windows(&service).await;
+    let proxy = wye(&service).await;
+    proxy.open_link(URL, cli()).await.expect("routed");
+    shown_count(&qt, 1).await;
+    proxy.show_window("settings", "").await.expect("Qt window");
+    proxy.toggle_menu().await.expect("Qt menu");
+    assert!(qt.calls().contains(&Call::Menu));
+    assert!(shell.calls().is_empty());
+    assert!(gtk.calls().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

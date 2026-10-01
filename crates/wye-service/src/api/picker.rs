@@ -9,7 +9,7 @@
 
 mod activation;
 mod choice;
-mod host;
+pub(crate) mod host;
 mod pending;
 pub(crate) mod ready;
 mod request;
@@ -70,10 +70,11 @@ pub(crate) async fn show_link(
     })
     .await??;
     let (text, offered) = text;
-    let (id, superseded) = ctx
-        .picker()
-        .pending
-        .open(Some(PendingLink { needed, activation }), offered);
+    let (id, superseded) = ctx.picker().pending.open(
+        Some(PendingLink { needed, activation }),
+        offered,
+        text.clone(),
+    );
     if let Some(old) = superseded {
         tracing::info!(
             old = old.id,
@@ -119,6 +120,17 @@ async fn deliver(ctx: &ServiceContext, id: String, text: &str) -> Result<()> {
     }
 }
 
+/// Redisplay the still-pending request when Shell disappears (PICK-27).
+/// `deliver` handles the stand-in if Qt is also unavailable.
+pub(super) async fn shell_left(ctx: &ServiceContext) {
+    let Some(pending) = ctx.picker().pending.current() else {
+        return;
+    };
+    if let Err(error) = deliver(ctx, pending.id, &pending.request).await {
+        tracing::warn!(%error, "cannot hand the picker to Qt");
+    }
+}
+
 /// The stand-in opens the link and a notification says why (PIPE-13).
 async fn stand_in(ctx: &ServiceContext, pending: PendingLink, error: &Error) -> Result<()> {
     let notification = Notification {
@@ -155,7 +167,7 @@ pub async fn preview_picker(ctx: &ServiceContext) -> Result<()> {
     })
     .await??;
     let (text, offered) = text;
-    let (id, _) = ctx.picker().pending.open(None, offered);
+    let (id, _) = ctx.picker().pending.open(None, offered, text.clone());
     let shown = host::show_picker(ctx, &id, &text).await;
     if shown.is_err() {
         ctx.picker().pending.take(&id);
@@ -294,6 +306,7 @@ fn encode(input: &request::Input<'_>) -> Result<(String, Vec<Target>)> {
 pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
     vec![
         tokio::spawn(ready::keep_ready(ctx.clone())),
+        tokio::spawn(ready::watch_shell(ctx.clone())),
         tokio::spawn(close_on_lock(ctx.clone())),
     ]
 }

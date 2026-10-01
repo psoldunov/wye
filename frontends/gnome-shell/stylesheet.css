@@ -1,0 +1,19 @@
+.wye-warning { color: #f5c211; }
+.wye-shortcut { color: #999; padding-left: 24px; }
+.wye-picker .modal-dialog { border-radius: 14px; }
+.wye-picker-content { padding: 14px; spacing: 8px; }
+.wye-picker-row { spacing: 6px; }
+.wye-tile { min-width: 56px; max-width: 100px; padding: 7px; border-radius: 12px; }
+.wye-tile:selected, .wye-tile:focus, .wye-tile:hover { background-color: st-transparentize(-st-accent-color, 0.7); }
+.wye-tile:unavailable { opacity: 0.45; }
+.wye-hint { color: #aaa; }
+.wye-hotkey { color: #999; font-size: 10px; text-align: center; }
+.wye-tile-name { max-width: 92px; text-overflow: ellipsis; text-align: center; }
+.wye-badge { border-radius: 12px; background-color: #336699; padding: 1px 4px; }
+.wye-more { border-radius: 12px; padding: 4px 10px; }
+.wye-url { max-width: 520px; color: #aaa; text-overflow: ellipsis; }
+.wye-status { color: #e58a8a; }
+.wye-extra { spacing: 4px; }
+.wye-extra-scroll { max-height: 280px; min-width: 240px; }
+.wye-extra-button { padding: 5px 12px; text-align: left; }
+.wye-group { font-weight: bold; color: #aaa; padding-top: 6px; }

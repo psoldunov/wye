@@ -9,10 +9,20 @@ rule unions them where they overlap.
 
 import math
 
-from common import fmt
+from common import fmt, shrink
 
-# Centreline on the 16 px grid: 2 px stroke, stem edges on x 7 and 9.
-GLYPH = dict(cx=8, bottom=14, vy=8.8, ey=3, dx=5, r=3.2, k=0.5, width=2)
+# Centreline drawn on the 16 px grid (2 px stroke, stem edges on x 7 and 9), then shrunk
+# about the centre like every symbolic glyph.
+GLYPH = dict(
+    cx=8,
+    bottom=shrink(14),
+    vy=shrink(8.8),
+    ey=shrink(3),
+    dx=shrink(5, 0),
+    r=shrink(3.2, 0),
+    k=0.5,
+    width=shrink(2, 0),
+)
 
 TEMPLATE = """\
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">

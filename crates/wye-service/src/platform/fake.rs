@@ -6,7 +6,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, watch};
@@ -91,7 +90,6 @@ pub struct FakeStatusNotifier {
     /// Each call in order: `Some(menu)` for `show`, `None` for `hide`.
     calls: Mutex<Vec<Option<TrayMenu>>>,
     events: broadcast::Sender<TrayEvent>,
-    grace: Mutex<Duration>,
 }
 
 impl Default for FakeStatusNotifier {
@@ -99,7 +97,6 @@ impl Default for FakeStatusNotifier {
         Self {
             calls: Mutex::default(),
             events: broadcast::channel(BUFFER).0,
-            grace: Mutex::new(Duration::ZERO),
         }
     }
 }
@@ -120,11 +117,6 @@ impl FakeStatusNotifier {
         // No receiver yet is fine: the tray task has not started.
         let _ = self.events.send(event);
     }
-
-    /// The start-up wait for a tray host.
-    pub fn set_grace(&self, grace: Duration) {
-        *lock(&self.grace) = grace;
-    }
 }
 
 #[async_trait]
@@ -143,10 +135,6 @@ impl StatusNotifier for FakeStatusNotifier {
 
     fn events(&self) -> broadcast::Receiver<TrayEvent> {
         self.events.subscribe()
-    }
-
-    fn grace(&self) -> Duration {
-        *lock(&self.grace)
     }
 
     fn mechanism(&self) -> Option<&'static str> {

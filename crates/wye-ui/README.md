@@ -56,7 +56,9 @@ function `handle(action, key, argument)`, called on the Qt thread:
 The script editor's argument is a scope (`global`, `rule:<id>`) or JSON
 `{"scope": …, "ruleName": …}`; a caller that knows the rule's name (the rule editor) passes
 it so the title needs no `GetConfig`. Its fixture cases add `"fixture"` with the script's
-`source` and the `RunScript` answer (`crates/wye-ui/src/script_editor/opening.rs`).
+`source` and the `RunScript` answer (`crates/wye-ui/src/script_editor/opening.rs`). The window's
+own keys: `reference` opens the Reference, `edit` types that text over the source (unsaved
+changes), `confirmClose` then closes the window to show the question about them (SCR-10).
 
 `Main.qml` keeps one instance of each surface (SET-04): `show` must show, raise and
 activate the window it already has.
@@ -98,6 +100,23 @@ types.
 The flake checks `qmllint` and `ui-selftest` run the same two gates in the Nix sandbox;
 `ui-selftest` runs the installed, wrapped `wye-ui`.
 
+**Snapshots.** `wye-ui --self-test [SURFACE] --snapshots DIR` delivers the cases one at a time,
+waits 700 ms for each to render, and saves every visible Quick window as
+`DIR/<surface>-<NN>-<slug>.png` (a second or later window, such as a `Popup.Window`, as
+`…-w<M>.png`); it prints each path. The slug is the action unless `show`, the key unless it is
+the surface's name, then the argument (a page name, or the `page`, `sheet`, `scope` and
+`scheme` of a JSON argument). The children add `QT_QUICK_BACKEND=software` (offscreen grabs need
+it) and `QT_QPA_PLATFORMTHEME=kde` unless set, and put the dev shell's
+`WYE_SNAPSHOT_QT_PLUGIN_PATH` (its own `plasma-integration`) first in `QT_PLUGIN_PATH`, so the
+desktop's colour scheme, fonts, icons and Breeze style load from `kdeglobals`. Match the
+session's scale with `QT_SCALE_FACTOR` (for example `1.5`). It is a dev tool, not a gate: Qt
+warnings are ignored; only a failed case, a crash or a timeout fails it. There is no window
+frame or shadow, and a transparent window (picker, tray menu) keeps its alpha.
+
+```sh
+nix develop -c target/debug/wye-ui --self-test settings --snapshots /tmp/wye-shots
+```
+
 ## Settings window
 
 `qml/settings/SettingsWindow.qml` shows one page (`<Name>Page.qml`, a `WyePage`) at a time;
@@ -113,13 +132,23 @@ again when the data changes. Components with a `path` save themselves; bind thei
 
 The building blocks are in `qml/components/`, each with its API at the top of its file:
 `WyePage`, `WyeGroupCard` (BLK-01), `WyeRow` (BLK-02), `WyeSwitchRow` (BLK-03),
-`WyeTargetRow` + `WyeTargetMenu` (BLK-04, TGT), `WyeButtonRow` (BLK-05), `WyeRadioRow`
+`WyeTargetRow` (BLK-04, TGT), `WyeButtonRow` (BLK-05), `WyeRadioRow`
 (BLK-06), `WyeTextRow` (BLK-07), `WyeChoiceRow`, `WyeHelpButton` (BLK-08), `WyeCallout`
-(BLK-09), `WyeDisabledRow` (BLK-10), `WyeSheet` (BLK-11), `WyeEmptyState` (BLK-12),
-`WyeListToolbar` (BLK-13), `WyeSection` (BLK-14), `WyeChecklist` (BLK-15),
-`WyeShortcutRecorder` and `WyeShortcutChips` (BLK-16), `WyeLinkText` (BLK-17),
+(BLK-09), `WyeDisabledRow` (BLK-10), `WyeSheet` (BLK-11), `WyeSection` (BLK-14),
+`WyeChecklist` (BLK-15), `WyeShortcutRecorder` and `WyeShortcutChips` (BLK-16), `WyeLinkText` (BLK-17),
 `WyeModifierChooser` + `WyeModifierRow` (BLK-18), `WyeAppChooser` (DLG-APP),
 `WyeGlobalShortcutRow` (ADV-05 to ADV-07), `WyeCopyButton`, `WyeConfirmDialog`.
+
+Properties that are easy to miss: `WyeRow.leadingIcon` (an icon before the title) with
+`leadingIconColor` (tints a symbolic one; the General page's status uses a plain check or
+warning glyph, never a box that could pass for a checkbox); `WyeButtonRow.buttonHighlighted`
+(a default button, `Accessible.defaultButton`, which the desktop style draws in the accent colour: the row's
+suggested action); `WyeSheet.primaryIcon` / `secondaryIcon` /
+`tertiaryText` / `tertiaryIcon` / `tertiaryTriggered()` (the buttons' icons, and an optional third
+button after the secondary); `WyeConfirmDialog.confirmIcon` / `declineIcon`;
+`WyeShortcutRecorder.emptyText` (what it reads while unset); `WyeTargetRow.popup()` (open the
+menu from code) and `WyeTargetRow.controlWidth` (a fixed combo width, to line up with a neighbouring field). The script editor's
+`ScriptUnsavedDialog` (SCR-10) is a `WyeSheet` with Save, Discard and Cancel.
 
 `fixtures/settings.json` feeds the window with `key: "settings"` and an `argument` that is a
 page name or an object `{page, fixture, scheme, sheet}`. `fixture` is what the service would

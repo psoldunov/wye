@@ -12,10 +12,9 @@
 | `crates/wye-native-host` | The browser extension's native-messaging host `wye-native-host` (library and binary); `wye extension install\|remove` uses its `install` module. |
 | `crates/wye-script` | The transform-script engine (QuickJS through `rquickjs`) for the global and per-rule scripts, with its limits, the `URL` prelude and the result diff. Used by the service. |
 | `crates/wye-ui` | The Qt/Kirigami UI host (cxx-qt) that owns `dev.soldunov.wye.Ui` and shows the picker, the tray-menu popup, Settings, the script editor and the onboarding, about and history windows. A D-Bus client of the service; holds no routing logic. |
-| `frontends/plasma/` | The Plasma 6 tray applet `dev.soldunov.wye` (pure QML) and its offscreen tests. |
 | `frontends/extension/` | The Firefox and Chromium browser extension: one set of files, a manifest per family. |
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user units (`data/systemd/wye.service.in`, `data/systemd/wye-ui.service.in`). |
-| `nix/`, `flake.nix` | Package (crane; `frontends.nix` adds the applet and the extension zips), the `programs.wye` modules for home-manager and NixOS (`hm-module.nix`, `nixos-module.nix`, shared `channel.nix`), the release record `release.json` and the checks: clippy, tests (including `crates/wye/tests/e2e.rs`), fmt, deny, machete, source and installed desktop entry, installed D-Bus files, qmllint, the UI self-test, the applet lint, load and D-Bus smoke tests, the extension manifests, module evaluation for both channels and nixfmt. Also the dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
+| `nix/`, `flake.nix` | Package (crane; `frontends.nix` adds the extension zips), the `programs.wye` modules for home-manager and NixOS (`hm-module.nix`, `nixos-module.nix`, shared `channel.nix`), the release record `release.json` and the checks: clippy, tests (including `crates/wye/tests/e2e.rs`), fmt, deny, machete, source and installed desktop entry, installed D-Bus files, qmllint, the UI self-test, the extension manifests, module evaluation for both channels and nixfmt. Also the dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
 
 ## Design decisions
 
@@ -32,10 +31,9 @@ API in [dbus-api.md](dbus-api.md). KDE Plasma comes first.
 
 | Process | Binary | Bus name | Started by |
 |---------|--------|----------|------------|
-| Service | `wye service` (crate `wye` over the `wye-service` library) | `dev.soldunov.wye` | D-Bus activation (`SystemdService=wye.service`); at login, the unit's `WantedBy=graphical-session.target` when a Nix module installs it (`WYE_LOGIN_MANAGED=1`), else the XDG autostart entry when "Launch at login" is on; or the tray applet |
+| Service | `wye service` (crate `wye` over the `wye-service` library) | `dev.soldunov.wye` | D-Bus activation (`SystemdService=wye.service`); at login, the unit's `WantedBy=graphical-session.target` when a Nix module installs it (`WYE_LOGIN_MANAGED=1`), else the XDG autostart entry when "Launch at login" is on |
 | UI host | `wye-ui` (cxx-qt, Kirigami) | `dev.soldunov.wye.Ui` | D-Bus activation by the service (`SystemdService=wye-ui.service`, never at login); stays resident once started |
-| Plasma tray | plasmoid `dev.soldunov.wye` (pure QML) | none | plasmashell |
-| SNI tray | inside the service | ksni's own | the service, unless a tray host called `RegisterTray` (5 s grace on KDE) |
+| Tray | StatusNotifierItem inside the service | ksni's own | the service at start, on every desktop, unless an external tray host called `RegisterTray` |
 | Link handler fallback | `wye open %U` | none | launchers that do not honour `DBusActivatable` |
 
 Single instance: the service requests its name with `DoNotQueue` and exits with status 75
@@ -50,7 +48,7 @@ waits up to 300 ms for them. `advanced.held-keys` is read from the service's cac
 configuration.
 
 Structured data travels as JSON in `s` values (camelCase), described by the serde types in
-`wye-api`, because the QML applet parses JSON far more easily than nested D-Bus structs.
+`wye-api`, because QML frontends parse JSON far more easily than nested D-Bus structs.
 
 Inside the service each interface impl is written once in `crates/wye-service/src/bus/` and
 delegates every member to a function in `crates/wye-service/src/api/<topic>.rs`; each topic
@@ -248,35 +246,34 @@ alternative-browser key (IN-04). Without a watching provider, `Status` reports
 One model, `wye_core::tray::TrayMenu`, built in `crates/wye-service/src/api/tray.rs` from
 the configuration, the installed apps, the clipboard (TRAY-10), the default-browser
 registration (TRAY-18, ONB-11) and the history (TRAY-15), is published as the `Tray`
-property and rendered by every tray host. Hosts send back only the chosen item's ID
+property and rendered by the tray item and the `wye-ui` popup. Both send back only the chosen item's ID
 (`ActivateTrayItem`); `api/tray/action.rs` is the one place that turns an ID into a service
 call. Every topic that changes the menu announces `Tray`, and the service follows its own
 `PropertiesChanged` to keep its tray item in step.
 
-- **Plasma applet** (`frontends/plasma/dev.soldunov.wye`, pure QML, Plasma 6.4+, in the
-  system tray by default): `DaemonClient.qml` is its only D-Bus code. It calls
-  `RegisterTray("plasma-applet")` when it loads and whenever the service reappears (which
-  also starts the service through D-Bus activation), draws the icon from `Tray.icon` with
-  a warning emblem, and opens a native `PlasmaExtras.Menu` on a primary click, asking
-  `ClipboardHasUrl` first. The shortcut column is Qt's tab-separated text, so it shows on
-  every style (KEY-51: the accelerators are fixed). While the tray icon is off (TRAY-04)
-  or no service runs, the applet's status is Hidden: the tray moves it to its hidden items.
-  `MenuRequested` is ignored: the toggle-menu shortcut shows the `wye-ui` popup
-  (decision 4).
-- **StatusNotifierItem** (`platform/sni.rs`, ksni): `ItemIsMenu`, the same model as a
-  `DBusMenu` (one radio group, disabled headers, submenus, `Control`-style shortcuts),
-  `OverlayIconName` `emblem-warning` and `NeedsAttention` while Wye is not the default.
-  `AboutToShow` rebuilds the menu with a fresh clipboard state. It runs only while the
-  icon is visible and no tray host is registered; a host is forgotten when its bus
-  connection closes, and the item comes back. On KDE the service waits 5 s after start
-  for the applet before showing it.
+- **StatusNotifierItem** (`platform/sni.rs`, ksni): Wye's tray on every desktop, KDE
+  Plasma included. `Id` `dev.soldunov.wye`, `Title` and tooltip title "Wye", `Category`
+  `ApplicationStatus`, `ItemIsMenu` (a primary click opens the menu, TRAY-07). The icon is
+  `Tray.icon` (TRAY-02); `IconThemePath` is the package's own `share/icons` when the binary
+  runs from an installed package, so hosts find Wye's icons even off `XDG_DATA_DIRS`. While
+  Wye is not the default browser, `Status` is `NeedsAttention`, `OverlayIconName` is
+  `emblem-warning` and the tooltip says so (TRAY-18, ONB-11); otherwise the tooltip names
+  the primary browser. A middle click (`SecondaryActivate`) opens Settings (TRAY-19);
+  scrolling does nothing. The menu is the same model as a `DBusMenu`
+  (`platform/sni/menu.rs`): one radio group with `toggle-state`, disabled headers,
+  separators, the More submenu, `Control`-style shortcuts, and item icons by theme name
+  (an absolute PNG path goes as `icon-data`, since most menu hosts do not load paths).
+  `AboutToShow` rebuilds the menu with a fresh clipboard state (TRAY-10). The item runs
+  only while the icon is visible (TRAY-04), from the moment the service starts.
+- **External tray hosts** (decision 8): `RegisterTray` stays in the API for a host that
+  draws the tray itself (the GNOME Shell extension, or the Plasma applet earlier versions
+  shipped). While one is registered the item is hidden; a host is forgotten when it
+  unregisters or its bus connection closes, and the item comes back at once.
 
 The icons are `dev.soldunov.wye-symbolic` (GEN-02 "Wye") and
 `dev.soldunov.wye-picker-symbolic` (the picker glyph), generated by
-`data/icons/src/generate.py`. `nix/frontends.nix` stamps the applet's version and the
-default package installs it under `share/plasma/plasmoids`; the flake checks lint it,
-load it with KPackage and run its `DaemonClient` against a real `wye service` on a private
-bus (`frontends/plasma/tests/`).
+`data/icons/src/generate.py`. `crates/wye-service/tests/tray_sni.rs` reads the item's
+properties and menu on a private bus, the way a tray host does.
 
 ### Transform scripts (16-script-editor.md)
 
@@ -379,7 +376,7 @@ discovered browser (`wye_desktop::stand_in::choose`). The service notifies
 
 The flake builds the package (`packages.<system>.wye-git`, also `default`, `wye`) from its
 own source: binaries, data files, the D-Bus service files and systemd user unit with
-absolute paths, the Plasma applet under `share/plasma/plasmoids`, and the extension zips
+absolute paths, and the extension zips
 under `share/wye/extension`. `packages.<system>.wye-release` exists once `nix/release.json`
 records `{version, rev, narHash}`; it is the `default` package of that tag's own flake,
 fetched with the locked reference `github:psoldunov/wye/<rev>?narHash=<hash>` through

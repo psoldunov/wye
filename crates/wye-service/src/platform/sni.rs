@@ -1,37 +1,45 @@
-//! The `StatusNotifierItem` tray (TRAY-01 to TRAY-18 on hosts without the
-//! Plasma applet), through ksni.
+//! The `StatusNotifierItem` tray (TRAY-01 to TRAY-18), through ksni: Wye's
+//! tray on every desktop with a tray host, KDE Plasma included.
 //!
-//! The item is a menu (`ItemIsMenu`, TRAY-07): a primary click opens it. The
-//! icon is the `Tray` model's (TRAY-02, GEN-02), with a warning overlay while
-//! Wye is not the default browser (ONB-11). Opening the menu reports
-//! `AboutToShow` so the service can refresh the clipboard item (TRAY-10).
+//! The item is a menu (`ItemIsMenu`, TRAY-07): a primary click opens it. A
+//! middle click (`SecondaryActivate`) opens Settings (TRAY-19), the one thing
+//! worth a shortcut past the menu. The icon is the `Tray` model's (TRAY-02,
+//! GEN-02), with a warning overlay and `NeedsAttention` while Wye is not the
+//! default browser (TRAY-18, ONB-11); the tooltip names the primary browser.
+//! Opening the menu reports `AboutToShow` so the service can refresh the
+//! clipboard item (TRAY-10).
 
 pub mod menu;
 
-use std::time::Duration;
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use ksni::{Category, Status, ToolTip, TrayMethods as _};
 use tokio::sync::broadcast;
-use wye_api::tray::{TrayMenu, TrayOverlay};
+use wye_api::tray::{APP_ICON, TrayItemKind, TrayMenu, TrayOverlay};
+use wye_core::tray::ids;
 
 use super::{PlatformError, StatusNotifier, TrayEvent};
 
 /// Mechanism name in `Status.capabilities`.
 pub const MECHANISM: &str = "status-notifier-item";
 
-/// Decision 8: on KDE the Plasma applet usually registers within moments
-/// of login; the item waits this long for it.
-pub const KDE_GRACE: Duration = Duration::from_secs(5);
+/// The item's ID, stable across sessions: the app ID, so a tray host keeps
+/// the user's per-item settings (shown, hidden) between logins.
+pub const ITEM_ID: &str = "dev.soldunov.wye";
 
-/// The item's ID, stable across sessions.
-const ITEM_ID: &str = "dev.soldunov.wye";
-
-/// The item's title.
-const TITLE: &str = "Wye";
+/// The item's title, and the tooltip's.
+pub const TITLE: &str = "Wye";
 
 /// Emblem over the icon while Wye is not the default browser (ONB-11).
 pub const WARNING_OVERLAY: &str = "emblem-warning";
+
+/// Tooltip text while Wye is not the default browser (TRAY-18).
+pub const NOT_DEFAULT: &str = "Wye is not the default browser";
+
+/// Where the icon theme directory sits relative to the running binary in an
+/// installed package (`<prefix>/bin/wye`, `<prefix>/share/icons`).
+const ICONS_FROM_BIN: &str = "../share/icons";
 
 /// Buffer of the events channel.
 const EVENTS: usize = 16;
@@ -70,10 +78,6 @@ impl StatusNotifier for NoStatusNotifier {
         self.events.subscribe()
     }
 
-    fn grace(&self) -> Duration {
-        Duration::ZERO
-    }
-
     fn mechanism(&self) -> Option<&'static str> {
         None
     }
@@ -83,44 +87,48 @@ impl StatusNotifier for NoStatusNotifier {
 pub struct KsniNotifier {
     handle: tokio::sync::Mutex<Option<ksni::Handle<WyeTray>>>,
     events: broadcast::Sender<TrayEvent>,
-    grace: Duration,
+    icon_theme_path: String,
 }
 
 impl KsniNotifier {
-    /// A tray that waits `grace` at start for a tray host.
+    /// The tray item of this installation: icons are looked up in the
+    /// package's own `share/icons` too, when there is one.
     #[must_use]
-    pub fn new(grace: Duration) -> Self {
+    pub fn new() -> Self {
+        let icon_theme_path = std::env::current_exe()
+            .ok()
+            .and_then(|exe| installed_icons(&exe))
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default();
         Self {
             handle: tokio::sync::Mutex::new(None),
             events: broadcast::channel(EVENTS).0,
-            grace,
+            icon_theme_path,
         }
-    }
-
-    /// The tray for this session: [`KDE_GRACE`] when `XDG_CURRENT_DESKTOP`
-    /// names KDE, none otherwise.
-    #[must_use]
-    pub fn for_session() -> Self {
-        let desktops = std::env::var("XDG_CURRENT_DESKTOP").unwrap_or_default();
-        Self::new(grace_for(&desktops))
     }
 }
 
-/// How long to wait for a tray host on the desktops `XDG_CURRENT_DESKTOP`
-/// names.
+impl Default for KsniNotifier {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The icon theme directory of the package `exe` belongs to, when it holds
+/// Wye's own tray icon: tray hosts then find the icon even when the package
+/// is not on `XDG_DATA_DIRS` (`IconThemePath`).
 #[must_use]
-pub fn grace_for(current_desktops: &str) -> Duration {
-    let kde = current_desktops
-        .split(':')
-        .any(|desktop| desktop.eq_ignore_ascii_case("KDE"));
-    if kde { KDE_GRACE } else { Duration::ZERO }
+pub fn installed_icons(exe: &Path) -> Option<PathBuf> {
+    let icons = exe.parent()?.join(ICONS_FROM_BIN).canonicalize().ok()?;
+    let own = icons.join(format!("hicolor/symbolic/apps/{APP_ICON}.svg"));
+    own.is_file().then_some(icons)
 }
 
 impl std::fmt::Debug for KsniNotifier {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("KsniNotifier")
-            .field("grace", &self.grace)
+            .field("icon_theme_path", &self.icon_theme_path)
             .finish_non_exhaustive()
     }
 }
@@ -138,6 +146,7 @@ impl StatusNotifier for KsniNotifier {
         let tray = WyeTray {
             menu: menu.clone(),
             events: self.events.clone(),
+            icon_theme_path: self.icon_theme_path.clone(),
         };
         // A tray host that starts later (or restarts) still finds the item.
         let spawned = tray
@@ -162,10 +171,6 @@ impl StatusNotifier for KsniNotifier {
         self.events.subscribe()
     }
 
-    fn grace(&self) -> Duration {
-        self.grace
-    }
-
     fn mechanism(&self) -> Option<&'static str> {
         Some(MECHANISM)
     }
@@ -175,6 +180,7 @@ impl StatusNotifier for KsniNotifier {
 struct WyeTray {
     menu: TrayMenu,
     events: broadcast::Sender<TrayEvent>,
+    icon_theme_path: String,
 }
 
 impl WyeTray {
@@ -186,6 +192,20 @@ impl WyeTray {
         // Nobody listening means the service is shutting down.
         let _ = self.events.send(event);
     }
+}
+
+/// The tooltip's second line: the default-browser warning (TRAY-18), else
+/// the checked item of the "Primary Browser" radio group (TRAY-11).
+#[must_use]
+pub fn tool_tip_text(menu: &TrayMenu) -> String {
+    if menu.overlay == Some(TrayOverlay::Warning) {
+        return NOT_DEFAULT.to_owned();
+    }
+    menu.items
+        .iter()
+        .find(|item| item.kind == TrayItemKind::Radio && item.checked)
+        .map(|primary| format!("Primary browser: {}", primary.label))
+        .unwrap_or_default()
 }
 
 impl menu::Chooser for WyeTray {
@@ -218,6 +238,15 @@ impl ksni::Tray for WyeTray {
         }
     }
 
+    /// A middle click opens Settings (TRAY-19); the window is TRAY-16's.
+    fn secondary_activate(&mut self, _x: i32, _y: i32) {
+        self.send(TrayEvent::Activated(ids::SETTINGS.to_owned()));
+    }
+
+    fn icon_theme_path(&self) -> String {
+        self.icon_theme_path.clone()
+    }
+
     fn icon_name(&self) -> String {
         self.menu.icon.name().to_owned()
     }
@@ -236,12 +265,9 @@ impl ksni::Tray for WyeTray {
 
     fn tool_tip(&self) -> ToolTip {
         ToolTip {
+            icon_name: self.icon_name(),
             title: TITLE.to_owned(),
-            description: if self.warning() {
-                "Wye is not the default browser".to_owned()
-            } else {
-                String::new()
-            },
+            description: tool_tip_text(&self.menu),
             ..ToolTip::default()
         }
     }
@@ -257,14 +283,21 @@ impl ksni::Tray for WyeTray {
 
 #[cfg(test)]
 mod tests {
+    use wye_api::tray::TrayItem;
+
     use super::*;
 
-    #[test]
-    fn only_kde_waits_for_its_applet() {
-        assert_eq!(grace_for("KDE"), KDE_GRACE);
-        assert_eq!(grace_for("ubuntu:KDE"), KDE_GRACE);
-        assert_eq!(grace_for("GNOME"), Duration::ZERO);
-        assert_eq!(grace_for(""), Duration::ZERO);
+    fn radio(label: &str, checked: bool) -> TrayItem {
+        TrayItem {
+            id: format!("primary:{label}"),
+            kind: TrayItemKind::Radio,
+            label: label.to_owned(),
+            icon: None,
+            shortcut: None,
+            enabled: true,
+            checked,
+            children: Vec::new(),
+        }
     }
 
     #[tokio::test]
@@ -272,5 +305,44 @@ mod tests {
         let tray = NoStatusNotifier::new();
         assert!(tray.show(&TrayMenu::default()).await.is_err());
         assert_eq!(tray.mechanism(), None);
+    }
+
+    #[test]
+    fn the_tool_tip_names_the_primary_browser_tray_11() {
+        let menu = TrayMenu {
+            items: vec![radio("Picker", false), radio("Firefox", true)],
+            ..TrayMenu::default()
+        };
+        assert_eq!(tool_tip_text(&menu), "Primary browser: Firefox");
+        assert_eq!(tool_tip_text(&TrayMenu::default()), "");
+    }
+
+    #[test]
+    fn the_tool_tip_warns_while_wye_is_not_the_default_tray_18() {
+        let menu = TrayMenu {
+            overlay: Some(TrayOverlay::Warning),
+            items: vec![radio("Picker", true)],
+            ..TrayMenu::default()
+        };
+        assert_eq!(tool_tip_text(&menu), NOT_DEFAULT);
+    }
+
+    #[test]
+    fn the_package_icons_are_found_next_to_the_binary() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let bin = root.path().join("bin");
+        let apps = root.path().join("share/icons/hicolor/symbolic/apps");
+        std::fs::create_dir_all(&bin).expect("bin");
+        let exe = bin.join("wye");
+        assert_eq!(installed_icons(&exe), None, "no share/icons");
+        std::fs::create_dir_all(&apps).expect("icons");
+        assert_eq!(installed_icons(&exe), None, "no Wye icon");
+        std::fs::write(apps.join(format!("{APP_ICON}.svg")), "<svg/>").expect("icon");
+        let icons = root
+            .path()
+            .join("share/icons")
+            .canonicalize()
+            .expect("canonical");
+        assert_eq!(installed_icons(&exe), Some(icons));
     }
 }

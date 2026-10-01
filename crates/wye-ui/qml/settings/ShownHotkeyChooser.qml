@@ -40,6 +40,10 @@ QQC2.ComboBox {
     displayText: hotkeyLabel
     enabled: perBrowser
     model: [none].concat(choices.map(choice => choice.label), [other])
+    // The list is a window of its own, so it is never cut off by the sheet or the window.
+    popup.popupType: QQC2.Popup.Window
+    // Scrolling the list over the box must not change the hotkey.
+    wheelEnabled: false
 
     onActivated: index => {
         if (index === 0) {
@@ -50,6 +54,25 @@ QQC2.ComboBox {
             SettingsBackend.shownSetHotkey(row.key, choices[index - 1].key);
         }
         combo.currentIndex = -1;
+    }
+
+    // While the list is open, Escape closes it and not the sheet (SET-07).
+    Connections {
+        function onOpened() {
+            SettingsBackend.popupOpened();
+        }
+
+        function onClosed() {
+            SettingsBackend.popupClosed();
+        }
+
+        target: combo.popup
+    }
+
+    Component.onDestruction: {
+        if (combo.popup.opened) {
+            SettingsBackend.popupClosed();
+        }
     }
 
     // "Other Key…": press any single key.

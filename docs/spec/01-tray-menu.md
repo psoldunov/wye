@@ -15,6 +15,7 @@ primary-browser choice, the clipboard action and Settings.
 | TRAY-06 | The icon shows a pressed/highlighted state while its menu is open. | Specified |
 | TRAY-07 | A primary click on the icon opens the menu. | Specified |
 | TRAY-08 | The **Toggle menu** global shortcut ([ADV-05](10-advanced.md#keyboard-shortcuts)) opens and closes the menu. | Specified (setting) |
+| TRAY-19 | A middle click on the icon opens the Settings window, where the tray host supports it (StatusNotifierItem `SecondaryActivate`). | Proposed |
 
 ## Menu layout
 

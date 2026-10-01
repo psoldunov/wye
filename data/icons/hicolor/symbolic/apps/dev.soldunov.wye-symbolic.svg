@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
   <!-- Wye symbolic icon: the app glyph as fills only, so GTK and Plasma can recolour it. -->
   <style id="current-color-scheme" type="text/css">.ColorScheme-Text { color: #2e3436; }</style>
-  <path class="ColorScheme-Text" fill="currentColor" d="M7 14V12C7 10.22 8.17 7.07 9.33 5.72L12.24 2.35A1 1 0 0 1 13.76 3.65L10.85 7.03C9.92 8.1 9 10.58 9 12V14A1 1 0 0 1 7 14ZM7 12C7 10.58 6.08 8.1 5.15 7.03L2.24 3.65A1 1 0 0 1 3.76 2.35L6.67 5.72C7.83 7.07 9 10.22 9 12A1 1 0 0 1 7 12Z"/>
+  <path class="ColorScheme-Text" fill="currentColor" d="M7.2 12.8V11.2C7.2 9.78 8.14 7.26 9.07 6.18L11.39 3.48A0.8 0.8 0 0 1 12.61 4.52L10.28 7.22C9.54 8.08 8.8 10.06 8.8 11.2V12.8A0.8 0.8 0 0 1 7.2 12.8ZM7.2 11.2C7.2 10.06 6.46 8.08 5.72 7.22L3.39 4.52A0.8 0.8 0 0 1 4.61 3.48L6.93 6.18C7.86 7.26 8.8 9.78 8.8 11.2A0.8 0.8 0 0 1 7.2 11.2Z"/>
 </svg>

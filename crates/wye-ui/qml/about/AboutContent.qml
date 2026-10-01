@@ -1,10 +1,11 @@
-// AboutContent (DLG-ABT-01, DLG-ABT-02): the About page, laid out like Kirigami Addons' `FormCard.AboutPage`: Wye's icon,
-// name, version and description; copyright; the licence (its text opens in a dialog); homepage and issue tracker; authors and
-// credits; then the Troubleshooting section. It is built from the same FormCard delegates inside WyeGroupCard because
-// `AboutPage` needs the `i18nd` functions KDE's `KLocalizedContext` installs, which this host does not have, and because
-// FormCards placed straight into a ScrollablePage never settle their width here (each card's inset depends on the width the
-// layout gives it, and the layout's width depends on the cards); WyeGroupCard sizes the card from its own width. Links go
-// through Wye (BLK-17).
+// AboutContent (DLG-ABT-01, DLG-ABT-02): the About page, laid out like Kirigami Addons' `FormCard.AboutPage`: a card with
+// Wye's icon, name, version and description and the copyright under them; the licence (its text opens in a dialog); homepage
+// and issue tracker; authors and credits; then the Troubleshooting section with its Copy button. It is built from the same
+// FormCard delegates inside AboutSection because `AboutPage` needs the `i18nd` functions KDE's `KLocalizedContext` installs,
+// which this host does not have, and because FormCards placed straight into a ScrollablePage never settle their width here
+// (each card's inset depends on the width the layout gives it, and the layout's width depends on the cards); AboutSection
+// sizes the card from its own width. The page has no header of its own: the window's title already says "About Wye". Links
+// go through Wye (BLK-17).
 //
 // API
 //   aboutData: var         the shape of KAboutData (crates/wye-ui/src/about/info.rs): displayName, version, shortDescription,
@@ -27,11 +28,13 @@ Kirigami.Page {
     property var aboutData: ({})
     property string troubleshooting
     property string error
+    readonly property string displayName: page.aboutData.displayName ?? "Wye"
     signal linkRequested(string url)
     signal copyRequested(string text)
 
+    globalToolBarStyle: Kirigami.ApplicationHeaderStyle.None
     padding: 0
-    title: qsTr("About %1").arg(page.aboutData.displayName ?? "Wye")
+    title: qsTr("About %1").arg(page.displayName)
 
     QQC2.ScrollView {
         id: scroll
@@ -43,47 +46,65 @@ Kirigami.Page {
             spacing: Kirigami.Units.largeSpacing
             width: scroll.availableWidth
 
-            // The name, version and one-line description (DLG-ABT-01).
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.margins: Kirigami.Units.gridUnit
-                spacing: Kirigami.Units.smallSpacing
+            // The name, version and one-line description, then the copyright (DLG-ABT-01).
+            AboutSection {
+                Layout.topMargin: Kirigami.Units.largeSpacing * 4
 
-                Kirigami.Icon {
-                    Layout.alignment: Qt.AlignHCenter
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.enormous
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.enormous
-                    source: page.aboutData.desktopFileName ?? "dev.soldunov.wye"
+                FormCard.AbstractFormDelegate {
+                    Accessible.name: qsTr("%1 %2, %3").arg(page.displayName).arg(page.aboutData.version ?? "").arg(page.aboutData.shortDescription ?? "")
+                    Layout.fillWidth: true
+                    background: null
+                    focusPolicy: Qt.NoFocus
+                    hoverEnabled: false
+
+                    contentItem: RowLayout {
+                        spacing: Kirigami.Units.largeSpacing * 2
+
+                        Kirigami.Icon {
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.huge
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.huge
+                            source: page.aboutData.desktopFileName ?? "dev.soldunov.wye"
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Kirigami.Heading {
+                                Layout.fillWidth: true
+                                text: (page.displayName + " " + (page.aboutData.version ?? "")).trim()
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Kirigami.Heading {
+                                Layout.fillWidth: true
+                                level: 3
+                                text: page.aboutData.shortDescription ?? ""
+                                type: Kirigami.Heading.Type.Secondary
+                                visible: text !== ""
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
                 }
 
-                Kirigami.Heading {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: (page.aboutData.displayName ?? "Wye") + " " + (page.aboutData.version ?? "")
-                    wrapMode: Text.WordWrap
+                FormCard.FormDelegateSeparator {
+                    visible: copyright.description !== ""
                 }
 
-                Kirigami.Heading {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    level: 3
-                    text: page.aboutData.shortDescription ?? ""
-                    type: Kirigami.Heading.Type.Secondary
-                    wrapMode: Text.WordWrap
-                }
+                FormCard.FormTextDelegate {
+                    id: copyright
 
-                QQC2.Label {
-                    Layout.fillWidth: true
-                    horizontalAlignment: Text.AlignHCenter
-                    text: page.aboutData.copyrightStatement ?? ""
-                    visible: text !== ""
-                    wrapMode: Text.WordWrap
+                    description: page.aboutData.copyrightStatement ?? ""
+                    text: qsTr("Copyright")
+                    visible: description !== ""
                 }
             }
 
-            // The licence: one row per licence; its text opens in a dialog.
-            WyeGroupCard {
-                title: qsTr("License")
+            // The licence: one row per licence; its text opens in a dialog. The SPDX identifier is not repeated under the
+            // name ("MIT License" / "MIT"), as KDE's own About page does not.
+            AboutSection {
+                title: (page.aboutData.licenses ?? []).length > 1 ? qsTr("Licenses") : qsTr("License")
                 visible: (page.aboutData.licenses ?? []).length > 0
 
                 Repeater {
@@ -92,7 +113,6 @@ Kirigami.Page {
                     FormCard.FormButtonDelegate {
                         required property var modelData
 
-                        description: modelData.spdx
                         text: modelData.name
 
                         onClicked: {
@@ -105,90 +125,101 @@ Kirigami.Page {
             }
 
             // The homepage and the issue tracker (DLG-ABT-01).
-            WyeGroupCard {
+            AboutSection {
+                // Not `homepage.visible`: a child of a hidden item reports itself hidden, so that would never turn true.
+                visible: (page.aboutData.homepage ?? "") !== "" || (page.aboutData.bugAddress ?? "") !== ""
+
                 FormCard.FormButtonDelegate {
+                    id: homepage
+
                     description: page.aboutData.homepage ?? ""
                     icon.name: "globe-symbolic"
                     text: qsTr("Homepage")
-                    visible: (page.aboutData.homepage ?? "") !== ""
+                    visible: description !== ""
 
                     onClicked: page.linkRequested(page.aboutData.homepage)
                 }
 
+                FormCard.FormDelegateSeparator {
+                    visible: homepage.description !== "" && bugs.description !== ""
+                }
+
+                // Breeze's `tools-report-bug` is a pixel-art face that reads as a missing image at fractional scales; the
+                // flag says "report" in the same monochrome style as the globe above it.
                 FormCard.FormButtonDelegate {
+                    id: bugs
+
                     description: page.aboutData.bugAddress ?? ""
-                    icon.name: "tools-report-bug-symbolic"
+                    icon.name: "flag-symbolic"
                     text: qsTr("Report a Bug")
-                    visible: (page.aboutData.bugAddress ?? "") !== ""
+                    visible: description !== ""
 
                     onClicked: page.linkRequested(page.aboutData.bugAddress)
                 }
             }
 
-            WyeGroupCard {
+            AboutSection {
                 title: qsTr("Authors")
                 visible: (page.aboutData.authors ?? []).length > 0
 
                 Repeater {
                     model: page.aboutData.authors ?? []
 
-                    FormCard.FormButtonDelegate {
-                        required property var modelData
-
-                        description: modelData.task
-                        enabled: (modelData.webAddress ?? "") !== ""
-                        text: modelData.name
-
-                        onClicked: page.linkRequested(modelData.webAddress)
+                    AboutPerson {
+                        onLinkRequested: url => page.linkRequested(url)
                     }
                 }
             }
 
-            WyeGroupCard {
+            AboutSection {
                 title: qsTr("Credits")
                 visible: (page.aboutData.credits ?? []).length > 0
 
                 Repeater {
                     model: page.aboutData.credits ?? []
 
-                    FormCard.FormButtonDelegate {
-                        required property var modelData
-
-                        description: modelData.task
-                        enabled: (modelData.webAddress ?? "") !== ""
-                        text: modelData.name
-
-                        onClicked: page.linkRequested(modelData.webAddress)
+                    AboutPerson {
+                        onLinkRequested: url => page.linkRequested(url)
                     }
                 }
             }
 
             // DLG-ABT-02: what Wye detected in this session, one fact per line, and a button that copies it for bug reports.
-            WyeGroupCard {
+            AboutSection {
+                Layout.bottomMargin: Kirigami.Units.largeSpacing * 2
                 title: qsTr("Troubleshooting")
+
+                actions: Kirigami.Action {
+                    enabled: page.troubleshooting !== ""
+                    icon.name: "edit-copy-symbolic"
+                    text: qsTr("Copy")
+                    tooltip: qsTr("Copy the troubleshooting information for a bug report")
+
+                    onTriggered: page.copyRequested(page.troubleshooting)
+                }
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
+                    Layout.margins: Kirigami.Units.largeSpacing
                     text: page.error
                     type: Kirigami.MessageType.Error
                     visible: page.error !== ""
                 }
 
-                Kirigami.SelectableLabel {
+                FormCard.AbstractFormDelegate {
                     Layout.fillWidth: true
-                    Layout.margins: Kirigami.Units.largeSpacing
-                    font.family: "monospace"
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    text: page.troubleshooting !== "" ? page.troubleshooting : page.error !== "" ? qsTr("Not available.") : qsTr("Reading what Wye detected…")
-                    wrapMode: Text.WrapAtWordBoundaryOrAnywhere
-                }
+                    background: null
+                    focusPolicy: Qt.NoFocus
+                    hoverEnabled: false
 
-                FormCard.FormButtonDelegate {
-                    enabled: page.troubleshooting !== ""
-                    icon.name: "edit-copy-symbolic"
-                    text: qsTr("Copy")
-
-                    onClicked: page.copyRequested(page.troubleshooting)
+                    contentItem: Kirigami.SelectableLabel {
+                        Accessible.name: qsTr("Troubleshooting information")
+                        color: page.troubleshooting !== "" ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
+                        font.family: Kirigami.Theme.fixedWidthFont.family
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        text: page.troubleshooting !== "" ? page.troubleshooting.trim() : page.error !== "" ? qsTr("Not available.") : qsTr("Reading what Wye detected…")
+                        wrapMode: Text.WrapAtWordBoundaryOrAnywhere
+                    }
                 }
             }
         }

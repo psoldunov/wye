@@ -37,27 +37,23 @@
           # the dev shell.
           frontends = pkgs.callPackage ./nix/frontends.nix {
             inherit (wye.package) version;
-            qmlModules = wye.qt.plasmaQmlModules;
           };
-          # The binaries, data files, the Plasma applet and the browser
-          # extension in one tree. The
-          # applet is copied, not linked: KPackage refuses a plasmoid whose
-          # files are symlinks, and the applet would never load.
+          # The binaries, data files and the browser extension in one tree.
+          # The tray is the service's own StatusNotifierItem; no Plasma applet
+          # ships any more.
           installed =
             pkgs.runCommand "wye-${wye.package.version}"
               {
                 inherit (wye.package) meta;
                 passthru = {
                   unwrapped = wye.package;
-                  inherit (frontends) plasmoid extension;
+                  inherit (frontends) extension;
                 };
               }
               ''
                 mkdir -p $out
                 cp -rs ${wye.package}/. $out/
                 chmod -R u+w $out
-                mkdir -p $out/share/plasma
-                cp -r ${frontends.plasmoid}/share/plasma/plasmoids $out/share/plasma/
                 cp -r ${frontends.extension}/share/wye $out/share/
               '';
         in
@@ -82,7 +78,7 @@
           default = installed;
           wye = installed;
           wye-git = installed;
-          inherit (frontends) plasmoid extension;
+          inherit (frontends) extension;
         }
         # The latest release, built by that release's own flake so an old
         # release never meets newer packaging. Absent until one is recorded in
@@ -181,6 +177,8 @@
                 # Every icon the package installs.
                 for icon in scalable 16x16 24x24 32x32; do test -f ${wye.package}/share/icons/hicolor/$icon/apps/dev.soldunov.wye.svg; done
                 test -f ${wye.package}/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg
+                # The tray icon while the primary browser is the Picker (TRAY-02).
+                test -f ${wye.package}/share/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg
                 touch $out
               '';
           # The D-Bus activation files and the systemd user unit the package
@@ -255,7 +253,6 @@
                 ${wye.package}/bin/wye-ui --self-test
                 touch $out
               '';
-          plasmoid-lint = frontends.lint;
           # Both browser families' extensions, unpacked and zipped, with the
           # manifest the family needs (BEXT-01, BEXT-02).
           extension-manifests =
@@ -276,52 +273,6 @@
                   test -f $dir/$family/icons/wye-128.png
                   unzip -Z1 $dir/wye-extension-$family.zip | grep -qx manifest.json
                 done
-                touch $out
-              '';
-          # The applet as installed: KPackage has to find it by plugin id and
-          # hand back a real path; a symlinked package shows with an empty
-          # path, which is how it fails to load in the shell.
-          plasmoid-loads =
-            pkgs.runCommand "wye-plasmoid-loads"
-              {
-                nativeBuildInputs = [
-                  pkgs.kdePackages.kpackage
-                  pkgs.jq
-                ];
-              }
-              ''
-                share=${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/share
-                package=$share/plasma/plasmoids/${frontends.plasmoidId}
-                if [ -n "$(find "$package" -type l -print -quit)" ]; then
-                  echo "the installed plasmoid contains symlinks; KPackage rejects those:" >&2
-                  find "$package" -type l >&2
-                  exit 1
-                fi
-                jq -e '.KPlugin.Version == "${wye.package.version}"' "$package/metadata.json" > /dev/null
-                test -f $share/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg
-                export HOME=$TMPDIR
-                export XDG_DATA_DIRS=$share
-                export QT_QPA_PLATFORM=offscreen
-                export QT_PLUGIN_PATH=${pkgs.kdePackages.libplasma}/${pkgs.qt6.qtbase.qtPluginPrefix}
-                kpackagetool6 --type Plasma/Applet --show ${frontends.plasmoidId} | tee info.txt
-                grep -q "Plugin     : ${frontends.plasmoidId}" info.txt
-                grep -qE "^  Path       : .*/${frontends.plasmoidId}/?$" info.txt
-                touch $out
-              '';
-          # The applet's DaemonClient against a real `wye service` on a
-          # private bus, offscreen (frontends/plasma/tests/dbus-smoke.sh).
-          plasmoid-dbus-smoke =
-            pkgs.runCommand "wye-plasmoid-dbus-smoke"
-              {
-                nativeBuildInputs = [
-                  sandboxDbusDaemon
-                  pkgs.kdePackages.qtdeclarative
-                ];
-                WYE_PLASMA_QML_PATH = frontends.qmlImportPath;
-                LANG = "C.UTF-8";
-              }
-              ''
-                bash ${./frontends/plasma}/tests/dbus-smoke.sh ${wye.package}/bin/wye
                 touch $out
               '';
           # Both modules evaluated as a user's configuration would, with the
@@ -365,15 +316,12 @@
               ])
               # qmllint and the other Qt tools come with qt.env.
               ++ qt.nativeBuildInputs
-              ++ [
-                qt.qmllint
-                # `qml` for the applet's smoke and render scripts.
-                pkgs.kdePackages.qtdeclarative
-              ];
+              ++ [ qt.qmllint ];
             inherit (qt) buildInputs;
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
-            # frontends/plasma/tests/qml-env.sh
-            WYE_PLASMA_QML_PATH = qt.plasmaQmlPath;
+            # `wye-ui --self-test --snapshots` loads the `kde` platform theme
+            # from here: the desktop's copy is built against another Qt.
+            WYE_SNAPSHOT_QT_PLUGIN_PATH = "${pkgs.kdePackages.plasma-integration}/${pkgs.qt6.qtbase.qtPluginPrefix}";
             # Debug builds compile the cxx-qt C++ without -O, where
             # _FORTIFY_SOURCE only prints a warning per file.
             hardeningDisable = [ "fortify" ];

@@ -6,7 +6,7 @@ use serde_json::Value;
 use wye_api::Error;
 use wye_api::apps::AppList;
 use wye_api::json;
-use wye_api::services::ServiceList;
+use wye_api::services::{ServiceInfo, ServiceList};
 use wye_api::status::Status;
 use wye_api::targets::TargetInventory;
 use wye_core::Config;
@@ -38,7 +38,8 @@ impl Snapshot {
             config: json::decode("configuration", text)?,
             revision,
             ..self.clone()
-        })
+        }
+        .with_service_targets())
     }
 
     /// Read the `Status` property.
@@ -63,7 +64,8 @@ impl Snapshot {
             targets: json::decode("targets", targets)?,
             services: json::decode("services", services)?,
             ..self.clone()
-        })
+        }
+        .with_service_targets())
     }
 
     /// The configuration after `patch`, with the revision the service
@@ -75,6 +77,39 @@ impl Snapshot {
             config: merge_patch::apply(&self.config, patch),
             revision,
             ..self.clone()
+        }
+        .with_service_targets()
+    }
+
+    /// The services with the target the configuration maps each one to
+    /// (`apps.<id>`, absent for Default: APP-04, APP-06). `GetServices`
+    /// reports the same, but it is read again only when the inventory
+    /// revision moves: without this, a row on the Apps page kept its old
+    /// target after a change until the window was reopened. Before
+    /// `GetConfig` answers (or when it failed) there is no configuration
+    /// to read, and each service keeps the target `GetServices` gave it.
+    #[must_use]
+    pub fn with_service_targets(self) -> Self {
+        if !self.config.is_object() {
+            return self;
+        }
+        let apps = self.config.get("apps").and_then(Value::as_object);
+        let services = self
+            .services
+            .services
+            .iter()
+            .map(|service| ServiceInfo {
+                target: apps
+                    .and_then(|apps| apps.get(&service.id))
+                    .filter(|target| !target.is_null())
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!({"default": true})),
+                ..service.clone()
+            })
+            .collect();
+        Self {
+            services: ServiceList { services },
+            ..self
         }
     }
 
@@ -251,6 +286,63 @@ mod tests {
                 .expect("status")
                 .held_keys_available()
         );
+    }
+
+    #[test]
+    fn a_service_follows_its_mapping_at_once() {
+        // APP-04, APP-06: the Apps page row shows the new target without a
+        // new `GetServices`; Default is not stored, and an ID with a dot is
+        // one key.
+        let services = json!({"services": [
+            {"id": "discord", "name": "Discord", "target": {"default": true}},
+            {"id": "x.com", "name": "X", "target": {"app": "firefox.desktop"}}
+        ]})
+        .to_string();
+        let base = snapshot()
+            .with_inventory(r#"{"targets": []}"#, &services)
+            .expect("inventory");
+        assert_eq!(base.services.services[1].target, json!({"default": true}));
+        let mapped = base.with_patch(
+            &json!({"apps": {"discord": {"app": "com.discordapp.Discord.desktop"}, "x.com": {"private": "firefox.desktop"}}}),
+            4,
+        );
+        assert_eq!(
+            mapped.services.services[0].target,
+            json!({"app": "com.discordapp.Discord.desktop"})
+        );
+        assert_eq!(
+            mapped.services.services[1].target,
+            json!({"private": "firefox.desktop"})
+        );
+        let back = mapped.with_patch(&json!({"apps": {"discord": null}}), 5);
+        assert_eq!(back.services.services[0].target, json!({"default": true}));
+        let reread = back
+            .with_config(r#"{"apps": {"discord": {"app": "vesktop.desktop"}}}"#, 6)
+            .expect("config");
+        assert_eq!(
+            reread.services.services[0].target,
+            json!({"app": "vesktop.desktop"})
+        );
+    }
+
+    #[test]
+    fn a_service_keeps_its_own_target_without_a_configuration() {
+        // APP-04: before `GetConfig` answers, or when it failed, the
+        // configuration is not an object; `GetServices` is all there is.
+        let services = json!({"services": [
+            {"id": "discord", "name": "Discord", "target": {"app": "vesktop.desktop"}}
+        ]})
+        .to_string();
+        let early = Snapshot::default()
+            .with_inventory(r#"{"targets": []}"#, &services)
+            .expect("inventory");
+        assert_eq!(early.config, Value::Null);
+        assert_eq!(
+            early.services.services[0].target,
+            json!({"app": "vesktop.desktop"})
+        );
+        let loaded = early.with_config("{}", 1).expect("config");
+        assert_eq!(loaded.services.services[0].target, json!({"default": true}));
     }
 
     #[test]

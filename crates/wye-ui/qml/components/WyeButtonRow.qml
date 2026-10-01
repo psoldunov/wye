@@ -10,6 +10,8 @@
 //   path: string           config key path the switch saves to; empty: only the signal
 //   switched(bool on)      the user flipped the switch
 //   buttonEnabled: bool    the button alone can be disabled (for example "Configure…" while its switch is off)
+//   buttonHighlighted: bool  the button is the action the row suggests ("Make Default"): drawn as a default button, in
+//                          the accent colour (BLK-05)
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as QQC2
@@ -21,6 +23,7 @@ WyeRow {
     property string buttonText
     property string buttonIcon
     property bool buttonEnabled: true
+    property bool buttonHighlighted: false
     property bool hasSwitch: false
     property bool isOn: false
     property string path
@@ -43,7 +46,12 @@ WyeRow {
     }
 
     QQC2.Button {
+        Accessible.name: row.buttonText
         enabled: row.buttonEnabled
+        // qqc2-desktop-style draws the accent-coloured default look only for a default button; `highlighted` alone
+        // looks like keyboard focus.
+        Accessible.defaultButton: row.buttonHighlighted
+        highlighted: row.buttonHighlighted
         icon.name: row.buttonIcon
         text: row.buttonText
         onClicked: row.activated()

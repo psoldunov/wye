@@ -9,11 +9,13 @@
 //   saveRequested(int index, var rule)     Save: `index` is -1 for a new rule (RUL-20)
 //   deleteRequested(int index)             Delete Rule (RUL-28)
 //   testRequested(string url)              Test… (RUL-19): open the tester with this link
+//   showHelp()                             open the rules help (RUL-19)
 pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
+import org.kde.kirigamiaddons.formcard as FormCard
 import dev.soldunov.wye.ui
 
 WyeSheet {
@@ -36,10 +38,38 @@ WyeSheet {
     property bool transform: false
     // Bumped on every change, so `checked` is worked out again.
     property int revision: 0
+    // RUL-18: the user has changed something since the sheet opened. A new rule is incomplete by nature, so the reason
+    // Save is disabled waits for the first edit rather than greeting the user; an existing rule's shows at once.
+    property bool touched: false
 
     readonly property var checked: sheet.revision >= 0 ? JSON.parse(RulesBackend.check(JSON.stringify(sheet.compose()), SettingsBackend.configJson)) : ({})
     readonly property bool targetIsDefault: sheet.target["default"] === true || sheet.target["picker"] === true
     readonly property bool helpSeen: SettingsBackend.statusJson !== "" && (JSON.parse(SettingsBackend.statusJson).uiState?.helpArrowSeen ?? false)
+    // RUL-18: why Save is disabled, in words; empty when the rule can be saved. A matcher's own error shows under it.
+    readonly property string blocker: {
+        const check = sheet.checked;
+        if (!sheet.editable || !sheet.touched || (check.valid ?? false)) {
+            return "";
+        }
+        if ((check.error ?? "") !== "") {
+            return check.error;
+        }
+        const parts = [];
+        if (check.nameMissing) {
+            parts.push(qsTr("Give the rule a name."));
+        }
+        if (check.noCondition) {
+            parts.push(qsTr("Add a URL matcher, a source app or held keys."));
+        }
+        const errors = check.matcherErrors ?? [];
+        const empty = errors.some((error, index) => error !== "" && index < matchers.count && matchers.get(index).pattern === "");
+        if (empty) {
+            parts.push(qsTr("Fill in or remove the empty URL matcher."));
+        } else if (errors.some(error => error !== "")) {
+            parts.push(qsTr("Correct the URL matcher marked below."));
+        }
+        return parts.join(" ");
+    }
 
     signal saveRequested(int index, var rule)
     signal deleteRequested(int index)
@@ -88,11 +118,12 @@ WyeSheet {
                 "pattern": matcher.pattern ?? ""
             }));
         nameField.text = name;
-        changed();
+        revision += 1;
     }
 
     function openNew(argument: string) {
         ruleIndex = -1;
+        touched = false;
         load(JSON.parse(RulesBackend.newDraft(SettingsBackend.configJson, argument)));
         open();
         nameField.forceActiveFocus();
@@ -104,12 +135,25 @@ WyeSheet {
             return;
         }
         ruleIndex = index;
+        touched = true;
         load(JSON.parse(text));
         open();
         nameField.forceActiveFocus();
+        // A long name shows from its start, not scrolled to the cursor at its end.
+        nameField.cursorPosition = 0;
     }
 
+    // Open the rules help (RUL-19) without the button: the self-test's "rules-help" sheet.
+    function showHelp() {
+        helpDialog.open();
+    }
+
+    // The width of the Name field and the "Open in" box (RUL-12).
+    readonly property real controlWidth: Kirigami.Units.gridUnit * 16
+
+    // Every edit the user makes comes through here.
     function changed() {
+        touched = true;
         revision += 1;
     }
 
@@ -120,9 +164,11 @@ WyeSheet {
     }
 
     title: ruleIndex < 0 ? qsTr("New Rule") : qsTr("Edit Rule")
-    sheetWidth: Kirigami.Units.gridUnit * 27
+    // About as large as the settings window (08-rules.md, "Rule editor sheet"); WyeSheet keeps it inside the window.
+    sheetWidth: Kirigami.Units.gridUnit * 32
     note: qsTr("If you specify both types, at least one of the URL matchers AND one of the source apps must match.")
     primaryText: qsTr("Save")
+    primaryIcon: "document-save"
     primaryEnabled: sheet.editable && (sheet.checked.valid ?? false)
     secondaryText: qsTr("Cancel")
 
@@ -134,10 +180,13 @@ WyeSheet {
 
     // RUL-19: help, the first-use arrow pointing at it, and Test….
     footerLeading: RowLayout {
+        spacing: Kirigami.Units.smallSpacing
+
         QQC2.ToolButton {
             display: QQC2.AbstractButton.IconOnly
-            icon.name: "help-contextual"
+            icon.name: "help-contextual-symbolic"
             text: qsTr("How Rules Work")
+            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
             QQC2.ToolTip.text: text
             QQC2.ToolTip.visible: hovered
             onClicked: {
@@ -158,7 +207,11 @@ WyeSheet {
             source: "arrow-left"
         }
         QQC2.Button {
+            icon.name: "system-run-symbolic"
             text: qsTr("Test…")
+            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+            QQC2.ToolTip.text: qsTr("Open the rule tester with a link this rule's first URL matcher matches")
+            QQC2.ToolTip.visible: hovered
             onClicked: sheet.testRequested(RulesBackend.testUrl(JSON.stringify(sheet.compose())))
         }
     }
@@ -182,8 +235,20 @@ WyeSheet {
     // RUL-11
     WyeCallout {
         Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.largeSpacing
         calloutId: "rules-order"
         text: qsTr("Rules are matched in order from top to bottom of the list.") + "<br><br>" + qsTr("The scheme (<code>https://</code>) and <code>www.</code> are removed from the URL before matching, so you do not need to include those in the “Match” field.") + "<br><br>" + qsTr("Click the (?) button for more info.")
+    }
+
+    // RUL-18: what is missing before Save works.
+    Kirigami.InlineMessage {
+        Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.smallSpacing
+        Layout.leftMargin: Kirigami.Units.largeSpacing
+        Layout.rightMargin: Kirigami.Units.largeSpacing
+        type: Kirigami.MessageType.Information
+        visible: sheet.blocker !== ""
+        text: sheet.blocker
     }
 
     // RUL-12
@@ -196,8 +261,8 @@ WyeSheet {
             QQC2.TextField {
                 id: nameField
 
-                Layout.preferredWidth: Kirigami.Units.gridUnit * 12
-                horizontalAlignment: TextInput.AlignRight
+                // The same width as the "Open in" box below, so the two trailing controls line up.
+                Layout.preferredWidth: sheet.controlWidth
                 placeholderText: qsTr("Required")
                 Accessible.name: qsTr("Name")
                 onTextEdited: {
@@ -208,6 +273,7 @@ WyeSheet {
         }
 
         WyeTargetRow {
+            controlWidth: sheet.controlWidth
             title: qsTr("Open in")
             surface: "rule"
             current: sheet.target
@@ -279,34 +345,54 @@ WyeSheet {
         Repeater {
             model: JSON.parse(RulesBackend.sourceRows(JSON.stringify(sheet.sources), SettingsBackend.offline ? SettingsBackend.fixtureAppsJson : RulesBackend.appsJson))
 
-            delegate: RowLayout {
+            // A card row like WyeRow: its padding, the inset hairline above every row but the first, no hover.
+            delegate: FormCard.AbstractFormDelegate {
                 id: sourceRow
 
                 required property var modelData
 
-                Layout.fillWidth: true
-                Layout.margins: Kirigami.Units.smallSpacing
+                hoverEnabled: false
+                focusPolicy: Qt.NoFocus
+                background: Item {}
+                Accessible.name: sourceRow.modelData.name
 
-                Kirigami.Icon {
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                    source: sourceRow.modelData.icon !== "" ? sourceRow.modelData.icon : "application-x-executable"
+                Kirigami.Separator {
+                    anchors {
+                        top: parent.top
+                        left: parent.left
+                        right: parent.right
+                        leftMargin: sourceRow.leftPadding
+                        rightMargin: sourceRow.rightPadding
+                    }
+                    visible: sourceRow.y > 0
                 }
-                QQC2.Label {
-                    Layout.fillWidth: true
-                    elide: Text.ElideRight
-                    text: sourceRow.modelData.name
-                }
-                QQC2.ToolButton {
-                    display: QQC2.AbstractButton.IconOnly
-                    enabled: sheet.editable
-                    icon.name: "list-remove"
-                    text: qsTr("Remove Source App")
-                    QQC2.ToolTip.text: text
-                    QQC2.ToolTip.visible: hovered
-                    onClicked: {
-                        sheet.sources = sheet.sources.filter(spec => spec !== sourceRow.modelData.spec);
-                        sheet.changed();
+
+                contentItem: RowLayout {
+                    spacing: Kirigami.Units.largeSpacing
+
+                    Kirigami.Icon {
+                        Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
+                        Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                        source: sourceRow.modelData.icon !== "" ? sourceRow.modelData.icon : "application-x-executable"
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        text: sourceRow.modelData.name
+                    }
+                    QQC2.ToolButton {
+                        display: QQC2.AbstractButton.IconOnly
+                        enabled: sheet.editable
+                        icon.name: "list-remove-symbolic"
+                        text: qsTr("Remove Source App")
+                        Accessible.name: qsTr("Remove “%1”").arg(sourceRow.modelData.name)
+                        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                        QQC2.ToolTip.text: text
+                        QQC2.ToolTip.visible: hovered
+                        onClicked: {
+                            sheet.sources = sheet.sources.filter(spec => spec !== sourceRow.modelData.spec);
+                            sheet.changed();
+                        }
                     }
                 }
             }
@@ -389,17 +475,45 @@ WyeSheet {
         }
     }
 
-    // RUL-28
+    // RUL-28, at the end of the body, lined up with the cards' right edge.
     QQC2.Button {
+        id: deleteRuleButton
+
         Layout.alignment: Qt.AlignRight
+        Layout.topMargin: Kirigami.Units.largeSpacing
+        Layout.rightMargin: Kirigami.Units.largeSpacing
         visible: sheet.ruleIndex >= 0
         enabled: sheet.editable
-        icon.name: "edit-delete"
-        text: qsTr("Delete Rule")
-        palette.buttonText: Kirigami.Theme.negativeTextColor
+        Accessible.name: qsTr("Delete Rule")
+        leftPadding: Kirigami.Units.largeSpacing
+        rightPadding: Kirigami.Units.largeSpacing
+        // Breeze draws a button's text from the style, not from `palette.buttonText`, so the content is drawn here (and the
+        // button has no `text` or `icon` of its own, which the style would draw as well).
+        contentItem: RowLayout {
+            spacing: Kirigami.Units.smallSpacing
+
+            Kirigami.Icon {
+                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                color: Kirigami.Theme.negativeTextColor
+                isMask: true
+                opacity: deleteRuleButton.enabled ? 1 : 0.5
+                source: "edit-delete-symbolic"
+            }
+            QQC2.Label {
+                color: Kirigami.Theme.negativeTextColor
+                opacity: deleteRuleButton.enabled ? 1 : 0.5
+                text: qsTr("Delete Rule")
+            }
+        }
         onClicked: {
             sheet.deleteRequested(sheet.ruleIndex);
             sheet.close();
         }
+    }
+
+    // The same room below the last item as above the first.
+    Item {
+        implicitHeight: Kirigami.Units.largeSpacing
     }
 }

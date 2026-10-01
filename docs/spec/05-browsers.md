@@ -22,10 +22,10 @@ The popup that every target popup row opens (Browsers, Apps, rule editor).
 
 | ID | Requirement | Evidence |
 |---|---|---|
-| TGT-01 | Closed state: the current target's icon and name, then a round up/down chevron button ([BLK-04](03-settings-window.md#shared-building-blocks)). | Specified |
+| TGT-01 | Closed state: the desktop's own combo box showing the current target's icon and name, then its chevron ([BLK-04](03-settings-window.md#shared-building-blocks)). | Specified |
 | TGT-02 | Open state: sections separated by separators, in this order: **(a)** "Default (\<primary\>)", only on the Apps page and in the rule editor; **(b)** "Picker" with the picker glyph; **(c)** the service's own desktop app, only on the Apps page and only when installed; **(d)** every installed browser; **(e)** header "Private Browsing" then "\<Browser\> (Private)" for each browser that supports it; **(f)** for each browser with profiles, header "Profiles: \<Browser\>" then one item per profile name; **(g)** "Other…". | Specified |
 | TGT-03 | The current value has a checkmark. Every item shows an icon: app icon for apps and browsers, the browser's icon for private and profile items, the glyph for Picker. | Specified |
-| TGT-04 | A menu taller than the screen scrolls, with scroll arrows at the edges. | Specified |
+| TGT-04 | The menu's height is capped; a longer menu scrolls (no scroll arrows). | Specified |
 | TGT-05 | Section (d) lists every app registered for `http`/`https`, including non-browsers such as terminal emulators that register as URL handlers. Wye excludes itself. Proposed order: alphabetical by display name. | Specified (non-browsers listed), Proposed (order) |
 | TGT-06 | "Other…" opens the app chooser ([DLG-APP](17-dialogs.md#app-chooser)). The chosen app becomes a target and is offered in every other target menu from then on. | Specified (item), Proposed (chooser) |
 | TGT-07 | The design omits "Picker" from the Apps page menu. Proposed: offer Picker in every target menu, so a rule or mapping can always ask even when the primary browser is a real browser. | Proposed |

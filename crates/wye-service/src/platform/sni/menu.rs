@@ -2,6 +2,8 @@
 //! separators, disabled headers, one radio group for the primary browser
 //! (TRAY-11), submenus (TRAY-15), icons (TRAY-14) and shortcuts (TRAY-13).
 
+use std::path::Path;
+
 use ksni::MenuItem;
 use ksni::menu::{RadioGroup, RadioItem, StandardItem, SubMenu};
 use wye_api::tray::{TrayItem, TrayItemKind};
@@ -37,21 +39,27 @@ pub fn items<T: Chooser>(items: &[TrayItem]) -> Vec<MenuItem<T>> {
 fn item_for<T: Chooser>(item: &TrayItem) -> MenuItem<T> {
     match item.kind {
         TrayItemKind::Separator => MenuItem::Separator,
-        TrayItemKind::Submenu => SubMenu {
-            label: label(&item.label),
-            enabled: item.enabled,
-            icon_name: item.icon.clone().unwrap_or_default(),
-            submenu: items(&item.children),
-            ..SubMenu::default()
+        TrayItemKind::Submenu => {
+            let (icon_name, icon_data) = icon(item.icon.as_deref());
+            SubMenu {
+                label: label(&item.label),
+                enabled: item.enabled,
+                icon_name,
+                icon_data,
+                submenu: items(&item.children),
+                ..SubMenu::default()
+            }
+            .into()
         }
-        .into(),
         TrayItemKind::Header | TrayItemKind::Action | TrayItemKind::Radio => {
             let id = item.id.clone();
+            let (icon_name, icon_data) = icon(item.icon.as_deref());
             StandardItem {
                 label: label(&item.label),
                 // A header is never chosen (01-tray-menu.md: "Non-interactive, dimmed").
                 enabled: item.enabled && item.kind != TrayItemKind::Header,
-                icon_name: item.icon.clone().unwrap_or_default(),
+                icon_name,
+                icon_data,
                 shortcut: shortcut(item.shortcut.as_deref()),
                 activate: Box::new(move |tray: &mut T| tray.chosen(&id)),
                 ..StandardItem::default()
@@ -72,16 +80,41 @@ fn radio_group<T: Chooser>(radios: &[&TrayItem]) -> MenuItem<T> {
         }),
         options: radios
             .iter()
-            .map(|item| RadioItem {
-                label: label(&item.label),
-                enabled: item.enabled,
-                icon_name: item.icon.clone().unwrap_or_default(),
-                shortcut: shortcut(item.shortcut.as_deref()),
-                ..RadioItem::default()
+            .map(|item| {
+                let (icon_name, icon_data) = icon(item.icon.as_deref());
+                RadioItem {
+                    label: label(&item.label),
+                    enabled: item.enabled,
+                    icon_name,
+                    icon_data,
+                    shortcut: shortcut(item.shortcut.as_deref()),
+                    ..RadioItem::default()
+                }
             })
             .collect(),
     }
     .into()
+}
+
+/// An item's `icon-name` and `icon-data` (TRAY-14). A theme name goes as
+/// `icon-name`. A desktop entry may name its icon by absolute path, which
+/// most menu hosts do not look up, so a PNG file goes as `icon-data`, the
+/// PNG bytes `DBusMenu` takes; any other path stays a name.
+fn icon(name: Option<&str>) -> (String, Vec<u8>) {
+    let Some(name) = name.filter(|name| !name.is_empty()) else {
+        return (String::new(), Vec::new());
+    };
+    let path = Path::new(name);
+    let png = path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("png"));
+    if path.is_absolute() && png {
+        match std::fs::read(path) {
+            Ok(bytes) => return (String::new(), bytes),
+            Err(error) => tracing::debug!(%error, name, "cannot read the menu icon"),
+        }
+    }
+    (name.to_owned(), Vec::new())
 }
 
 /// A lone underscore would be read as a mnemonic by the menu host.
@@ -195,6 +228,23 @@ mod tests {
         let mut recorder = Recorder::default();
         (settings.activate)(&mut recorder);
         assert_eq!(recorder.chosen, vec!["settings"]);
+    }
+
+    #[test]
+    fn icons_by_name_stay_names_and_png_files_go_as_data_tray_14() {
+        assert_eq!(icon(None), (String::new(), Vec::new()));
+        assert_eq!(icon(Some("firefox")), ("firefox".to_owned(), Vec::new()));
+        let dir = tempfile::tempdir().expect("temp dir");
+        let png = dir.path().join("app.png");
+        std::fs::write(&png, b"\x89PNG").expect("icon");
+        let png = png.to_str().expect("UTF-8");
+        assert_eq!(icon(Some(png)), (String::new(), b"\x89PNG".to_vec()));
+        let svg = dir.path().join("app.svg");
+        let svg = svg.to_str().expect("UTF-8");
+        assert_eq!(icon(Some(svg)), (svg.to_owned(), Vec::new()));
+        let missing = dir.path().join("gone.png");
+        let missing = missing.to_str().expect("UTF-8");
+        assert_eq!(icon(Some(missing)), (missing.to_owned(), Vec::new()));
     }
 
     #[test]

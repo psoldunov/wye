@@ -27,7 +27,6 @@ pub mod x11;
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use tokio::sync::{broadcast, watch};
@@ -139,8 +138,8 @@ pub trait HttpClient: Send + Sync {
     fn send(&self, request: &HttpRequest) -> Result<HttpResponse, PlatformError>;
 }
 
-/// The `StatusNotifierItem` tray (TRAY-01 to TRAY-18 on hosts without the
-/// Plasma applet): one item whose `DBusMenu` renders the `Tray` model.
+/// The `StatusNotifierItem` tray (TRAY-01 to TRAY-18): one item whose
+/// `DBusMenu` renders the `Tray` model.
 #[async_trait]
 pub trait StatusNotifier: Send + Sync {
     /// Show the item with `menu`, or update the one shown.
@@ -149,9 +148,6 @@ pub trait StatusNotifier: Send + Sync {
     async fn hide(&self);
     /// What the user did with the item.
     fn events(&self) -> broadcast::Receiver<TrayEvent>;
-    /// How long the service waits after starting for a tray host to
-    /// register before it shows the item (decision 8: 5 s on KDE).
-    fn grace(&self) -> Duration;
     /// How the item is shown.
     fn mechanism(&self) -> Option<&'static str>;
 }
@@ -169,7 +165,8 @@ pub struct Platform {
     pub clipboard: Arc<dyn ClipboardProvider>,
     pub shortcuts: Arc<dyn ShortcutProvider>,
     pub http: Arc<dyn HttpClient>,
-    /// The `StatusNotifierItem` shown when no tray host registered (TRAY-01).
+    /// The `StatusNotifierItem`, shown unless an external tray host
+    /// registered (TRAY-01).
     pub sni: Arc<dyn StatusNotifier>,
     /// `KWin` queries waiting for their `KWin1.Report`; shared by the
     /// pointer and focus helper and the bus object that receives.

@@ -6,6 +6,7 @@
 //   tint: color            the badge's colour; the label and outline follow it
 import QtQuick
 import QtQuick.Controls as QQC2
+import QtQuick.Layouts
 import org.kde.kirigami as Kirigami
 
 Rectangle {
@@ -14,11 +15,15 @@ Rectangle {
     property string text
     property color tint: Kirigami.Theme.disabledTextColor
 
-    color: Qt.alpha(badge.tint, 0.14)
-    border.color: Qt.alpha(badge.tint, 0.5)
+    Accessible.name: badge.text
+    Accessible.role: Accessible.StaticText
+    Layout.alignment: Qt.AlignVCenter
+    Layout.maximumWidth: implicitWidth
+    color: Qt.alpha(badge.tint, 0.12)
+    border.color: Qt.alpha(badge.tint, 0.35)
     border.width: 1
-    implicitHeight: label.implicitHeight + Kirigami.Units.smallSpacing
-    implicitWidth: label.implicitWidth + Kirigami.Units.largeSpacing
+    implicitHeight: label.implicitHeight + Kirigami.Units.smallSpacing / 2
+    implicitWidth: label.implicitWidth + Kirigami.Units.largeSpacing * 1.5
     radius: height / 2
 
     QQC2.Label {
@@ -29,6 +34,6 @@ Rectangle {
         elide: Text.ElideRight
         font: Kirigami.Theme.smallFont
         text: badge.text
-        width: Math.min(implicitWidth, badge.parent ? badge.parent.width : implicitWidth)
+        width: Math.min(implicitWidth, badge.width - Kirigami.Units.largeSpacing)
     }
 }

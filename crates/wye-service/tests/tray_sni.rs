@@ -5,8 +5,9 @@
 //! the item runs in a child process (this test binary again, running the
 //! ignored `child_shows_the_item`) with that variable pointing at a private
 //! bus. The parent plays the `StatusNotifierWatcher` and the tray host: it
-//! reads the item's properties and menu, clicks an item, and the child
-//! reports the event it got. Skips without `dbus-daemon`.
+//! reads the item's properties and menu, middle-clicks the item and clicks
+//! a menu item, and the child reports the events it got. Skips without
+//! `dbus-daemon`.
 
 use std::collections::HashMap;
 use std::io::{BufRead as _, BufReader};
@@ -16,7 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use wye_api::tray::{TrayIcon, TrayItem, TrayItemKind, TrayMenu, TrayOverlay};
-use wye_service::platform::sni::{KsniNotifier, WARNING_OVERLAY};
+use wye_service::platform::sni::{ITEM_ID, KsniNotifier, NOT_DEFAULT, TITLE, WARNING_OVERLAY};
 use wye_service::platform::{StatusNotifier as _, TrayEvent};
 use zbus::message::Header;
 use zbus::zvariant::{OwnedValue, Value};
@@ -24,8 +25,11 @@ use zbus::zvariant::{OwnedValue, Value};
 /// The child's environment variable holding the private bus address.
 const BUS_VARIABLE: &str = "DBUS_SESSION_BUS_ADDRESS";
 
-/// What the child prints once an item is clicked.
+/// What the child prints for each click.
 const ACTIVATED: &str = "ACTIVATED ";
+
+/// Clicks the child waits for: the middle click, then a menu item.
+const CLICKS: usize = 2;
 
 const PATIENCE: Duration = Duration::from_secs(10);
 
@@ -69,22 +73,23 @@ fn menu() -> TrayMenu {
     }
 }
 
-/// The half that runs in the child: show the item, report one click.
+/// The half that runs in the child: show the item, report the clicks.
 #[tokio::test]
 #[ignore = "run by the_status_notifier_item_serves_the_menu in a child process"]
 async fn child_shows_the_item() {
     if std::env::var_os(BUS_VARIABLE).is_none() {
         return;
     }
-    let tray = KsniNotifier::new(Duration::ZERO);
+    let tray = KsniNotifier::new();
     let mut events = tray.events();
     tray.show(&menu()).await.expect("the item shows");
     println!("SHOWN");
-    loop {
+    let mut clicks = 0;
+    while clicks < CLICKS {
         match tokio::time::timeout(PATIENCE, events.recv()).await {
             Ok(Ok(TrayEvent::Activated(id))) => {
                 println!("{ACTIVATED}{id}");
-                break;
+                clicks += 1;
             }
             Ok(Ok(TrayEvent::AboutToShow)) => println!("ABOUT TO SHOW"),
             other => panic!("no click arrived: {other:?}"),
@@ -305,11 +310,14 @@ async fn registered_service(registered: &Mutex<Vec<(String, String)>>) -> String
     .expect("the item registered with the watcher")
 }
 
-/// TRAY-02, TRAY-07, ONB-11: the item's own properties.
-async fn check_item(host: &zbus::Connection, service: &str) {
+/// The item's `ToolTip`: icon name, icon pixmaps, title, description.
+type ToolTip = (String, Vec<(i32, i32, Vec<u8>)>, String, String);
+
+/// TRAY-02, TRAY-07, TRAY-18, ONB-11: the item's own properties.
+async fn check_item(host: &zbus::Connection, service: &str) -> zbus::Proxy<'static> {
     let item = zbus::Proxy::new(
         host,
-        service,
+        service.to_owned(),
         "/StatusNotifierItem",
         "org.kde.StatusNotifierItem",
     )
@@ -321,9 +329,23 @@ async fn check_item(host: &zbus::Connection, service: &str) {
     assert_eq!(overlay, WARNING_OVERLAY, "ONB-11");
     let is_menu: bool = item.get_property("ItemIsMenu").await.expect("ItemIsMenu");
     assert!(is_menu, "TRAY-07: a primary click opens the menu");
+    let id: String = item.get_property("Id").await.expect("Id");
+    assert_eq!(id, ITEM_ID);
+    let title: String = item.get_property("Title").await.expect("Title");
+    assert_eq!(title, TITLE);
+    let category: String = item.get_property("Category").await.expect("Category");
+    assert_eq!(category, "ApplicationStatus");
+    let status: String = item.get_property("Status").await.expect("Status");
+    assert_eq!(status, "NeedsAttention", "TRAY-18");
+    let (tip_icon, _, tip_title, tip_text): ToolTip =
+        item.get_property("ToolTip").await.expect("ToolTip");
+    assert_eq!(tip_icon, icon);
+    assert_eq!(tip_title, TITLE);
+    assert_eq!(tip_text, NOT_DEFAULT, "TRAY-18");
+    item
 }
 
-/// The menu's layout, checked; returns the ID of "Settings…".
+/// The menu's layout, checked; returns the ID of the "Firefox" radio.
 async fn check_layout(menu: &zbus::Proxy<'_>) -> i32 {
     let (_revision, root): (u32, Node) = menu
         .call("GetLayout", &(0_i32, -1_i32, Vec::<String>::new()))
@@ -336,9 +358,10 @@ async fn check_layout(menu: &zbus::Proxy<'_>) -> i32 {
             .find(|(_, candidate, _)| candidate == label)
             .unwrap_or_else(|| panic!("{label} missing from the menu"))
     };
-    for expected in ["Firefox", "More", "About Wye"] {
+    for expected in ["More", "About Wye"] {
         find(expected);
     }
+    let (firefox, _, _) = find("Firefox");
     let (_, _, picker) = find("Picker");
     assert_eq!(
         text(picker, "toggle-type").as_deref(),
@@ -350,12 +373,9 @@ async fn check_layout(menu: &zbus::Proxy<'_>) -> i32 {
         .get("enabled")
         .and_then(|value| bool::try_from(value.clone()).ok());
     assert_eq!(enabled, Some(false), "a header cannot be chosen");
-    let (settings, _, properties) = find("Settings…");
-    assert!(
-        properties.contains_key("shortcut"),
-        "TRAY-13: {properties:?}"
-    );
-    *settings
+    let (_, _, settings) = find("Settings…");
+    assert!(settings.contains_key("shortcut"), "TRAY-13: {settings:?}");
+    *firefox
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -372,7 +392,7 @@ async fn the_status_notifier_item_serves_the_menu() {
     );
 
     let host = bus.connect().await;
-    check_item(&host, &service).await;
+    let item = check_item(&host, &service).await;
     let menu = zbus::Proxy::new(
         &host,
         service.as_str(),
@@ -381,13 +401,17 @@ async fn the_status_notifier_item_serves_the_menu() {
     )
     .await
     .expect("menu proxy");
-    let settings = check_layout(&menu).await;
+    let firefox = check_layout(&menu).await;
+    let (): () = item
+        .call("SecondaryActivate", &(0_i32, 0_i32))
+        .await
+        .expect("SecondaryActivate");
     let _: bool = menu
         .call("AboutToShow", &(0_i32,))
         .await
         .expect("AboutToShow");
     let (): () = menu
-        .call("Event", &(settings, "clicked", Value::from(0_i32), 0_u32))
+        .call("Event", &(firefox, "clicked", Value::from(0_i32), 0_u32))
         .await
         .expect("Event");
 
@@ -397,6 +421,13 @@ async fn the_status_notifier_item_serves_the_menu() {
         lines.iter().any(|line| line == "ABOUT TO SHOW"),
         "TRAY-10: {lines:?}"
     );
-    let clicked = format!("{ACTIVATED}settings");
-    assert!(lines.contains(&clicked), "{lines:?}");
+    let clicks: Vec<&str> = lines
+        .iter()
+        .filter_map(|line| line.strip_prefix(ACTIVATED))
+        .collect();
+    assert_eq!(
+        clicks,
+        ["settings", "primary:0"],
+        "a middle click opens Settings (TRAY-16), then the radio item"
+    );
 }

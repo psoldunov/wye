@@ -18,7 +18,9 @@ let
   } cfg;
   tomlFormat = pkgs.formats.toml { };
   desktopId = "dev.soldunov.wye.desktop";
-  plasmoidId = "dev.soldunov.wye";
+  # The Plasma applet that packages before the StatusNotifierItem tray
+  # shipped (share/plasma/plasmoids); see wyeRetirePlasmoid.
+  legacyPlasmoidId = "dev.soldunov.wye";
   serviceFiles = [
     "dev.soldunov.wye.service"
     "dev.soldunov.wye.Ui.service"
@@ -118,7 +120,6 @@ in
       {
         inherit (channel) assertions;
 
-        # The Plasma applet ships in the package's share/plasma/plasmoids.
         home.packages = [ cfg.package ];
 
         xdg.configFile."wye/config.toml" = lib.mkIf managedConfig {
@@ -168,20 +169,19 @@ in
           };
         };
 
-        # Plasma's system tray looks for applets when plasmashell starts, and
-        # after that only when KPackage announces an install over D-Bus. A
-        # switch installs the applet without that announcement, so a running
-        # session would not show it until the next login. Announce it whenever
-        # this generation adds or changes it. Nothing listens outside Plasma.
-        home.activation.wyePlasmoid = lib.hm.dag.entryAfter [ "installPackages" "linkGeneration" ] ''
-          wyeAnnouncePlasmoid() {
-            local rel=home-path/share/plasma/plasmoids/${plasmoidId}
-            local new old="" bus socket
-            new=$(readlink -e "$newGenPath/$rel") || return 0
-            if [[ -v oldGenPath && -e "$oldGenPath/$rel" ]]; then
-              old=$(readlink -e "$oldGenPath/$rel")
-            fi
-            [[ $new != "$old" ]] || return 0
+        # Wye's tray is the service's StatusNotifierItem; the Plasma applet
+        # older packages installed is gone. Plasma's system tray drops an
+        # applet at once only when KPackage announces the removal over D-Bus,
+        # so a switch away from a generation that had it would leave the
+        # applet loaded (and Wye's own item hidden behind it) until the next
+        # login. Announce the removal when the old generation had the applet
+        # and this one has not. Nothing listens outside Plasma.
+        home.activation.wyeRetirePlasmoid = lib.hm.dag.entryAfter [ "installPackages" "linkGeneration" ] ''
+          wyeRetirePlasmoid() {
+            local rel=home-path/share/plasma/plasmoids/${legacyPlasmoidId}
+            local bus socket
+            [[ -v oldGenPath && -e "$oldGenPath/$rel" ]] || return 0
+            [[ ! -e "$newGenPath/$rel" ]] || return 0
 
             bus=''${DBUS_SESSION_BUS_ADDRESS:-}
             if [[ -z $bus ]]; then
@@ -191,12 +191,12 @@ in
             fi
 
             if ! run ${lib.getExe' pkgs.dbus "dbus-send"} --bus="$bus" --type=signal \
-              /KPackage/Plasma/Applet org.kde.plasma.kpackage.packageInstalled \
-              string:${plasmoidId}; then
-              warnEcho "Could not announce the Wye applet to Plasma; it appears after the next login."
+              /KPackage/Plasma/Applet org.kde.plasma.kpackage.packageUninstalled \
+              string:${legacyPlasmoidId}; then
+              warnEcho "Could not tell Plasma the Wye applet is gone; it goes at the next login."
             fi
           }
-          wyeAnnouncePlasmoid
+          wyeRetirePlasmoid
         '';
       }
 

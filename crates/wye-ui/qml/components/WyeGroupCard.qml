@@ -22,6 +22,8 @@ ColumnLayout {
     default property alias rows: card.delegates
 
     Layout.fillWidth: true
+    // An untitled card keeps some of the room a title would take, so cards are evenly spaced down every page (BLK-01).
+    Layout.topMargin: title === "" ? Kirigami.Units.largeSpacing : 0
     spacing: 0
 
     FormCard.FormHeader {

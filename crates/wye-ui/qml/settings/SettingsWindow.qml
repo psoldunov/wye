@@ -1,12 +1,13 @@
 // The Settings window (03-settings-window.md): one window with seven pages, titled with the current page (SET-01), a page
-// switcher across the top (SET-02, SET-03), a fixed width of about 510 px and a height that fits the page (SET-05), instant
+// switcher across the top (SET-02, SET-03), one size for every page with the page scrolling inside (SET-05), instant
 // apply (SET-06), Escape and Ctrl+W to close (SET-07, KEY-50), and the last page reopened (SET-08). Surface contract
 // (crates/wye-ui/src/route.rs):
 //   handle("show", "settings", page)    open, or raise, the one window (SET-04) on `page`; an empty page is the last one
 //   handle("show", "rule-editor", json) the Rules page; `windowRequested` tells it to open the rule editor
 //   handle("show", "test-rules", "")    the Rules page; `windowRequested` tells it to open the tester
 // Under `wye-ui --self-test` the argument may instead be a JSON object: {page, fixture, scheme, sheet} (fixtures/settings.json);
-// `sheet` is shown-browsers, app-chooser, picker-keys, expansion, history-confirm, rule-editor or tester.
+// `sheet` is shown-browsers, app-chooser, picker-keys, expansion, history-confirm, rule-editor, rules-help or tester, or
+// target-menu (the primary browser's target menu, open).
 // The data of every page is `SettingsBackend` (crates/wye-ui/src/bridge/settings.rs).
 pragma ComponentBehavior: Bound
 import QtQuick
@@ -38,13 +39,11 @@ Kirigami.ApplicationWindow {
             "extras": extrasPage,
             "advanced": advancedPage
         })
-    readonly property real fixedWidth: 510
-    readonly property real availableHeight: (screen?.desktopAvailableHeight ?? 900) * 0.9
-    readonly property real wantedHeight: tabs.height + column.implicitHeight + Kirigami.Units.largeSpacing * 2
-    // SET-05: the height fits the page; a long page (Apps) scrolls inside the window.
-    readonly property real fitHeight: Math.round(Math.max(Kirigami.Units.gridUnit * 16, Math.min(availableHeight, wantedHeight)))
-    // The offscreen platform (the self-test) cannot pass size hints on, and says so each time they change.
-    readonly property bool sizeHintsWork: Qt.platform.pluginName !== "offscreen"
+    // SET-05, adapted: one size for every page, so switching pages never resizes the window. It fits the densest page
+    // (Advanced, the Apps list scrolls) at the default font; the user can resize it, and the page scrolls inside.
+    readonly property real availableHeight: screen?.desktopAvailableHeight ?? Kirigami.Units.gridUnit * 50
+    readonly property real defaultWidth: Kirigami.Units.gridUnit * 34
+    readonly property real defaultHeight: Math.min(Kirigami.Units.gridUnit * 38, Math.round(availableHeight * 0.85))
 
     function pageTitle(id) {
         switch (id) {
@@ -79,11 +78,13 @@ Kirigami.ApplicationWindow {
     // The page that owns each sheet a self-test fixture can ask for.
     readonly property var sheetPages: ({
             "shown-browsers": "browsers",
+            "target-menu": "browsers",
             "app-chooser": "browsers",
             "picker-keys": "picker",
             "expansion": "advanced",
             "history-confirm": "advanced",
             "rule-editor": "rules",
+            "rules-help": "rules",
             "tester": "rules"
         })
 
@@ -159,12 +160,10 @@ Kirigami.ApplicationWindow {
     }
 
     title: pageTitle(currentPage)
-    width: fixedWidth
-    minimumWidth: fixedWidth
-    maximumWidth: fixedWidth
-    height: fitHeight
-    minimumHeight: sizeHintsWork ? fitHeight : 0
-    maximumHeight: sizeHintsWork ? fitHeight : 16777215
+    width: defaultWidth
+    height: defaultHeight
+    minimumWidth: Kirigami.Units.gridUnit * 26
+    minimumHeight: Math.min(Kirigami.Units.gridUnit * 20, defaultHeight)
 
     // The last page, once it is known and the user has not chosen another.
     Connections {
@@ -283,42 +282,43 @@ Kirigami.ApplicationWindow {
         AdvancedPage {}
     }
 
-    // SET-02, SET-03: seven pages, each with its icon above its label, in this order.
+    // SET-02, SET-03: seven pages, each with its icon above its label, in this order. The icons are the theme's symbolic ones,
+    // so they read as one set at the tab bar's size and follow the colour scheme.
     header: Kirigami.NavigationTabBar {
         id: tabs
 
         actions: [
             Kirigami.Action {
                 checked: window.currentPage === "general"
-                icon.name: "configure"
+                icon.name: "configure-symbolic"
                 text: qsTr("General")
 
                 onTriggered: window.showPage("general")
             },
             Kirigami.Action {
                 checked: window.currentPage === "browsers"
-                icon.name: "internet-web-browser"
+                icon.name: "globe-symbolic"
                 text: qsTr("Browsers")
 
                 onTriggered: window.showPage("browsers")
             },
             Kirigami.Action {
                 checked: window.currentPage === "apps"
-                icon.name: "preferences-desktop-apps"
+                icon.name: "applications-all-symbolic"
                 text: qsTr("Apps")
 
                 onTriggered: window.showPage("apps")
             },
             Kirigami.Action {
                 checked: window.currentPage === "picker"
-                icon.name: "view-list-text"
+                icon.name: "view-list-text-symbolic"
                 text: qsTr("Picker")
 
                 onTriggered: window.showPage("picker")
             },
             Kirigami.Action {
                 checked: window.currentPage === "rules"
-                icon.name: "vcs-branch"
+                icon.name: "vcs-branch-symbolic"
                 text: qsTr("Rules")
 
                 onTriggered: window.showPage("rules")
@@ -332,7 +332,7 @@ Kirigami.ApplicationWindow {
             },
             Kirigami.Action {
                 checked: window.currentPage === "advanced"
-                icon.name: "preferences-other"
+                icon.name: "tools-symbolic"
                 text: qsTr("Advanced")
 
                 onTriggered: window.showPage("advanced")
@@ -362,7 +362,9 @@ Kirigami.ApplicationWindow {
                 // SET-06: a read-only file (home-manager) keeps the window usable but nothing can be saved.
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
-                    Layout.margins: Kirigami.Units.largeSpacing
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.largeSpacing
+                    Layout.topMargin: Kirigami.Units.largeSpacing
                     text: qsTr("The configuration file is read-only, so changes cannot be saved. It is probably managed by Nix, home-manager or another tool: change it there.")
                     type: Kirigami.MessageType.Information
                     visible: SettingsBackend.loaded && !SettingsBackend.writable
@@ -370,7 +372,9 @@ Kirigami.ApplicationWindow {
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
-                    Layout.margins: Kirigami.Units.largeSpacing
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.largeSpacing
+                    Layout.topMargin: Kirigami.Units.largeSpacing
                     text: errors.describe(SettingsBackend.errorKind, SettingsBackend.error)
                     type: Kirigami.MessageType.Error
                     visible: SettingsBackend.error !== ""
@@ -386,17 +390,21 @@ Kirigami.ApplicationWindow {
 
                 Kirigami.InlineMessage {
                     Layout.fillWidth: true
-                    Layout.margins: Kirigami.Units.largeSpacing
+                    Layout.leftMargin: Kirigami.Units.largeSpacing
+                    Layout.rightMargin: Kirigami.Units.largeSpacing
+                    Layout.topMargin: Kirigami.Units.largeSpacing
                     text: errors.describe(SettingsBackend.connectionErrorKind, SettingsBackend.connectionError)
                     type: Kirigami.MessageType.Warning
                     visible: SettingsBackend.connectionError !== ""
                 }
 
+                // The same space above the first group on every page, titled or not, and below the last.
                 Loader {
                     id: pageLoader
 
                     Layout.fillWidth: true
-                    Layout.bottomMargin: Kirigami.Units.largeSpacing
+                    Layout.topMargin: Kirigami.Units.largeSpacing
+                    Layout.bottomMargin: Kirigami.Units.gridUnit
                     sourceComponent: window.components[window.currentPage]
                 }
             }

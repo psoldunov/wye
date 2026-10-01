@@ -1,6 +1,8 @@
 //! Command line of `wye-ui`.
 
-use clap::Parser;
+use std::path::PathBuf;
+
+use clap::{ArgGroup, Parser};
 use wye_api::actions::Window;
 
 use crate::surface::Surface;
@@ -11,6 +13,7 @@ use crate::surface::Surface;
 /// hands WINDOW to the running instance and exits.
 #[derive(Debug, Parser)]
 #[command(name = "wye-ui", version)]
+#[command(group = ArgGroup::new("self_tests").args(["self_test", "self_test_child"]))]
 pub struct Cli {
     /// Window to open: settings, first-run, history, test-rules, about,
     /// script-editor or rule-editor.
@@ -36,6 +39,12 @@ pub struct Cli {
     /// Internal: one self-test surface, in this process.
     #[arg(long = "self-test-child", value_name = "SURFACE", hide = true, value_parser = parse_surface)]
     pub self_test_child: Option<Surface>,
+
+    /// With --self-test: deliver the cases one at a time and save a PNG of
+    /// every visible window after each into DIR (a dev tool; Qt warnings
+    /// are ignored).
+    #[arg(long, value_name = "DIR", requires = "self_tests")]
+    pub snapshots: Option<PathBuf>,
 }
 
 fn parse_window(text: &str) -> Result<Window, String> {
@@ -73,6 +82,19 @@ mod tests {
         assert_eq!(cli.self_test.as_deref(), Some("all"));
         let cli = Cli::try_parse_from(["wye-ui", "--self-test", "picker"]).expect("parses");
         assert_eq!(cli.self_test.as_deref(), Some("picker"));
+    }
+
+    #[test]
+    fn snapshots_need_the_self_test() {
+        let cli = Cli::try_parse_from(["wye-ui", "--self-test", "--snapshots", "/tmp/s"])
+            .expect("parses");
+        assert_eq!(cli.self_test.as_deref(), Some("all"));
+        assert_eq!(cli.snapshots, Some(PathBuf::from("/tmp/s")));
+        let cli = Cli::try_parse_from(["wye-ui", "--self-test", "about", "--snapshots", "s"])
+            .expect("parses");
+        assert_eq!(cli.self_test.as_deref(), Some("about"));
+        assert!(Cli::try_parse_from(["wye-ui", "--snapshots", "s"]).is_err());
+        assert!(Cli::try_parse_from(["wye-ui", "settings", "--snapshots", "s"]).is_err());
     }
 
     #[test]

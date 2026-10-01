@@ -1,9 +1,10 @@
 // WyeTargetRow (BLK-04, TGT-01): a row whose trailing control is a combo box showing the current target's icon and name.
 // It opens the target menu (TGT-02 to TGT-07): sections separated by lines, dimmed headers ("Private Browsing", "Profiles:
 // Chrome"), an icon on every item (TGT-03), a checkmark on the current value, a warning icon on a target whose app is gone
-// (APP-10), and "Other…" last, which opens the app chooser (WyeAppChooser, TGT-06). The menu is a window of its own, so it
-// is never cut off by the Settings window, and it scrolls when it is taller than the screen (TGT-04). Its rows are built
-// when it opens, and the chooser on first use, so a page with many rows stays light.
+// (APP-10), and "Other…" last, which opens the app chooser (WyeAppChooser, TGT-06). The menu stays inside the Settings
+// window: a menu in a window of its own takes the keyboard focus on Wayland, and the combo box closes it again as soon as
+// it loses the focus. Its height is capped, and a longer menu scrolls (TGT-04). Its rows are built when it opens, and the
+// chooser on first use, so a page with many rows stays light.
 //
 // API (WyeRow's, plus)
 //   surface: string        "browsers" (no Default), "apps" (Default and the service's own app), "rule" (Default)
@@ -95,8 +96,19 @@ WyeRow {
             }
         }
 
-        popup.popupType: QQC2.Popup.Window
         popup.height: Math.min(combo.popup.implicitHeight, Kirigami.Units.gridUnit * 26)
+
+        // TGT-04: the desktop style's list scrolls only when it is taller than the whole window, so under the cap above
+        // the mouse wheel would do nothing. It scrolls as soon as it is taller than the menu.
+        Binding {
+            property: "interactive"
+            target: combo.popup.contentItem
+            value: {
+                const list = combo.popup.contentItem as Flickable;
+                return list !== null && list.contentHeight > list.height;
+            }
+            when: combo.popup.contentItem instanceof Flickable
+        }
 
         onActivated: index => {
             const entry = combo.model[index];

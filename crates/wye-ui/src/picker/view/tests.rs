@@ -25,7 +25,7 @@ fn large_icons_use_the_large_metrics() {
     let view = fixture::view();
     assert_eq!(
         (view.metrics.icon, view.metrics.pitch, view.metrics.badge),
-        (52, 64, 32)
+        (40, 60, 24)
     );
 }
 

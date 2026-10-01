@@ -25,19 +25,23 @@ profile), icon size Large, names shown, URL hidden, profile badge shown.
 | PICK-12 | The panel follows the system colour scheme (light/dark) and accent colour. | Proposed |
 | PICK-13 | With more than eight tiles, the row wraps into further rows of up to eight tiles. | Proposed |
 | PICK-14 | While a held-modifier action is active ([KEY-13](15-keyboard.md#hotkey-scheme)), a hint line under the tiles names it ("Open in a private window") and tiles that cannot open that way are dimmed. | Proposed |
+| PICK-15 | The panel appears at once: no fade or zoom when it opens. | Proposed |
 
 Target metrics:
 
 | | Small | Medium | Large |
 |---|---|---|---|
-| Icon | 32 px | 42 px | 52 px |
-| Tile pitch | 48 px | 56 px | 64 px |
-| Name text | small caption | caption | body |
-| Profile badge | 18 px | 24 px | 32 px |
+| Icon | 24 px | 32 px | 40 px |
+| Tile pitch | 36 px | 48 px | 60 px |
+| Name text | caption | caption | caption |
+| Profile badge | 14 px | 18 px | 24 px |
 
-Large is specified; Small and Medium are this spec's proportions. At every size: hotkey
-character about 12 px text; selection highlight corner radius about 12 px; panel padding
-about 12–16 px; panel corner radius about 14 px; overflow button about 18 px.
+The reference specifies only Large (52 px icons, 64 px pitch, body text), which reads too large
+on a Linux desktop. Large here is about a quarter smaller; Small and Medium icons are 60% and
+80% of Large's. The pitch is one and a half icons, so tiles without names (and the badges
+overlapping their icons) keep clear of each other. At every size: hotkey character about 10 px
+text; selection highlight corner radius about 12 px; panel padding about 12–16 px; panel corner
+radius about 14 px; overflow button about 14 px.
 
 ## Interaction
 
@@ -74,6 +78,11 @@ about 12–16 px; panel corner radius about 14 px; overflow button about 18 px.
   - Fallback: a normal undecorated dialog, centred by the compositor.
 - **Keyboard focus.** A layer-shell picker needs `keyboard_interactivity` set to
   exclusive or on-demand so hotkeys and arrows work without an extra click.
+- **No open animation (PICK-15).** KWin types a layer-shell surface by its scope, and its
+  Scale effect zooms and fades every new surface of the normal type, which an unknown scope
+  gets. The picker asks for the `utility` scope, which neither Scale nor Fading Popups
+  animates. (Not `on-screen-display`: Fading Popups fades such a surface in, and KWin takes
+  the keyboard focus back from it at once, which cancels the picker.)
 - **Focus of the launched browser.** On Wayland, pass an xdg-activation token from the
   picker's key press or click to the launched browser (`XDG_ACTIVATION_TOKEN`), or the
   compositor may refuse to raise it.

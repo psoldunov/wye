@@ -148,7 +148,6 @@ WyeSheet {
                 model: sheet.apps
                 textRole: "name"
                 valueRole: "id"
-                popup.popupType: QQC2.Popup.Window
                 Accessible.name: qsTr("Source app")
                 onActivated: {
                     sheet.sourceApp = currentValue;

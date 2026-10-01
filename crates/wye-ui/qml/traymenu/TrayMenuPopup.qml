@@ -5,6 +5,8 @@ pragma ComponentBehavior: Bound
 // its corner at the pointer, or centred when the pointer is unknown. A
 // second toggle, a click outside, Escape or focus loss closes it. Choosing
 // an item sends it to the service (ActivateTrayItem) and closes the menu.
+// Submenus nest to any depth (TRAY-15: More, then Recent Links): level 0 is
+// the menu, levels 1..N are lists that open beside their parent row.
 // The logic is in TrayMenuBackend (src/bridge/tray_menu.rs, src/tray_menu/).
 //
 // Surface contract (crates/wye-ui/src/route.rs):
@@ -19,8 +21,8 @@ Window {
 
     readonly property int margin: Kirigami.Units.largeSpacing
     property bool wasActive: false
-    // Whether the keyboard is in the submenu.
-    property bool inSubmenu: false
+    // The level the keyboard is in: 0 is the menu, N the Nth submenu.
+    property int depth: 0
 
     function handle(action, key, argument) {
         if (action !== "toggle") {
@@ -34,7 +36,7 @@ Window {
             return;
         }
         menu.currentIndex = -1;
-        closeSubmenu();
+        closeSubmenus(1);
         chooseScreen();
         wasActive = false;
         show();
@@ -43,7 +45,7 @@ Window {
     }
 
     function dismiss() {
-        closeSubmenu();
+        closeSubmenus(1);
         hide();
     }
 
@@ -67,28 +69,60 @@ Window {
         return Math.max(low, Math.min(value, high));
     }
 
-    function openSubmenu(index) {
-        const entry = menu.entries[index];
-        if (!entry || !entry.opens) {
-            closeSubmenu();
+    // How many submenus deep `entries` nest: the levels the popup needs.
+    function nesting(entries) {
+        let deepest = 0;
+        for (const entry of entries) {
+            if (entry.opens) {
+                deepest = Math.max(deepest, 1 + nesting(entry.children));
+            }
+        }
+        return deepest;
+    }
+
+    // The list at `level`: the menu at 0, else a submenu level.
+    function listAt(level) {
+        return level === 0 ? menu : levels.itemAt(level - 1);
+    }
+
+    // Open the submenu of row `index` of the list at `level`, closing every
+    // level below it first.
+    function openSubmenu(level, index) {
+        closeSubmenus(level + 1);
+        const parent = listAt(level);
+        const entry = parent.entries[index];
+        const next = listAt(level + 1);
+        if (!entry || !entry.opens || !next) {
             return;
         }
-        submenu.entries = entry.children;
-        submenu.currentIndex = -1;
-        submenu.anchorY = menu.y + menu.rowY(index);
-        submenu.visible = true;
+        next.parentList = parent;
+        next.entries = entry.children;
+        next.currentIndex = -1;
+        next.anchorY = parent.y + parent.rowY(index);
+        next.visible = true;
     }
 
-    function closeSubmenu() {
-        submenu.visible = false;
-        submenu.entries = [];
-        inSubmenu = false;
+    // Hide and empty the list at `level` and every one below it.
+    function closeSubmenus(level) {
+        for (let i = Math.max(level, 1); i <= levels.count; ++i) {
+            const list = listAt(i);
+            if (list) {
+                list.visible = false;
+                list.entries = [];
+            }
+        }
+        depth = Math.max(0, Math.min(depth, level - 1));
     }
 
-    // Run a top-level `entry`: open its submenu, or send it and close.
-    function choose(entry, index) {
+    // Run row `index` of the list at `level`: open its submenu, or send it
+    // and close.
+    function choose(level, index) {
+        const entry = listAt(level).entries[index];
+        if (!entry) {
+            return;
+        }
         if (entry.opens) {
-            openSubmenu(index);
+            openSubmenu(level, index);
         } else {
             activate(entry);
         }
@@ -101,8 +135,16 @@ Window {
         }
     }
 
+    // Open the submenu of the keyboard's row and move into it.
+    function descend() {
+        openSubmenu(depth, listAt(depth).currentIndex);
+        depth += 1;
+        listAt(depth).move(1);
+    }
+
     function keyPressed(event) {
-        const list = inSubmenu ? submenu : menu;
+        const list = listAt(depth);
+        const entry = list.currentEntry;
         switch (event.key) {
         case Qt.Key_Down:
             list.move(1);
@@ -111,20 +153,18 @@ Window {
             list.move(-1);
             return true;
         case Qt.Key_Right:
-            if (!inSubmenu && menu.currentEntry && menu.currentEntry.opens) {
-                openSubmenu(menu.currentIndex);
-                inSubmenu = true;
-                submenu.move(1);
+            if (entry && entry.opens) {
+                descend();
             }
             return true;
         case Qt.Key_Left:
-            if (inSubmenu) {
-                closeSubmenu();
+            if (depth > 0) {
+                closeSubmenus(depth);
             }
             return true;
         case Qt.Key_Escape:
-            if (inSubmenu) {
-                closeSubmenu();
+            if (depth > 0) {
+                closeSubmenus(depth);
             } else {
                 dismiss();
             }
@@ -132,16 +172,10 @@ Window {
         case Qt.Key_Return:
         case Qt.Key_Enter:
         case Qt.Key_Space:
-            if (inSubmenu) {
-                if (submenu.currentEntry) {
-                    activate(submenu.currentEntry);
-                }
-            } else if (menu.currentEntry) {
-                choose(menu.currentEntry, menu.currentIndex);
-                if (menu.currentEntry.opens) {
-                    inSubmenu = true;
-                    submenu.move(1);
-                }
+            if (entry && entry.opens) {
+                descend();
+            } else if (entry) {
+                activate(entry);
             }
             return true;
         default:
@@ -204,23 +238,42 @@ Window {
         x: backend.placed ? popup.clamp(backend.placementX, popup.margin, popup.width - menu.width - popup.margin) : (popup.width - menu.width) / 2
         y: backend.placed ? popup.clamp(backend.placementY, popup.margin, popup.height - menu.height - popup.margin) : (popup.height - menu.height) / 2
         entries: JSON.parse(backend.rows || "[]")
-        onPointed: index => {
-            popup.inSubmenu = false;
-            popup.openSubmenu(index);
+        onPointed: row => {
+            popup.depth = 0;
+            popup.openSubmenu(0, row);
         }
-        onChosen: index => popup.choose(menu.entries[index], index)
+        onChosen: row => popup.choose(0, row)
     }
 
-    // TRAY-15: beside the menu, on the side with room.
-    TrayMenuList {
-        id: submenu
+    // TRAY-15: one list per nesting level, each beside its parent row on the
+    // side with room. The levels persist while submenus open and close, so a
+    // parent keeps its highlight.
+    Repeater {
+        id: levels
 
-        property real anchorY: 0
+        model: popup.nesting(menu.entries)
 
-        visible: false
-        x: menu.x + menu.width + submenu.width <= popup.width ? menu.x + menu.width : menu.x - submenu.width
-        y: popup.clamp(submenu.anchorY - submenu.padding, popup.margin, popup.height - submenu.height - popup.margin)
-        onPointed: popup.inSubmenu = true
-        onChosen: index => popup.activate(submenu.entries[index])
+        TrayMenuList {
+            id: level
+
+            required property int index
+            // The list this one opens from, and the row's top edge in the popup.
+            property TrayMenuList parentList: null
+            property real anchorY: 0
+            readonly property bool roomRight: level.parentList !== null && level.parentList.x + level.parentList.width + level.width <= popup.width - popup.margin
+            readonly property bool roomLeft: level.parentList !== null && level.parentList.x - level.width >= popup.margin
+
+            visible: false
+            // Left when the right has no room, or when the parent went left and
+            // the left has room, so a chain near the right edge keeps going left.
+            leftward: !roomRight || (level.parentList !== null && level.parentList.leftward && roomLeft)
+            x: level.parentList === null ? 0 : (leftward ? level.parentList.x - level.width : level.parentList.x + level.parentList.width)
+            y: popup.clamp(level.anchorY - level.padding, popup.margin, popup.height - level.height - popup.margin)
+            onPointed: row => {
+                popup.depth = level.index + 1;
+                popup.openSubmenu(level.index + 1, row);
+            }
+            onChosen: row => popup.choose(level.index + 1, row)
+        }
     }
 }

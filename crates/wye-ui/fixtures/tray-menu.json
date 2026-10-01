@@ -15,6 +15,11 @@
           { "id": "clipboard", "kind": "action", "label": "Open URL from Clipboard", "enabled": false },
           { "id": "more", "kind": "submenu", "label": "More", "children": [
             { "id": "history", "kind": "action", "label": "History…" },
+            { "id": "recent", "kind": "submenu", "label": "Recent Links", "children": [
+              { "id": "recent:1", "kind": "action", "label": "github.com/psoldunov/wye/pull/8" },
+              { "id": "recent:2", "kind": "action", "label": "github.com/psoldunov/wye/pull/7" }
+            ] },
+            { "id": "sep-recent", "kind": "separator" },
             { "id": "test-rules", "kind": "action", "label": "Test Rules…" },
             { "id": "sep-more", "kind": "separator" },
             { "id": "about", "kind": "action", "label": "About Wye" }

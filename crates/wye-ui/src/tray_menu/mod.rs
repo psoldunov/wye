@@ -4,9 +4,9 @@
 //! The payload is the `Tray` JSON (`wye_api::tray::TrayMenu`) plus an
 //! optional `placement` (the pointer, as for the picker). The popup shows
 //! the same items as the tray: headers, radio items, actions, separators and
-//! one level of submenus (TRAY-15), with the fixed accelerators `P` and
-//! `1`–`9` (TRAY-13, KEY-51). Choosing an item sends its ID back to the
-//! service with `ActivateTrayItem`, the tray's own dispatcher.
+//! nested submenus (TRAY-15: More, then Recent Links), with the fixed
+//! accelerators `P` and `1`–`9` (TRAY-13, KEY-51). Choosing an item sends its
+//! ID back to the service with `ActivateTrayItem`, the tray's own dispatcher.
 
 use serde::{Deserialize, Serialize};
 use wye_api::picker::Placement;

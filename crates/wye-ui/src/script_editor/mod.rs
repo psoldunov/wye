@@ -4,4 +4,5 @@
 pub mod document;
 pub mod editing;
 pub mod opening;
+pub mod readiness;
 pub mod result;

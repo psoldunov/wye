@@ -69,6 +69,15 @@ Behaviour
 
 ## History window
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/history.png">
+    <img src="../media/kde/screenshots/light/history.png" width="450" alt="The History window listing recent links with reason chips such as picker choice, rule, cleaned and expanded">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 Opened from the tray "More" submenu and from **Show…** on the Advanced page
 ([ADV-09](10-advanced.md#history)).
 
@@ -115,6 +124,15 @@ Steps
 | DLG-TST-03 | Clicking the matched rule opens it in the rule editor. | Proposed |
 
 ## About window
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/about.png">
+    <img src="../media/kde/screenshots/light/about.png" width="450" alt="The About window of Wye">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
 
 | ID | Requirement | Evidence |
 |---|---|---|

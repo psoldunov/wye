@@ -5,6 +5,19 @@
 A small window that walks through what Wye needs before it is useful. It opens on first
 start, and later from the tray "More" submenu (**Set Up Wye…**).
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/first-run.png">
+    <img src="../media/kde/screenshots/light/first-run.png" width="400" alt="The first-run welcome page of Wye">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/first-run-browsers.png">
+    <img src="../media/kde/screenshots/light/first-run-browsers.png" width="400" alt="The first-run page where the user chooses browsers">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ```
 ┌───────────────────────── Welcome to Wye ─────────────────────────┐
 │                          [ Wye icon ]                            │

@@ -5,6 +5,15 @@ Discord desktop app, or always open Google Meet in the work browser profile. The
 per-service mappings are the "built-in rules" of the pipeline
 ([PIPE-08](11-url-pipeline.md#processing-order)).
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-apps.png">
+    <img src="../media/kde/screenshots/light/settings-apps.png" width="600" alt="The Settings window on the Apps page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Layout
 
 ```

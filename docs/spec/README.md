@@ -25,6 +25,15 @@ Widget-by-widget mapping to GNOME and KDE Plasma is in
 [03-settings-window.md](03-settings-window.md#native-control-mapping). Platform mechanisms
 are in [13-linux-platform.md](13-linux-platform.md).
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/picker.png">
+    <img src="../media/kde/screenshots/light/picker.png" width="905" alt="The Wye picker on KDE Plasma: six browser and profile tiles with hotkeys, and the link it is about to open">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Scope
 
 Wye covers link routing on Linux desktops: X11 and Wayland, with first-class support for

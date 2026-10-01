@@ -2,6 +2,15 @@
 
 Link hygiene applied to opened links and, optionally, to links the user copies.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-extras.png">
+    <img src="../media/kde/screenshots/light/settings-extras.png" width="600" alt="The Settings window on the Extras page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Layout
 
 ```

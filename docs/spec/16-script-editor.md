@@ -5,6 +5,15 @@ Transform scripts rewrite a link before it opens. There are two kinds: the globa
 and per-rule scripts ([RUL-25](08-rules.md#rule-editor-sheet)), which run only when their
 rule matches. Both use the same editor and the same script API.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/script-editor.png">
+    <img src="../media/kde/screenshots/light/script-editor.png" width="600" alt="The global transform script editor with a live test result rewriting www.reddit.com to old.reddit.com">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Editor window
 
 ```

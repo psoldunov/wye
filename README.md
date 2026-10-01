@@ -1,4 +1,21 @@
-# Wye
+<p align="center">
+  <img src="data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg" width="128" alt="Wye">
+</p>
+
+<h1 align="center">Wye</h1>
+
+<p align="center">Every link, in the browser you want.</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/picker.png">
+    <img src="docs/media/kde/screenshots/light/picker.png" width="780" alt="The Wye picker on KDE Plasma: six browser and profile tiles with hotkeys, and the link it is about to open">
+  </picture>
+</p>
+
+<p align="center">
+  <img src="docs/media/kde/demo.gif" width="780" alt="A link clicked in Konsole opens the Wye picker at the pointer; the user picks the Research profile of Firefox and the page opens there">
+</p>
 
 Wye is a native Linux browser picker written in Rust. It registers as the desktop's
 default web browser and sends every link to the right browser, browser profile, private
@@ -25,6 +42,27 @@ not yet the desktop-specific extras (see
 The specification starts at [docs/spec/README.md](docs/spec/README.md); the design is in
 [docs/architecture.md](docs/architecture.md) and the D-Bus contract in
 [docs/dbus-api.md](docs/dbus-api.md).
+
+## Tour
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/tray-menu.png">
+    <img src="docs/media/kde/screenshots/light/tray-menu.png" width="220" alt="The Wye tray menu: open the clipboard link and choose the primary browser">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/settings-rules.png">
+    <img src="docs/media/kde/screenshots/light/settings-rules.png" width="300" alt="The Rules page of the Settings window">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/history.png">
+    <img src="docs/media/kde/screenshots/light/history.png" width="300" alt="The History window, with the reason each link went where it did">
+  </picture>
+</p>
+
+The tray, the rules and the history, on KDE Plasma 6. [Take the tour](docs/tour.md) for
+every surface: the picker and its menus, all the Settings pages, the rule editor and
+tester, the transform script editor and the first run.
 
 ## Install
 
@@ -268,6 +306,10 @@ nix develop -c cargo build
 nix develop -c cargo test --workspace --locked
 nix build -L
 ```
+
+The screenshots and the demo GIF are made in a headless KWin and Plasma session with demo
+data. See [docs/media/kde/stage/README.md](docs/media/kde/stage/README.md) to regenerate
+them.
 
 ## Licence
 

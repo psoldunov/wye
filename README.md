@@ -1,4 +1,21 @@
-# Wye
+<p align="center">
+  <img src="data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg" width="128" alt="Wye">
+</p>
+
+<h1 align="center">Wye</h1>
+
+<p align="center">Every link, in the browser you want.</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/picker.png">
+    <img src="docs/media/kde/screenshots/light/picker.png" width="780" alt="The Wye picker on KDE Plasma: six browser and profile tiles with hotkeys, and the link it is about to open">
+  </picture>
+</p>
+
+<p align="center">
+  <img src="docs/media/kde/demo.gif" width="780" alt="A link clicked in Konsole opens the Wye picker at the pointer; the user picks the Research profile of Firefox and the page opens there">
+</p>
 
 Wye is a native Linux browser picker written in Rust. It registers as the desktop's
 default web browser and sends every link to the right browser, browser profile, private
@@ -25,6 +42,144 @@ not yet the desktop-specific extras (see
 The specification starts at [docs/spec/README.md](docs/spec/README.md); the design is in
 [docs/architecture.md](docs/architecture.md) and the D-Bus contract in
 [docs/dbus-api.md](docs/dbus-api.md).
+
+## Tour
+
+Shown on KDE Plasma 6 with Breeze. Switch GitHub to light or dark mode to see the other
+colour scheme. The browser profiles in the images are demo data.
+
+### The picker
+
+The picker opens at the pointer when no rule decides. Each tile is a browser or a browser
+profile, with its hotkey above it and the link's source app and address below.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/picker.png">
+    <img src="docs/media/kde/screenshots/light/picker.png" width="905" alt="The Wye picker on KDE Plasma: six browser and profile tiles with hotkeys, and the link it is about to open">
+  </picture>
+</p>
+
+Right-click a tile for the other ways to open the link. The "…" button opens the overflow
+menu with the Open In submenu, Copy Link, Create Rule… and Settings….
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/picker-tile-menu.png">
+    <img src="docs/media/kde/screenshots/light/picker-tile-menu.png" width="450" alt="The right-click menu of a picker tile: Open, Open in Private Window, Open in New Window, Open in Background, Make Primary Browser">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/picker-more.png">
+    <img src="docs/media/kde/screenshots/light/picker-more.png" width="510" alt="The picker overflow menu with the Open In submenu, Copy Link, Create Rule and Settings">
+  </picture>
+</p>
+
+### The tray
+
+The tray menu opens the clipboard link and chooses the primary browser. Its More submenu
+holds History, Recent Links, Test Rules…, Rescan Browsers, Set Up Wye…, Help and About.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/tray-menu.png">
+    <img src="docs/media/kde/screenshots/light/tray-menu.png" width="326" alt="The Wye tray menu on KDE Plasma: open URL from clipboard, the primary browser list, Settings, More and Quit">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/tray-more.png">
+    <img src="docs/media/kde/screenshots/light/tray-more.png" width="463" alt="The tray menu with the More submenu open: History, Recent Links, Test Rules, Rescan Browsers, Set Up Wye, Help and About">
+  </picture>
+</p>
+
+### Settings
+
+Settings has seven pages: General, Browsers, Apps, Picker, Rules, Extras and Advanced.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/settings-general.png">
+    <img src="docs/media/kde/screenshots/light/settings-general.png" width="455" alt="The Settings window on the General page">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/settings-browsers.png">
+    <img src="docs/media/kde/screenshots/light/settings-browsers.png" width="455" alt="The Settings window on the Browsers page">
+  </picture>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/settings-picker.png">
+    <img src="docs/media/kde/screenshots/light/settings-picker.png" width="455" alt="The Settings window on the Picker page">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/settings-extras.png">
+    <img src="docs/media/kde/screenshots/light/settings-extras.png" width="455" alt="The Settings window on the Extras page">
+  </picture>
+</p>
+
+### Rules
+
+Rules are listed top to bottom and the first match wins. A rule matches on the link, on the
+source app, or on both.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/settings-rules.png">
+    <img src="docs/media/kde/screenshots/light/settings-rules.png" width="600" alt="The Settings window on the Rules page">
+  </picture>
+</p>
+
+The rule editor sets the target and the matchers. Test Rules… traces a link through link
+cleaning, the transform script and the rules, and shows where it opens.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/rule-editor.png">
+    <img src="docs/media/kde/screenshots/light/rule-editor.png" width="455" alt="The Edit Rule sheet for the rule “Work links from Slack”, with its target and URL matchers">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/rule-tester.png">
+    <img src="docs/media/kde/screenshots/light/rule-tester.png" width="455" alt="The Test Rules sheet tracing a YouTube link through cleaning, transform and rule match">
+  </picture>
+</p>
+
+### Transform scripts
+
+The global script and the optional script of each rule rewrite a link before it opens.
+The editor shows the result for a test link as you type.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/script-editor.png">
+    <img src="docs/media/kde/screenshots/light/script-editor.png" width="600" alt="The global transform script editor with a live test result rewriting www.reddit.com to old.reddit.com">
+  </picture>
+</p>
+
+### History
+
+The History window lists recent links with the reason each one went where it did.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/history.png">
+    <img src="docs/media/kde/screenshots/light/history.png" width="450" alt="The History window listing recent links with reason chips such as picker choice, rule, cleaned and expanded">
+  </picture>
+</p>
+
+### First run
+
+On first start Wye walks through making itself the default browser and choosing the
+browsers to show.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/first-run.png">
+    <img src="docs/media/kde/screenshots/light/first-run.png" width="400" alt="The first-run welcome page of Wye">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/kde/screenshots/dark/first-run-browsers.png">
+    <img src="docs/media/kde/screenshots/light/first-run-browsers.png" width="400" alt="The first-run page where the user chooses browsers">
+  </picture>
+</p>
 
 ## Install
 
@@ -268,6 +423,10 @@ nix develop -c cargo build
 nix develop -c cargo test --workspace --locked
 nix build -L
 ```
+
+The screenshots and the demo GIF are made in a headless KWin and Plasma session with demo
+data. See [docs/media/kde/stage/README.md](docs/media/kde/stage/README.md) to regenerate
+them.
 
 ## Licence
 

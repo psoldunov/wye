@@ -3,6 +3,19 @@
 The tray icon is Wye's only always-visible surface. Its menu gives quick access to the
 primary-browser choice, the clipboard action and Settings.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/tray-menu.png">
+    <img src="../media/kde/screenshots/light/tray-menu.png" width="326" alt="The Wye tray menu on KDE Plasma: open URL from clipboard, the primary browser list, Settings, More and Quit">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/tray-more.png">
+    <img src="../media/kde/screenshots/light/tray-more.png" width="463" alt="The tray menu with the More submenu open: History, Recent Links, Test Rules, Rescan Browsers, Set Up Wye, Help and About">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Tray icon
 
 | ID | Requirement | Evidence |

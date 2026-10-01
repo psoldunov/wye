@@ -4,6 +4,15 @@ One window holds all of Wye's configuration, split into seven pages. This file c
 window itself, the building blocks the pages share, and how each block maps to native
 GNOME and KDE Plasma widgets. The pages are in [04](04-general.md) to [10](10-advanced.md).
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-general.png">
+    <img src="../media/kde/screenshots/light/settings-general.png" width="600" alt="The Settings window on the General page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Window
 
 | ID | Requirement | Evidence |

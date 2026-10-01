@@ -3,6 +3,28 @@
 Rules are the user's own routing entries. A rule matches on the link (URL matchers), on
 where it was clicked (source apps), or both, and sends it to a target with options.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-rules.png">
+    <img src="../media/kde/screenshots/light/settings-rules.png" width="600" alt="The Settings window on the Rules page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/rule-editor.png">
+    <img src="../media/kde/screenshots/light/rule-editor.png" width="455" alt="The Edit Rule sheet for the rule “Work links from Slack”, with its target and URL matchers">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/rule-tester.png">
+    <img src="../media/kde/screenshots/light/rule-tester.png" width="455" alt="The Test Rules sheet tracing a YouTube link through cleaning, transform and rule match">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Rules page
 
 | ID | Requirement | Evidence |

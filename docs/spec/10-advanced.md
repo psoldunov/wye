@@ -3,6 +3,15 @@
 URL expansion, the global transform script, global keyboard shortcuts, history, and the
 browser-extension override.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-advanced.png">
+    <img src="../media/kde/screenshots/light/settings-advanced.png" width="600" alt="The Settings window on the Advanced page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Layout
 
 ```

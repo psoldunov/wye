@@ -3,6 +3,15 @@
 Default-browser status, startup behaviour, the tray icon, and an explanation of what Wye
 cannot intercept.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-general.png">
+    <img src="../media/kde/screenshots/light/settings-general.png" width="600" alt="The Settings window on the General page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Layout
 
 ```

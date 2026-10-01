@@ -5,6 +5,15 @@ targets appear in the picker and tray menu, and shows browser-profile status. Th
 also defines two shared surfaces (the target menu and the shown browsers sheet) and how
 Wye discovers and launches targets.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/settings-browsers.png">
+    <img src="../media/kde/screenshots/light/settings-browsers.png" width="600" alt="The Settings window on the Browsers page on KDE Plasma">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Browsers page
 
 | ID | Requirement | Evidence |

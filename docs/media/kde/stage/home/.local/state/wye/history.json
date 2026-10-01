@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "id": 10,
+      "time": -60,
+      "original": "https://www.reddit.com/r/kde/comments/1fx2k9q/plasma_67_is_out/?share_id=Xy12&utm_content=1",
+      "url": "https://old.reddit.com/r/kde/comments/1fx2k9q/plasma_67_is_out/",
+      "entry": "handler",
+      "source": "slack.desktop",
+      "target": {
+        "app": "zen.desktop"
+      },
+      "reason": {
+        "kind": "picker"
+      },
+      "cleaned": true,
+      "transformed": true
+    },
+    {
+      "id": 9,
+      "time": -240,
+      "original": "https://github.com/psoldunov/wye/pull/8?utm_source=slack&utm_medium=share",
+      "url": "https://github.com/psoldunov/wye/pull/8",
+      "entry": "handler",
+      "source": "org.kde.konsole.desktop",
+      "target": {
+        "app": "firefox.desktop"
+      },
+      "reason": {
+        "kind": "picker"
+      },
+      "cleaned": true
+    },
+    {
+      "id": 8,
+      "time": -1500,
+      "original": "https://linear.app/acme/issue/ENG-1042",
+      "url": "https://linear.app/acme/issue/ENG-1042",
+      "entry": "handler",
+      "source": "slack.desktop",
+      "target": {
+        "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Default"
+        }
+      },
+      "reason": {
+        "kind": "rule",
+        "name": "Work links from Slack"
+      }
+    },
+    {
+      "id": 7,
+      "time": -2880,
+      "original": "https://bit.ly/kde-plasma-6",
+      "url": "https://kde.org/announcements/plasma/6/6.0.0/",
+      "entry": "clipboard",
+      "target": {
+        "app": "zen.desktop"
+      },
+      "reason": {
+        "kind": "picker"
+      },
+      "expanded": true
+    },
+    {
+      "id": 6,
+      "time": -5400,
+      "original": "https://www.youtube.com/watch?v=dQw4w9WgXcQ&si=aBcDeFgHiJ",
+      "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+      "entry": "handler",
+      "source": "org.telegram.desktop.desktop",
+      "target": {
+        "app": "brave-browser.desktop"
+      },
+      "reason": {
+        "kind": "rule",
+        "name": "Videos in Brave"
+      },
+      "cleaned": true
+    },
+    {
+      "id": 5,
+      "time": -8100,
+      "original": "https://acme-corp.example/dashboard/q3",
+      "url": "https://acme-corp.example/dashboard/q3",
+      "entry": "extension",
+      "target": {
+        "profile": {
+          "app": "google-chrome.desktop",
+          "id": "Profile 1"
+        }
+      },
+      "reason": {
+        "kind": "rule",
+        "name": "Acme in its own profile"
+      }
+    },
+    {
+      "id": 4,
+      "time": -10800,
+      "original": "https://en.wikipedia.org/wiki/Wye_(rail)",
+      "url": "https://en.wikipedia.org/wiki/Wye_(rail)",
+      "entry": "handler",
+      "source": "org.kde.konsole.desktop",
+      "target": {
+        "profile": {
+          "app": "firefox.desktop",
+          "id": "Profiles/p7m4r8tc.research"
+        }
+      },
+      "reason": {
+        "kind": "picker"
+      }
+    },
+    {
+      "id": 3,
+      "time": -22200,
+      "original": "https://news.ycombinator.com/item?id=41234567",
+      "url": "https://news.ycombinator.com/item?id=41234567",
+      "entry": "handler",
+      "source": "org.kde.neochat.desktop",
+      "target": {
+        "app": "firefox.desktop"
+      },
+      "reason": {
+        "kind": "fallback"
+      }
+    },
+    {
+      "id": 2,
+      "time": -76800,
+      "original": "https://docs.rs/zbus/latest/zbus/",
+      "url": "https://docs.rs/zbus/latest/zbus/",
+      "entry": "cli",
+      "target": {
+        "private": "firefox.desktop"
+      },
+      "reason": {
+        "kind": "alternative-key"
+      }
+    }
+  ]
+}

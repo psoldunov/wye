@@ -7,6 +7,28 @@ get out of the way.
 The design covers one state: dark theme, two shown browsers (a browser and a browser
 profile), icon size Large, names shown, URL hidden, profile badge shown.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/picker.png">
+    <img src="../media/kde/screenshots/light/picker.png" width="905" alt="The Wye picker on KDE Plasma: six browser and profile tiles with hotkeys, and the link it is about to open">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/picker-tile-menu.png">
+    <img src="../media/kde/screenshots/light/picker-tile-menu.png" width="450" alt="The right-click menu of a picker tile: Open, Open in Private Window, Open in New Window, Open in Background, Make Primary Browser">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../media/kde/screenshots/dark/picker-more.png">
+    <img src="../media/kde/screenshots/light/picker-more.png" width="510" alt="The picker overflow menu with the Open In submenu, Copy Link, Create Rule and Settings">
+  </picture>
+</p>
+
+<p align="center"><em>As implemented on KDE Plasma.</em></p>
+
 ## Layout
 
 | ID | Requirement | Evidence |
@@ -19,7 +41,7 @@ profile), icon size Large, names shown, URL hidden, profile badge shown.
 | PICK-06 | A profile target uses its browser's icon with a **profile badge**: the profile's circular avatar overlapping the icon's bottom-left corner, about 60% of the icon's size. Controlled by [PKS-04](07-picker-settings.md). | Specified |
 | PICK-07 | The selected tile has an accent-coloured rounded-rectangle background behind the icon and name. | Specified |
 | PICK-08 | A circular "⋯" overflow button follows the last tile, vertically centred on the icons. It opens a menu: **Open In** › (every known target that is not a tile, grouped like the target menu: browsers, Private Browsing, one section per profile browser, then Other…); *separator*; **Copy Link**; **Create Rule…** (PICK-31); *separator*; **Settings…**. | Specified (button), Proposed (menu) |
-| PICK-09 | **Show URL** ([PKS-03](07-picker-settings.md)) adds a line under the tiles: the source app's small icon and name ("from Slack"), then the link with the host emphasised and the rest dimmed, truncated in the middle so the host and the end of the path stay visible. The full link is in a tooltip. | Specified (setting), Proposed (layout) |
+| PICK-09 | **Show URL** ([PKS-03](07-picker-settings.md)) adds a line under the tiles: the source app's small icon and name ("from Slack"), then the link with the host in bold (the same size as the rest) and the rest dimmed, truncated in the middle so the host and the end of the path stay visible. The full link is in a tooltip. | Specified (setting), Proposed (layout) |
 | PICK-10 | **Show browser names** ([PKS-02](07-picker-settings.md)) hides the name labels when off. | Specified (setting) |
 | PICK-11 | **Icon size** ([PKS-01](07-picker-settings.md)) switches between Small, Medium and Large tiles. | Specified (setting) |
 | PICK-12 | The panel follows the system colour scheme (light/dark) and accent colour. | Proposed |

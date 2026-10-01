@@ -39,15 +39,16 @@ RowLayout {
         opacity: 0.7
     }
 
-    // The host gives way last.
+    // The host gives way last. It stands out by weight alone (PICK-09): the
+    // same small font as the rest, in bold. Styled text keeps it the very same
+    // font, where a font built from the theme's could resolve to another family.
     QQC2.Label {
         Layout.maximumWidth: implicitWidth
         Layout.minimumWidth: Math.min(implicitWidth, Kirigami.Units.gridUnit * 12)
         Layout.fillWidth: true
-        text: line.host
-        textFormat: Text.PlainText
-        font.pointSize: Kirigami.Theme.smallFont.pointSize
-        font.weight: Font.DemiBold
+        text: "<b>" + line.host.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</b>"
+        textFormat: Text.StyledText
+        font: Kirigami.Theme.smallFont
         elide: Text.ElideRight
     }
 

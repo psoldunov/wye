@@ -99,6 +99,7 @@ use zbus::zvariant::Value;
 use crate::script_editor::document::{self, Document};
 use crate::script_editor::editing;
 use crate::script_editor::opening::{self, Fixture};
+use crate::script_editor::readiness::Readiness;
 use crate::script_editor::result::{self, ResultView};
 use crate::service;
 
@@ -132,6 +133,8 @@ pub struct ScriptEditorBackendRust {
     fixture: Option<Fixture>,
     /// Numbers test runs, so a late answer never overwrites a newer one.
     run: u64,
+    /// Whether the script and the test link have arrived for the first run.
+    readiness: Readiness,
     /// A `ScriptFileChanged` subscription is running.
     listening: bool,
 }
@@ -162,6 +165,7 @@ impl qobject::ScriptEditorBackend {
             rust.rule_name.clone_from(&opening.rule_name);
             rust.document = Document::default();
             rust.fixture.clone_from(&opening.fixture);
+            rust.readiness = Readiness::waiting();
         }
         if let Some(fixture) = opening.fixture {
             self.load_fixture(&fixture);
@@ -317,6 +321,9 @@ impl qobject::ScriptEditorBackend {
             .clone()
             .unwrap_or_else(|| result::DEFAULT_TEST_URL.to_owned());
         self.as_mut().set_test_url(qs(&url));
+        // The fixture sets its link synchronously.
+        let ready = self.readiness.with_link();
+        self.as_mut().rust_mut().get_mut().readiness = ready;
         let choices = document::source_choices(&fixture.apps);
         self.as_mut()
             .set_sources_json(qs(&document::choices_json(&choices)));
@@ -347,7 +354,12 @@ impl qobject::ScriptEditorBackend {
         self.as_mut().rust_mut().get_mut().document = Document::loaded(text);
         self.as_mut().source_loaded(qs(text));
         self.as_mut().update_flags();
-        self.run_test();
+        let ready = self.readiness.with_script();
+        self.as_mut().rust_mut().get_mut().readiness = ready;
+        // The first run waits for the test link too (SCR-04).
+        if ready.is_ready() {
+            self.run_test();
+        }
     }
 
     /// The rule's name for the title, the last link for the test and the
@@ -376,9 +388,20 @@ impl qobject::ScriptEditorBackend {
         service::request(
             self.qt_thread(),
             |proxy| async move { proxy.get_history().await },
-            |backend, answer| {
-                if let Ok(json) = answer {
-                    backend.set_test_url(qs(&result::test_url(Some(&json))));
+            |mut backend, answer| {
+                // A link the user already typed stays (SCR-04).
+                if let Ok(json) = answer
+                    && backend.test_url.to_string() == result::test_url(None)
+                {
+                    backend
+                        .as_mut()
+                        .set_test_url(qs(&result::test_url(Some(&json))));
+                }
+                let before = backend.readiness;
+                let after = before.with_link();
+                backend.as_mut().rust_mut().get_mut().readiness = after;
+                if after.is_ready() && !before.is_ready() {
+                    backend.run_test();
                 }
             },
         );

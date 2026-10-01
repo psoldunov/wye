@@ -27,10 +27,9 @@ OnboardingPage {
         }
     }
 
-    Kirigami.Heading {
-        Layout.fillWidth: true
-        level: 3
-        text: qsTr("Browsers in the picker")
+    // The same section header the Settings window's cards use.
+    FormCard.FormHeader {
+        title: qsTr("Browsers in the picker")
     }
 
     FormCard.FormCard {

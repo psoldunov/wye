@@ -160,6 +160,7 @@ WyePage {
         WyeConfirmDialog {
             id: clearHistory
 
+            confirmIcon: "edit-delete"
             confirmText: qsTr("Delete History")
             declineText: qsTr("Keep History")
             message: qsTr("History is off now. Delete the links Wye stored while it was on?")

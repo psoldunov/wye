@@ -252,6 +252,20 @@ fn the_closed_row_shows_the_current_target() {
 }
 
 #[test]
+fn the_closed_row_shows_the_picker_with_its_icon() {
+    // TGT-01, TGT-03: the closed box reads as the menu's item does.
+    let current = json!({"picker": true});
+    let row = describe(
+        &inventory(),
+        &request(Surface::Browsers, &current, None, &[]),
+    );
+    assert_eq!(
+        (row.label.as_str(), row.icon.as_str(), row.checked),
+        ("Picker", crate::settings::icon::PICKER_ICON, true)
+    );
+}
+
+#[test]
 fn an_unknown_target_shows_as_missing() {
     // APP-10
     let current = json!({"app": "ghost.desktop"});

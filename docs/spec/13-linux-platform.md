@@ -43,7 +43,9 @@ Rules with source apps simply do not match when the source is unknown.
 
 Token Station splits into a Rust daemon exposed over D-Bus plus one native frontend per
 desktop (a GNOME Shell extension with libadwaita preferences, a Plasma applet in QML, and
-a StatusNotifierItem tray for other desktops). Wye has the same needs (tray presence, a
+a StatusNotifierItem tray for other desktops). Wye uses the StatusNotifierItem on Plasma
+as well: an applet added nothing the item's `DBusMenu` cannot show, and its configuration
+dialog had nothing to configure. Wye has the same needs (tray presence, a
 floating surface, native settings) and additional ones that only the GNOME Shell
 extension can meet on GNOME (picker at the pointer, modifier state, clipboard watching).
 The split between daemon and frontends is an open decision ([14](14-open-questions.md)).

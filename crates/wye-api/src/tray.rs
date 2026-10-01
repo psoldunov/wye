@@ -1,7 +1,7 @@
 //! The `Tray` property: the tray menu model (01-tray-menu.md).
 //!
-//! The Plasma applet, the `StatusNotifierItem` tray and the `wye-ui` popup
-//! (TRAY-08) render the same model as-is.
+//! The `StatusNotifierItem` tray, the `wye-ui` popup (TRAY-08) and any
+//! external tray host render the same model as-is.
 
 use serde::{Deserialize, Serialize};
 

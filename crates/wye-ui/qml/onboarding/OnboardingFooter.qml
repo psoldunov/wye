@@ -21,6 +21,8 @@ QQC2.ToolBar {
     signal skipRequested
 
     readonly property bool onDefaultStep: (view.step ?? "") === "default-browser"
+    // On the default-browser step, until Wye is the default, the page's Make Default is the primary button.
+    readonly property bool nextIsPrimary: !onDefaultStep || (view.isDefault ?? false)
     readonly property string nextText: {
         if ((view.step ?? "") === "welcome") {
             return qsTr("Get Started");
@@ -81,6 +83,9 @@ QQC2.ToolBar {
                 QQC2.Button {
                     text: qsTr("Skip")
                     visible: bar.onDefaultStep && !(bar.view.isDefault ?? false)
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    QQC2.ToolTip.text: qsTr("Keep the current default browser")
+                    QQC2.ToolTip.visible: hovered
 
                     onClicked: bar.skipRequested()
                 }
@@ -88,7 +93,10 @@ QQC2.ToolBar {
                 QQC2.Button {
                     id: nextButton
 
-                    highlighted: true
+                    // Breeze draws the default button in the accent colour; `highlighted` alone only draws the focus frame.
+                    Accessible.defaultButton: bar.nextIsPrimary
+                    highlighted: bar.nextIsPrimary
+                    icon.name: (bar.view.isLast ?? false) ? "dialog-ok-apply" : "go-next"
                     text: bar.nextText
 
                     onClicked: bar.nextRequested()

@@ -27,11 +27,12 @@ QQC2.ItemDelegate {
     signal ruleRequested(real id)
     signal deleteRequested(real id)
 
-    // "14:32" today, the short date and time otherwise.
+    // "14:32" today, the short date and time otherwise, in the user's locale. (`Qt.formatDateTime(when, Locale.ShortFormat)`
+    // does not do this: it takes a Qt.DateFormat, and Locale.ShortFormat has the value of Qt.ISODate.)
     readonly property string timeLabel: {
         const when = new Date(row.modelData.time * 1000);
         const sameDay = when.toDateString() === new Date().toDateString();
-        return sameDay ? Qt.formatTime(when, Locale.ShortFormat) : Qt.formatDateTime(when, Locale.ShortFormat);
+        return sameDay ? when.toLocaleTimeString(Qt.locale(), Locale.ShortFormat) : when.toLocaleString(Qt.locale(), Locale.ShortFormat);
     }
     // "from Slack · Firefox · 14:32"
     readonly property string details: [row.modelData.sourceName ? qsTr("from %1").arg(row.modelData.sourceName) : "", row.modelData.targetName, row.timeLabel].filter(part => part !== "").join(" · ")
@@ -69,9 +70,11 @@ QQC2.ItemDelegate {
         spacing: Kirigami.Units.largeSpacing
 
         Kirigami.Icon {
-            Layout.alignment: Qt.AlignTop
+            Layout.alignment: Qt.AlignVCenter
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
+            // A target whose app is gone, or whose icon the theme lacks, still looks like a browser.
+            fallback: "internet-web-browser"
             source: row.modelData.icon
         }
 
@@ -98,12 +101,17 @@ QQC2.ItemDelegate {
                 }
             }
 
+            // The details, then the badges right after them; the details give way (elide) when the row is narrow.
             RowLayout {
                 Layout.fillWidth: true
+                Layout.topMargin: Kirigami.Units.smallSpacing / 2
                 spacing: Kirigami.Units.smallSpacing
 
+                // Not `fillWidth` with a maximum: the layout then shares the room with the spacer and rounds the label
+                // below its text's width, which elides it with room to spare.
                 QQC2.Label {
-                    Layout.fillWidth: true
+                    Layout.minimumWidth: Kirigami.Units.gridUnit * 3
+                    Layout.preferredWidth: Math.ceil(implicitWidth)
                     color: Kirigami.Theme.disabledTextColor
                     elide: Text.ElideRight
                     font: Kirigami.Theme.smallFont
@@ -126,17 +134,23 @@ QQC2.ItemDelegate {
                         tint: Kirigami.Theme.neutralTextColor
                     }
                 }
+
+                Item {
+                    Layout.fillWidth: true
+                }
             }
         }
 
         QQC2.ToolButton {
+            Accessible.name: qsTr("Actions for %1").arg(row.modelData.host)
             Layout.alignment: Qt.AlignVCenter
             display: QQC2.AbstractButton.IconOnly
             icon.name: "overflow-menu"
             text: qsTr("Actions")
+            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
             QQC2.ToolTip.text: text
             QQC2.ToolTip.visible: hovered
-            onClicked: menu.popup()
+            onClicked: menu.popup(this, 0, height)
         }
     }
 

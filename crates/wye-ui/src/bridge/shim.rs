@@ -1,8 +1,8 @@
 //! The C++ shim in `cpp/wye_shim.{h,cpp}` (design B): the application
-//! object and xdg-activation tokens. The picker declares the shim's blur
-//! itself (`super::picker`).
+//! object, xdg-activation tokens and the self-test's window snapshots. The
+//! picker declares the shim's blur itself (`super::picker`).
 //!
-//! Only [`super::window_effects`] and `crate::qt_app` call it.
+//! Only [`super::window_effects`], [`super::app`] and `crate::qt_app` call it.
 
 #[cxx_qt::bridge]
 pub mod ffi {
@@ -43,5 +43,11 @@ pub mod ffi {
             app_id: &QString,
             receiver: Pin<&mut QObject>,
         ) -> bool;
+
+        /// Save every visible Quick window as `<prefix>.png` (the first) or
+        /// `<prefix>-w<M>.png`; the files written.
+        #[namespace = "wye"]
+        #[cxx_name = "saveWindowSnapshots"]
+        fn save_window_snapshots(prefix: &QString) -> Vec<String>;
     }
 }

@@ -54,6 +54,47 @@
         }
       }
     },
-    { "action": "show", "key": "script-editor", "argument": "rule:unsaved" }
+    { "action": "show", "key": "script-editor", "argument": "rule:unsaved" },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:github",
+        "ruleName": "GitHub in Firefox",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url;\n}\n",
+          "testUrl": "https://github.com/example/repo?tab=readme",
+          "run": { "ok": true, "url": "https://codeberg.org/example/repo?tab=readme", "changed": [[8, 20]], "micros": 70 },
+          "edit": "export default function transform(url) {\n  url.hostname = \"codeberg.org\";\n  return url;\n}\n"
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:github",
+        "ruleName": "GitHub in Firefox",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url;\n}\n",
+          "testUrl": "https://github.com/example/repo?tab=readme",
+          "run": { "ok": true, "micros": 70 },
+          "edit": "export default function transform(url) {\n  url.hostname = \"codeberg.org\";\n  return url;\n}\n",
+          "confirmClose": true
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url;\n}\n",
+          "run": { "ok": true, "micros": 60 },
+          "reference": true
+        }
+      }
+    }
   ]
 }

@@ -875,6 +875,44 @@
           }
         }
       }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "browsers",
+        "sheet": "target-menu"
+      }
+    },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "advanced",
+        "fixture": {
+          "shortcuts": {
+            "mechanism": "x11",
+            "bindings": [
+              {
+                "action": "toggle-menu",
+                "description": "Toggle menu",
+                "trigger": "Ctrl+Alt+o",
+                "command": "wye menu"
+              },
+              {
+                "action": "clipboard-primary",
+                "description": "Open URL from clipboard with primary browser",
+                "command": "wye clipboard"
+              },
+              {
+                "action": "clipboard-alternative",
+                "description": "Open URL from clipboard with alternative browser",
+                "command": "wye clipboard --alternative"
+              }
+            ]
+          }
+        }
+      }
     }
   ]
 }

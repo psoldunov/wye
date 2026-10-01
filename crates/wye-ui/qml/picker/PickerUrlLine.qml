@@ -1,6 +1,8 @@
 // The URL line (PICK-09): "from Slack", then the link with the host
-// emphasised and the rest dimmed, cut in the middle by the backend. The full
-// link is in the tooltip.
+// emphasised and the rest dimmed. The backend cuts a long link in the middle
+// (URL_LINE_CHARS); what still does not fit the panel is cut in the middle of
+// the rest, so the host and the end of the path stay visible. The full link
+// is in the tooltip. The picker centres the line and caps its width.
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
@@ -15,39 +17,55 @@ RowLayout {
     property string sourceName
     property string sourceIcon
 
-    // `text` with the characters StyledText reads as markup escaped.
-    function escaped(text) {
-        return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    }
-
-    spacing: Kirigami.Units.smallSpacing
+    spacing: 0
+    Accessible.role: Accessible.StaticText
+    Accessible.name: sourceName !== "" ? qsTr("From %1: %2").arg(sourceName).arg(full) : full
 
     Kirigami.Icon {
         Layout.preferredWidth: Kirigami.Units.iconSizes.small
         Layout.preferredHeight: Kirigami.Units.iconSizes.small
+        Layout.rightMargin: Kirigami.Units.smallSpacing
         visible: line.sourceName !== "" && line.sourceIcon !== ""
         source: line.sourceIcon
+        fallback: "application-x-executable"
     }
 
     QQC2.Label {
+        Layout.rightMargin: Kirigami.Units.largeSpacing
         visible: line.sourceName !== ""
         text: qsTr("from %1").arg(line.sourceName)
+        textFormat: Text.PlainText
         font: Kirigami.Theme.smallFont
         opacity: 0.7
     }
 
+    // The host gives way last.
     QQC2.Label {
+        Layout.maximumWidth: implicitWidth
+        Layout.minimumWidth: Math.min(implicitWidth, Kirigami.Units.gridUnit * 12)
         Layout.fillWidth: true
-        textFormat: Text.StyledText
-        text: "<b>" + line.escaped(line.host) + "</b><font color=\"" + Qt.alpha(Kirigami.Theme.textColor, 0.6) + "\">" + line.escaped(line.rest) + "</font>"
+        text: line.host
+        textFormat: Text.PlainText
+        font.pointSize: Kirigami.Theme.smallFont.pointSize
+        font.weight: Font.DemiBold
+        elide: Text.ElideRight
+    }
+
+    QQC2.Label {
+        Layout.maximumWidth: implicitWidth
+        Layout.fillWidth: true
+        text: line.rest
+        textFormat: Text.PlainText
         font: Kirigami.Theme.smallFont
         elide: Text.ElideMiddle
-
-        HoverHandler {
-            id: hover
-        }
-
-        QQC2.ToolTip.visible: hover.hovered
-        QQC2.ToolTip.text: line.full
+        opacity: 0.6
     }
+
+    HoverHandler {
+        id: hover
+    }
+
+    QQC2.ToolTip.visible: hover.hovered && full !== ""
+    QQC2.ToolTip.text: full
+    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
 }

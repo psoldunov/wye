@@ -11,7 +11,7 @@ The package installs only the files under `hicolor/`, never this directory.
 | `small.py` | `16x16/`, `24x24/` and `32x32/apps/dev.soldunov.wye.svg`, redrawn on the pixel grid because the master blurs below 48 px. |
 | `symbolic.py` | `symbolic/apps/dev.soldunov.wye-symbolic.svg`, the monochrome tray icon (GEN-02) as filled outlines that GTK and Plasma recolour. |
 | `picker.py` | `symbolic/apps/dev.soldunov.wye-picker-symbolic.svg`, the picker glyph (a bulleted list) for the tray icon and the Picker menu item (TRAY-02). |
-| `common.py` | Shared geometry: number formatting, the squircle plate and the Y's centrelines. |
+| `common.py` | Shared geometry: number formatting, the squircle plate, the Y's centrelines and `SYMBOLIC_SCALE`, which shrinks both symbolic glyphs to 80% of the canvas so they sit beside Breeze icons with a margin. |
 | `contact-sheet.sh` | A PNG contact sheet of every size on light and dark backgrounds, for review. |
 
 ## Regenerate

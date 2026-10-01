@@ -7,14 +7,16 @@ import org.kde.kirigami as Kirigami
 Kirigami.OverlaySheet {
     id: sheet
 
-    // One code sample, selectable.
+    // One code sample, selectable. The small monospace size keeps the longest line of the API block (about 80 columns)
+    // inside the sheet at the editor's default width, so nothing is cut off at the right.
     component Code: QQC2.TextArea {
         Layout.fillWidth: true
         readOnly: true
         selectByMouse: true
         wrapMode: TextEdit.NoWrap
         textFormat: TextEdit.PlainText
-        font: Kirigami.Theme.fixedWidthFont
+        font.family: Kirigami.Theme.fixedWidthFont.family
+        font.pointSize: Kirigami.Theme.smallFont.pointSize
     }
 
     title: qsTr("Script Reference")

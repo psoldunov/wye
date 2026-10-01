@@ -14,18 +14,46 @@ OnboardingPage {
     heading: qsTr("Make Wye your default browser")
     lead: qsTr("When Wye is your default browser, every link you click in another app goes through it. Wye then sends the link to the right place.")
 
+    // One row: the state, and Make Default beside it as the step's primary button (the footer's Continue is not
+    // highlighted while this is shown). On success the button goes and the row turns into the checkmark.
+    // (A plain delegate with its own row: FormTextDelegate's `leading`/`trailing` items did not show here.)
     FormCard.FormCard {
-        FormCard.FormTextDelegate {
-            icon.name: page.view.isDefault ? "emblem-ok-symbolic" : "dialog-information-symbolic"
-            text: page.view.isDefault ? qsTr("Wye is your default browser") : (page.view.currentDefault ? qsTr("Currently: %1").arg(page.view.currentDefault) : qsTr("No default browser is set"))
-        }
+        FormCard.AbstractFormDelegate {
+            Accessible.name: stateLabel.text
+            Layout.fillWidth: true
+            background: null
+            focusPolicy: Qt.NoFocus
+            hoverEnabled: false
 
-        FormCard.FormButtonDelegate {
-            icon.name: "emblem-default-symbolic"
-            text: qsTr("Make Default")
-            visible: !page.view.isDefault
+            contentItem: RowLayout {
+                spacing: Kirigami.Units.largeSpacing
 
-            onClicked: OnboardingBackend.makeDefault()
+                Kirigami.Icon {
+                    implicitHeight: Kirigami.Units.iconSizes.smallMedium
+                    implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                    color: page.view.isDefault ? Kirigami.Theme.positiveTextColor : Kirigami.Theme.textColor
+                    isMask: true
+                    source: page.view.isDefault ? "checkmark" : "internet-web-browser-symbolic"
+                }
+
+                QQC2.Label {
+                    id: stateLabel
+
+                    Layout.fillWidth: true
+                    text: page.view.isDefault ? qsTr("Wye is your default browser") : (page.view.currentDefault ? qsTr("Currently: %1").arg(page.view.currentDefault) : qsTr("No default browser is set"))
+                    wrapMode: Text.Wrap
+                }
+
+                QQC2.Button {
+                    Accessible.defaultButton: true
+                    highlighted: true
+                    icon.name: "emblem-default-symbolic"
+                    text: qsTr("Make Default")
+                    visible: !page.view.isDefault
+
+                    onClicked: OnboardingBackend.makeDefault()
+                }
+            }
         }
     }
 

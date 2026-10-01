@@ -116,7 +116,7 @@ WyeSheet {
     }
 
     primaryText: qsTr("Done")
-    sheetWidth: Kirigami.Units.gridUnit * 26
+    sheetWidth: Kirigami.Units.gridUnit * 30
     title: qsTr("Picker Keys")
 
     onAboutToShow: clash = null
@@ -125,6 +125,7 @@ WyeSheet {
     // KEY-04
     footerLeading: QQC2.Button {
         enabled: SettingsBackend.writable
+        icon.name: "edit-reset"
         text: qsTr("Reset to Defaults")
 
         onClicked: {
@@ -133,42 +134,28 @@ WyeSheet {
         }
     }
 
-    // KEY-21
-    Rectangle {
+    // KEY-21: the clash, as the desktop's own warning message, with Replace and Cancel.
+    Kirigami.InlineMessage {
         Layout.fillWidth: true
         Layout.margins: Kirigami.Units.largeSpacing
-        color: Qt.alpha(Kirigami.Theme.neutralTextColor, 0.15)
-        border.color: Kirigami.Theme.neutralTextColor
-        implicitHeight: clashRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-        radius: Kirigami.Units.cornerRadius
+        text: sheet.clash?.message ?? ""
+        type: Kirigami.MessageType.Warning
         visible: sheet.clash !== null
 
-        RowLayout {
-            id: clashRow
-
-            anchors {
-                fill: parent
-                margins: Kirigami.Units.largeSpacing
-            }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                text: sheet.clash?.message ?? ""
-                wrapMode: Text.WordWrap
-            }
-
-            QQC2.Button {
+        actions: [
+            Kirigami.Action {
+                icon.name: "document-replace"
                 text: qsTr("Replace")
 
-                onClicked: sheet.replace()
-            }
-
-            QQC2.Button {
+                onTriggered: sheet.replace()
+            },
+            Kirigami.Action {
+                icon.name: "dialog-cancel"
                 text: qsTr("Cancel")
 
-                onClicked: sheet.clash = null
+                onTriggered: sheet.clash = null
             }
-        }
+        ]
     }
 
     // KEY-20

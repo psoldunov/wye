@@ -53,9 +53,8 @@ in
   config = lib.mkIf cfg.enable {
     inherit (channel) assertions;
     environment.systemPackages = [ cfg.package ];
-    # The D-Bus activation files, the systemd user units `wye` and `wye-ui`
-    # (lib/systemd/user) and the Plasma applet (share/plasma/plasmoids) come
-    # from the package.
+    # The D-Bus activation files and the systemd user units `wye` and
+    # `wye-ui` (lib/systemd/user) come from the package.
     services.dbus.packages = [ cfg.package ];
     systemd.packages = [ cfg.package ];
     systemd.user.services.wye = {

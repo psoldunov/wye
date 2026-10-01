@@ -6,12 +6,16 @@
 # Layout contract: the modules come from this flake but may install an older
 # release's package, so they rely only on what every release's packaging
 # ships: bin/wye, bin/wye-ui, bin/wye-native-host,
-# share/dbus-1/services/dev.soldunov.wye{,.Ui}.service,
-# share/systemd/user/wye{,-ui}.service with lib/systemd/user links, and
-# share/plasma/plasmoids/dev.soldunov.wye. Moving or renaming any of these
-# breaks the `release` channel until the next release; add new paths instead,
-# and have the modules use them only once a release that ships them is
-# recorded.
+# share/dbus-1/services/dev.soldunov.wye{,.Ui}.service, and
+# share/systemd/user/wye{,-ui}.service with lib/systemd/user links. Moving or
+# renaming any of these breaks the `release` channel until the next release;
+# add new paths instead, and have the modules use them only once a release
+# that ships them is recorded.
+#
+# share/plasma/plasmoids/dev.soldunov.wye (the Plasma applet) is no longer
+# part of the contract: this flake's package has no applet, and the modules
+# rely on it nowhere. An older release's package still carries it, which is
+# harmless: that release's service and applet belong together.
 {
   self,
   release,
@@ -48,7 +52,7 @@ in
       default =
         if cfg.channel == "release" then packages.wye-release or packages.wye-git else packages.wye-git;
       defaultText = lib.literalExpression "wye.packages.\${system}.wye-release or wye.packages.\${system}.wye-git, by channel";
-      description = "Package providing the `wye` and `wye-ui` binaries, the D-Bus and systemd files and the Plasma applet.";
+      description = "Package providing the `wye` and `wye-ui` binaries and the D-Bus and systemd files.";
     };
   };
 

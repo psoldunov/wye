@@ -22,6 +22,8 @@ Item {
     property var rows: []
     property Component trailing
     property int dragStart: -1
+    // Some row can be removed: every row keeps the remove button's room, so the trailing controls line up.
+    readonly property bool anyRemovable: rows.some(row => !!row.removable)
     signal toggled(string key, bool checked)
     signal moved(int from, int to)
     signal removeRequested(string key)
@@ -113,6 +115,7 @@ Item {
                     Kirigami.Icon {
                         Layout.preferredHeight: Kirigami.Units.iconSizes.small
                         Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                        fallback: "internet-web-browser"
                         source: holder.missing ? "dialog-warning" : (holder.icon !== "" ? holder.icon : "application-x-executable")
                     }
 
@@ -138,11 +141,18 @@ Item {
                     }
 
                     QQC2.ToolButton {
+                        Accessible.name: qsTr("Remove %1").arg(holder.name)
                         display: QQC2.AbstractButton.IconOnly
-                        icon.name: "edit-delete"
+                        enabled: holder.removable
+                        icon.name: "list-remove-symbolic"
+                        opacity: holder.removable ? 1 : 0
                         text: qsTr("Remove")
-                        visible: holder.removable
+                        visible: root.anyRemovable
                         onClicked: root.removeRequested(holder.key)
+
+                        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                        QQC2.ToolTip.text: qsTr("Remove from the list")
+                        QQC2.ToolTip.visible: hovered
                     }
 
                     Kirigami.ListItemDragHandle {

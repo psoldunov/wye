@@ -37,7 +37,7 @@ wayland-protocols.workspace = true
 wayland-protocols-wlr.workspace = true
 x11rb.workspace = true
 xkbcommon.workspace = true
-# The StatusNotifierItem tray when no tray host registered (TRAY-01).
+# The StatusNotifierItem tray (TRAY-01).
 ksni.workspace = true
 # Global shortcuts through the GlobalShortcuts portal (KEY-40).
 ashpd.workspace = true

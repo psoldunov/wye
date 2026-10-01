@@ -1,6 +1,7 @@
-//! Showing the `StatusNotifierItem` (decision 8): it runs while the menu is
-//! visible (TRAY-04) and no tray host registered, after the start-up grace
-//! on KDE; it follows every `Tray` change and carries out what is chosen.
+//! Showing the `StatusNotifierItem`: it runs while the menu is visible
+//! (TRAY-04) and no external tray host registered, from the moment the
+//! service starts; it follows every `Tray` change and carries out what is
+//! chosen.
 
 use std::sync::Arc;
 
@@ -23,30 +24,17 @@ pub(crate) async fn present(ctx: ServiceContext) {
     let mut events = sni.events();
     let mut hosts = ctx.tray().hosts.subscribe();
     let mut changes = tray_changes(&ctx).await;
-    let grace = tokio::time::sleep(sni.grace());
-    tokio::pin!(grace);
-    let mut waiting = !sni.grace().is_zero();
     let mut shown: Option<TrayMenu> = None;
-    let mut had_host = ctx.tray().hosts.any();
     loop {
-        if !waiting {
-            shown = sync(&ctx, sni.as_ref(), shown).await;
-            ctx.tray().set_sni_shown(shown.is_some());
-        }
+        shown = sync(&ctx, sni.as_ref(), shown).await;
+        ctx.tray().set_sni_shown(shown.is_some());
         tokio::select! {
-            () = &mut grace, if waiting => waiting = false,
+            // A host registered or the last one left: the next sync hides or
+            // shows the item.
             alive = hosts.changed() => {
                 if alive.is_err() {
                     return;
                 }
-                // The last host left (unregistered, or plasmashell restarting):
-                // give a reloaded applet the same grace as at start.
-                let hosted = ctx.tray().hosts.any();
-                if had_host && !hosted && !sni.grace().is_zero() {
-                    grace.as_mut().reset(tokio::time::Instant::now() + sni.grace());
-                    waiting = true;
-                }
-                had_host = hosted;
             }
             () = next_tray_change(&mut changes) => {}
             event = events.recv() => match event {

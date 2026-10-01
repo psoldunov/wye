@@ -29,6 +29,9 @@ WyePage {
         function onSheetRequested(name) {
             if (name === "shown-browsers") {
                 page.showShownBrowsers();
+            } else if (name === "target-menu") {
+                // Self-test only: the primary browser's menu, to see the target menu open.
+                primaryRow.popup();
             }
         }
 
@@ -38,6 +41,8 @@ WyePage {
     WyeGroupCard {
         // BRW-01
         WyeTargetRow {
+            id: primaryRow
+
             current: page.value(path, {
                 "picker": true
             })
@@ -81,9 +86,13 @@ WyePage {
             subtitle: qsTr("Profiles of Chromium-based and Firefox-based browsers are found automatically. <a href=\"https://github.com/psoldunov/wye#browser-profiles\">Learn more</a>")
             title: qsTr("Browser profiles")
 
+            // BRW-06: the count. Wye ships no translations, so a numerus string (`%n`) would print "profile(s)"; each
+            // English form is its own string instead.
             QQC2.Label {
+                readonly property int count: page.profileCount
+
                 color: Kirigami.Theme.disabledTextColor
-                text: qsTr("%n profile(s) found", "", page.profileCount)
+                text: count === 0 ? qsTr("No profiles found") : count === 1 ? qsTr("1 profile found") : qsTr("%1 profiles found").arg(count)
             }
 
             QQC2.Button {

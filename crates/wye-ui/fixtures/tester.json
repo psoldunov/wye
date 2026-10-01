@@ -556,6 +556,45 @@
   },
   {
    "action": "show",
+   "key": "test-rules",
+   "argument": {
+    "url": "https://l.example.net/r?u=https%3A%2F%2Fwww.example.com%2Fa%2Fvery%2Flong%2Fpath%2Fthat%2Fkeeps%2Fgoing%3Futm_source%3Dnewsletter",
+    "trace": {
+     "steps": [
+      {
+       "kind": "unwrap",
+       "text": "Unwrapped l.example.net: https://www.example.com/a/very/long/path/that/keeps/going?utm_source=newsletter&utm_medium=email",
+       "url": "https://www.example.com/a/very/long/path/that/keeps/going?utm_source=newsletter&utm_medium=email"
+      },
+      {
+       "kind": "clean",
+       "text": "Removed tracking parameters: utm_source, utm_medium",
+       "url": "https://www.example.com/a/very/long/path/that/keeps/going"
+      },
+      {
+       "kind": "default",
+       "text": "No rule matched: the primary browser"
+      }
+     ],
+     "decision": "open",
+     "target": {
+      "profile": {
+       "app": "google-chrome.desktop",
+       "id": "Profile 1"
+      }
+     },
+     "targetName": "Work (Google Chrome)",
+     "options": {
+      "private": true,
+      "background": true,
+      "newWindow": false
+     },
+     "finalUrl": "https://www.example.com/a/very/long/path/that/keeps/going"
+    }
+   }
+  },
+  {
+   "action": "show",
    "key": "settings",
    "argument": {
     "page": "rules",

@@ -15,9 +15,11 @@ it shipped with your desktop, in the spirit of
 - **The tray** shows the current default, the clipboard link and your recent links.
 - **The browser extension** sends a link or the page you are on to Wye.
 
-KDE Plasma 6 comes first: the tray applet, the global shortcuts portal and the source-app
-and focused-window detection all target it. The core and the CLI work on any Linux desktop.
-GNOME, Sway and Hyprland get the same routing but not yet the desktop-specific extras (see
+KDE Plasma 6 comes first: the global shortcuts portal and the source-app and
+focused-window detection target it. The tray icon is a standard StatusNotifierItem, so it
+shows in Plasma's system tray and in any other tray that supports the protocol. The core
+and the CLI work on any Linux desktop. GNOME, Sway and Hyprland get the same routing but
+not yet the desktop-specific extras (see
 [Not yet implemented](docs/architecture.md#not-yet-implemented)).
 
 The specification starts at [docs/spec/README.md](docs/spec/README.md); the design is in
@@ -77,7 +79,7 @@ nix run github:psoldunov/wye -- browsers
 }
 ```
 
-The module installs the package and the Plasma applet, links the D-Bus activation files,
+The module installs the package, links the D-Bus activation files,
 and runs `wye service` as the systemd user unit `wye.service`. The UI host `wye-ui` (picker,
 windows, tray-menu popup) runs as `wye-ui.service`, started by D-Bus activation when the
 service first needs it.
@@ -145,14 +147,18 @@ on `XDG_DATA_DIRS`. The D-Bus files name `SystemdService=`, so link the units yo
 1. Make Wye the default browser: run `wye default set`, use the banner on the Settings
    **General** page, or use `programs.wye.defaultBrowser` above. `wye default unset`
    gives the default back to the browser Wye replaced.
-2. Add the tray applet: right-click the system tray, choose **Configure System Tray…**,
-   **Entries**, and set **Wye** to **Shown**. Wye shows its own tray icon until the applet
-   registers, and hides it once the applet does.
+2. The tray icon appears in the system tray as soon as the service runs. Click it for the
+   menu; middle-click it to open Settings (TRAY-19). If Plasma hides it among the hidden
+   icons, right-click the system tray, choose **Configure System Tray…**, **Entries**, and set
+   **Wye** to **Shown**.
 3. Optional: start the browser extension's helper (see [Browser extension](#browser-extension)).
 
-After a home-manager switch, a running Plasma session picks the applet up immediately (the
-module announces it over D-Bus). After a NixOS switch, or if the applet still does not
-appear, log out and in.
+Earlier versions shipped a Plasma applet for the tray. It is gone: the service's own tray
+icon does the same job. After a home-manager switch, a running Plasma session drops the old
+applet at once (the module announces the removal over D-Bus) and Wye's own tray item
+shows up. The NixOS module does not announce it: after a NixOS switch, a running Plasma
+session keeps showing the old applet, and Wye's tray item appears from the next login. Log
+out and in, or remove the leftover applet by hand.
 
 ## Command line
 

@@ -1,15 +1,20 @@
 // WyeSheet (BLK-11): a modal panel over the settings window. The window behind is dimmed and inert. Own header with a
-// title, a scrolling body, and a footer that stays pinned: an optional note, optional leading controls, and the buttons.
-// The primary button uses the accent colour and stays disabled until the content is valid. Escape closes the sheet, not
-// the window behind it.
+// title, a scrolling body, and a footer that stays pinned: an optional note, optional leading controls, and the buttons in
+// KDE's order (the primary action, then the one that declines) with the desktop's dialog icons. The primary button is the
+// default button, drawn highlighted, and stays disabled until the content is valid. Escape closes the sheet, not the window
+// behind it. The sheet is as tall as its content and at most the window's height less a margin; the body scrolls then.
 //
 // API
 //   title: string          header title ("New Rule")
-//   note: string          optional dimmed note in the footer
+//   note: string           optional dimmed note in the footer, on its own full-width row above the buttons; it wraps
 //   primaryText: string    the primary button ("Done", "Save"); empty for none
+//   primaryIcon: string    its icon (default "dialog-ok"; "document-save" for Save, "edit-delete" for a deletion)
+//   secondaryIcon: string  the other button's icon (default "dialog-cancel")
 //   primaryEnabled: bool   false until the content is valid
 //   secondaryText: string  the other button ("Cancel"); empty for none
-//   primaryTriggered() / secondaryTriggered()   a button was pressed; the sheet does not close itself: call close()
+//   tertiaryText: string   an optional third button, after the secondary ("Cancel" beside "Save" and "Discard"); empty for none
+//   tertiaryIcon: string   its icon (default "dialog-cancel")
+//   primaryTriggered() / secondaryTriggered() / tertiaryTriggered()   a button was pressed; the sheet does not close itself: call close()
 //   default property       the body: items, laid out in a column that scrolls
 //   footerLeading          items at the footer's left ("+" of the shown browsers sheet, "Browse…")
 //   sheetWidth: real       default about 380 px (docs/spec/05-browsers.md)
@@ -28,11 +33,16 @@ QQC2.Dialog {
     property string primaryText
     property bool primaryEnabled: true
     property string secondaryText
+    property string primaryIcon: "dialog-ok"
+    property string secondaryIcon: "dialog-cancel"
+    property string tertiaryText
+    property string tertiaryIcon: "dialog-cancel"
     property real sheetWidth: Kirigami.Units.gridUnit * 21
     default property alias body: bodyColumn.data
     property alias footerLeading: leadingSlot.data
     signal primaryTriggered
     signal secondaryTriggered
+    signal tertiaryTriggered
 
     readonly property real available: (parent?.height ?? Kirigami.Units.gridUnit * 30) - Kirigami.Units.gridUnit * 4
 
@@ -55,20 +65,37 @@ QQC2.Dialog {
         }
     }
 
-    header: Kirigami.Heading {
-        level: 3
-        padding: Kirigami.Units.largeSpacing
-        text: sheet.title
-        horizontalAlignment: Text.AlignHCenter
+    header: ColumnLayout {
+        spacing: 0
+
+        Kirigami.Heading {
+            Layout.fillWidth: true
+            Layout.leftMargin: Kirigami.Units.largeSpacing * 2
+            Layout.rightMargin: Kirigami.Units.largeSpacing * 2
+            Layout.topMargin: Kirigami.Units.largeSpacing
+            Layout.bottomMargin: Kirigami.Units.largeSpacing
+            elide: Text.ElideRight
+            level: 2
+            text: sheet.title
+        }
+
+        Kirigami.Separator {
+            Layout.fillWidth: true
+        }
     }
 
     contentItem: QQC2.ScrollView {
+        id: scroller
+
+        // Room between the header's line and the first item, and above the footer's line.
+        bottomPadding: Kirigami.Units.largeSpacing
         contentWidth: availableWidth
+        topPadding: Kirigami.Units.smallSpacing
 
         ColumnLayout {
             id: bodyColumn
 
-            width: parent.width
+            width: scroller.availableWidth
             spacing: Kirigami.Units.smallSpacing
         }
     }
@@ -78,6 +105,19 @@ QQC2.Dialog {
 
         Kirigami.Separator {
             Layout.fillWidth: true
+        }
+
+        // The note has a row of its own, the sheet's full width, above the buttons.
+        QQC2.Label {
+            Layout.fillWidth: true
+            Layout.leftMargin: Kirigami.Units.largeSpacing
+            Layout.rightMargin: Kirigami.Units.largeSpacing
+            Layout.topMargin: Kirigami.Units.largeSpacing
+            color: Kirigami.Theme.disabledTextColor
+            font: Kirigami.Theme.smallFont
+            text: sheet.note
+            visible: sheet.note !== ""
+            wrapMode: Text.Wrap
         }
 
         RowLayout {
@@ -90,32 +130,33 @@ QQC2.Dialog {
                 spacing: Kirigami.Units.smallSpacing
             }
 
-            QQC2.Label {
-                Layout.fillWidth: true
-                color: Kirigami.Theme.disabledTextColor
-                elide: Text.ElideRight
-                font: Kirigami.Theme.smallFont
-                text: sheet.note
-                visible: sheet.note !== ""
-            }
-
             Item {
                 Layout.fillWidth: true
-                visible: sheet.note === ""
+            }
+
+            // KDE's order: the affirmative action first, then the one that declines.
+            QQC2.Button {
+                Accessible.defaultButton: true
+                enabled: sheet.primaryEnabled
+                highlighted: true
+                icon.name: sheet.primaryIcon
+                text: sheet.primaryText
+                visible: sheet.primaryText !== ""
+                onClicked: sheet.primaryTriggered()
             }
 
             QQC2.Button {
+                icon.name: sheet.secondaryIcon
                 text: sheet.secondaryText
                 visible: sheet.secondaryText !== ""
                 onClicked: sheet.secondaryTriggered()
             }
 
             QQC2.Button {
-                enabled: sheet.primaryEnabled
-                highlighted: true
-                text: sheet.primaryText
-                visible: sheet.primaryText !== ""
-                onClicked: sheet.primaryTriggered()
+                icon.name: sheet.tertiaryIcon
+                text: sheet.tertiaryText
+                visible: sheet.tertiaryText !== ""
+                onClicked: sheet.tertiaryTriggered()
             }
         }
     }

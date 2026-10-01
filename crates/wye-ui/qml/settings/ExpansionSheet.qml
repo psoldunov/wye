@@ -34,7 +34,7 @@ WyeSheet {
     }
 
     primaryText: qsTr("Done")
-    sheetWidth: Kirigami.Units.gridUnit * 24
+    sheetWidth: Kirigami.Units.gridUnit * 28
     title: qsTr("URL Expansion")
 
     onAboutToShow: {
@@ -46,7 +46,6 @@ WyeSheet {
 
     WyeCallout {
         calloutId: "expansion-info"
-        closeLeading: true
         text: qsTr("Redirect wrappers are unwrapped on your computer. Short links need one request to the short-link service to find where they lead.")
     }
 
@@ -94,6 +93,7 @@ WyeSheet {
                     id: domainField
 
                     Layout.fillWidth: true
+                    Accessible.name: qsTr("Short-link domain")
                     placeholderText: qsTr("example.link")
 
                     onAccepted: sheet.addDomain()
@@ -111,6 +111,9 @@ WyeSheet {
 
             QQC2.Button {
                 Layout.alignment: Qt.AlignTop
+                enabled: domainField.text.trim() !== ""
+                highlighted: true
+                icon.name: "list-add"
                 text: qsTr("Add")
 
                 onClicked: sheet.addDomain()
@@ -118,6 +121,7 @@ WyeSheet {
 
             QQC2.Button {
                 Layout.alignment: Qt.AlignTop
+                icon.name: "dialog-cancel"
                 text: qsTr("Cancel")
 
                 onClicked: {
@@ -142,10 +146,15 @@ WyeSheet {
 
                 // DLG-EXP-02: a domain you added can be removed again.
                 QQC2.ToolButton {
+                    Accessible.name: qsTr("Remove %1").arg(link.modelData.label)
                     display: QQC2.AbstractButton.IconOnly
-                    icon.name: "edit-delete"
+                    icon.name: "list-remove-symbolic"
                     text: qsTr("Remove")
                     visible: link.modelData.removable
+
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    QQC2.ToolTip.text: qsTr("Remove this domain")
+                    QQC2.ToolTip.visible: hovered
 
                     onClicked: SettingsBackend.expansionRemoveDomain(link.modelData.id)
                 }

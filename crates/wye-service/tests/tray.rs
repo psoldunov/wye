@@ -1,6 +1,6 @@
 //! The tray on a private bus (TRAY-01 to TRAY-18, decision 8): the `Tray`
-//! property, `ActivateTrayItem`, `RegisterTray` hiding the
-//! `StatusNotifierItem` and bringing it back, and the item's own events.
+//! property, `ActivateTrayItem`, an external host's `RegisterTray` hiding
+//! the `StatusNotifierItem` and bringing it back, and the item's own events.
 //! Skips without `dbus-daemon`.
 
 mod support;
@@ -134,20 +134,20 @@ async fn a_registered_tray_host_hides_the_item_until_it_leaves() {
     })
     .await;
 
-    let applet = service.bus.connect().await;
-    let host = Wye1Proxy::new(&applet).await.expect("proxy");
+    let panel = service.bus.connect().await;
+    let host = Wye1Proxy::new(&panel).await.expect("proxy");
     host.register_tray("plasma-applet")
         .await
-        .expect("the applet registers");
-    eventually("the item hides for the applet", || {
+        .expect("an external host registers");
+    eventually("the item hides for the host", || {
         let sni = sni.clone();
         async move { sni.shown().is_none() }
     })
     .await;
 
     drop(host);
-    applet.close().await.expect("the applet leaves");
-    eventually("the item comes back without the applet", || {
+    panel.close().await.expect("the host leaves");
+    eventually("the item comes back without the host", || {
         let sni = sni.clone();
         async move { sni.shown().is_some() }
     })
@@ -183,7 +183,7 @@ async fn unknown_hosts_and_items_are_refused() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_unregistered_host_gets_the_item_back_after_the_grace() {
+async fn an_unregistered_host_gets_the_item_back_at_once() {
     let Some(service) = Service::start(SHOWN).await else {
         return;
     };
@@ -193,42 +193,32 @@ async fn an_unregistered_host_gets_the_item_back_after_the_grace() {
         async move { sni.shown().is_some() }
     })
     .await;
-    let grace = std::time::Duration::from_millis(400);
-    sni.set_grace(grace);
 
-    // The applet's connection is plasmashell's: it stays open.
-    let applet = service.bus.connect().await;
-    let host = Wye1Proxy::new(&applet).await.expect("proxy");
+    // The host's connection stays open, as a panel process's would.
+    let panel = service.bus.connect().await;
+    let host = Wye1Proxy::new(&panel).await.expect("proxy");
     host.register_tray("plasma-applet")
         .await
         .expect("registers");
-    eventually("the item hides for the applet", || {
+    eventually("the item hides for the host", || {
         let sni = sni.clone();
         async move { sni.shown().is_none() }
     })
     .await;
 
     host.unregister_tray().await.expect("unregisters");
-    let left = std::time::Instant::now();
     host.unregister_tray().await.expect("twice is fine");
-    tokio::time::sleep(grace / 4).await;
-    assert_eq!(sni.shown(), None, "the grace holds the item back");
-    eventually("the item comes back after the grace", || {
+    eventually("the item comes back without waiting", || {
         let sni = sni.clone();
         async move { sni.shown().is_some() }
     })
     .await;
-    assert!(
-        left.elapsed() >= grace,
-        "came back after {:?}",
-        left.elapsed()
-    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn two_applets_on_one_connection_each_count_decision_8() {
-    // Every Plasma applet instance shares plasmashell's connection: removing
-    // one of two must not bring the item back beside the other.
+async fn two_hosts_on_one_connection_each_count_decision_8() {
+    // Instances of one host share its connection: removing one of two must
+    // not bring the item back beside the other.
     let Some(service) = Service::start(SHOWN).await else {
         return;
     };
@@ -238,28 +228,26 @@ async fn two_applets_on_one_connection_each_count_decision_8() {
         async move { sni.shown().is_some() }
     })
     .await;
-    let grace = std::time::Duration::from_millis(200);
-    sni.set_grace(grace);
 
-    let plasmashell = service.bus.connect().await;
-    let host = Wye1Proxy::new(&plasmashell).await.expect("proxy");
+    let panel = service.bus.connect().await;
+    let host = Wye1Proxy::new(&panel).await.expect("proxy");
     for _ in 0..2 {
         host.register_tray("plasma-applet")
             .await
-            .expect("an applet registers");
+            .expect("an instance registers");
     }
-    eventually("the item hides for the applets", || {
+    eventually("the item hides for the host", || {
         let sni = sni.clone();
         async move { sni.shown().is_none() }
     })
     .await;
 
-    host.unregister_tray().await.expect("one applet leaves");
-    tokio::time::sleep(grace * 3).await;
-    assert_eq!(sni.shown(), None, "the other applet still shows the tray");
+    host.unregister_tray().await.expect("one instance leaves");
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert_eq!(sni.shown(), None, "the other instance still shows the tray");
 
     host.unregister_tray().await.expect("the other leaves");
-    eventually("the item comes back without applets", || {
+    eventually("the item comes back without hosts", || {
         let sni = sni.clone();
         async move { sni.shown().is_some() }
     })

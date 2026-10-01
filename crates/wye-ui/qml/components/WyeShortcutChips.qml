@@ -10,6 +10,7 @@
 //   recording: bool        listening for keys for the "+" chip
 pragma ComponentBehavior: Bound
 import QtQuick
+import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import dev.soldunov.wye.ui
 
@@ -50,6 +51,11 @@ Flow {
         focusPolicy: Qt.StrongFocus
         icon.name: "list-add"
         text: chips.recording ? qsTr("Press keys…") : ""
+        Accessible.name: qsTr("Add a key")
+
+        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+        QQC2.ToolTip.text: chips.recording ? qsTr("Press the key. Escape cancels.") : qsTr("Add a key")
+        QQC2.ToolTip.visible: hovered || chips.recording
 
         onClicked: {
             chips.recording = true;
@@ -61,6 +67,8 @@ Flow {
             }
         }
 
+        // While recording, Escape cancels the recording and does not close the window or sheet (SET-07).
+        Keys.onShortcutOverride: event => event.accepted = chips.recording
         Keys.onPressed: event => {
             if (!chips.recording) {
                 return;

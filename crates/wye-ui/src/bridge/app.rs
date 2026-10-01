@@ -25,6 +25,13 @@ pub mod qobject {
         #[cxx_name = "surfaceUrl"]
         fn surface_url(self: &Self, surface: &QString) -> QString;
 
+        /// `--self-test --snapshots`: save every visible window as
+        /// `<prefix>.png` (then `<prefix>-w2.png` …), print each file's path
+        /// on stdout and return how many were saved.
+        #[qinvokable]
+        #[cxx_name = "saveSnapshots"]
+        fn save_snapshots(self: &Self, prefix: &QString) -> i32;
+
         /// Deliver `action` to `surface`. `key` is the picker request id or
         /// the window name; `argument` is JSON or the window argument (see
         /// `crate::route`).
@@ -47,10 +54,12 @@ pub mod qobject {
 }
 
 use core::pin::Pin;
+use std::io::Write as _;
 
 use cxx_qt::{CxxQtThread, Threading as _};
 use cxx_qt_lib::QString;
 
+use crate::bridge::shim::ffi;
 use crate::dispatch::{self, Sink, SinkClosed};
 use crate::route::Delivery;
 use crate::surface::Surface;
@@ -81,6 +90,22 @@ impl qobject::App {
         Surface::from_name(&surface.to_string())
             .map(|surface| QString::from(surface.url().as_str()))
             .unwrap_or_default()
+    }
+
+    /// See the bridge declaration.
+    #[allow(
+        clippy::unused_self,
+        reason = "a Q_INVOKABLE is a method; the windows are the application's"
+    )]
+    pub fn save_snapshots(&self, prefix: &QString) -> i32 {
+        let saved = ffi::save_window_snapshots(prefix);
+        let mut out = std::io::stdout().lock();
+        for path in &saved {
+            if let Err(error) = writeln!(out, "{path}") {
+                tracing::warn!("cannot print a snapshot path: {error}");
+            }
+        }
+        i32::try_from(saved.len()).unwrap_or(i32::MAX)
     }
 }
 

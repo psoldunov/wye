@@ -8,6 +8,10 @@ pragma ComponentBehavior: Bound
 // Surface contract (crates/wye-ui/src/route.rs):
 //   handle("show", requestId, PickerRequest JSON)  show, or replace (PICK-27)
 //   handle("close", requestId, "")                 the service closed it
+//
+// Under `wye-ui --self-test` a request may carry `selfTest: {scheme, menu}`
+// (fixtures/picker.json): the colour scheme to draw in, and a menu to open
+// (`overflow`, or `tile` for the first tile's).
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
@@ -26,8 +30,42 @@ Window {
     readonly property int tokenWait: 500
     // The tiles as the backend describes them.
     readonly property var tiles: JSON.parse(backend.tiles || "[]")
+    readonly property bool hasHotkeys: tiles.some(tile => tile.hotkey !== "")
+    // PICK-11: body text under Large icons, a smaller caption under the
+    // others.
+    readonly property font nameFont: backend.iconSize >= Kirigami.Units.iconSizes.large ? Kirigami.Theme.defaultFont : Kirigami.Theme.smallFont
+    readonly property int tilePadding: Kirigami.Units.smallSpacing + Kirigami.Units.smallSpacing / 2
+    // PICK-05: every tile is as wide as the longest name needs, from the
+    // size's pitch up to twice that; a longer name is cut with an ellipsis.
+    readonly property int tileWidth: {
+        const pitch = backend.pitch;
+        if (!backend.showNames) {
+            return pitch;
+        }
+        let widest = 0;
+        for (const tile of tiles) {
+            widest = Math.max(widest, nameMetrics.advanceWidth(tile.name));
+        }
+        return Math.round(clamp(Math.ceil(widest) + 2 * tilePadding + 2, pitch, pitch * 2));
+    }
+    // PICK-13: up to eight tiles per row, fewer when the row would not fit
+    // the output.
+    readonly property int columns: {
+        const room = width - 2 * (Kirigami.Units.largeSpacing + panelPadding + tilesRow.spacing) - overflowButton.implicitWidth;
+        const fit = Math.floor((room + tileGrid.columnSpacing) / (tileWidth + tileGrid.columnSpacing));
+        return clamp(fit, 1, backend.columns);
+    }
+    // PICK-04: the hotkey character's size; `hotkeyMetrics` and every tile use it.
+    readonly property int hotkeyPixels: 12
+    // PICK-08: the "⋯" button is centred on the icons.
+    readonly property real iconCentre: tilePadding + (hasHotkeys ? hotkeyMetrics.height + Kirigami.Units.smallSpacing : 0) + backend.iconSize / 2
     property bool blurred: false
     property bool wasActive: false
+    // PICK-24: the first tile stays selected until the pointer really
+    // moves; a panel that opens under a resting pointer must not select the
+    // tile under it.
+    property var hoverOrigin: null
+    property bool pointerMoved: false
 
     function handle(action, key, argument) {
         if (action === "show") {
@@ -41,6 +79,11 @@ Window {
         if (!backend.load(key, argument)) {
             return;
         }
+        // PICK-27: a menu belongs to the request it was opened for.
+        overflowMenu.close();
+        tileMenu.close();
+        hoverOrigin = null;
+        pointerMoved = false;
         chooseScreen();
         if (!visible) {
             wasActive = false;
@@ -49,6 +92,23 @@ Window {
         requestActivate();
         panel.forceActiveFocus();
         updateBlur();
+        applySelfTest(argument);
+    }
+
+    function applySelfTest(argument) {
+        const request = JSON.parse(argument);
+        const test = request.selfTest;
+        if (test === undefined) {
+            return;
+        }
+        if (test.scheme !== undefined) {
+            Qt.styleHints.colorScheme = test.scheme === "dark" ? Qt.Dark : Qt.Light;
+        }
+        if (test.menu === "overflow") {
+            Qt.callLater(openMore);
+        } else if (test.menu === "tile") {
+            Qt.callLater(() => tileMenu.openFor(0, tileRepeater.itemAt(0)));
+        }
     }
 
     // PICK-02: the output the pointer is on.
@@ -83,6 +143,26 @@ Window {
         tokenTimer.restart();
     }
 
+    // PICK-22: hover selects, once the pointer has moved (PICK-24).
+    function tileHovered(index, point) {
+        if (!pointerMoved) {
+            if (hoverOrigin === null) {
+                hoverOrigin = point;
+                return;
+            }
+            if (Math.abs(point.x - hoverOrigin.x) < 3 && Math.abs(point.y - hoverOrigin.y) < 3) {
+                return;
+            }
+            pointerMoved = true;
+        }
+        backend.hover(index);
+    }
+
+    // PICK-08, KEY-22: the "⋯" menu, under its button.
+    function openMore() {
+        overflowMenu.popup(overflowButton, 0, overflowButton.height + Kirigami.Units.smallSpacing);
+    }
+
     function clamp(value, low, high) {
         return Math.max(low, Math.min(value, high));
     }
@@ -114,10 +194,12 @@ Window {
 
         onCloseRequested: {
             tokenTimer.stop();
+            overflowMenu.close();
+            tileMenu.close();
             window.hide();
         }
         onTokenRequested: appId => window.requestToken(appId)
-        onMoreRequested: overflowMenu.popup(overflowButton)
+        onMoreRequested: window.openMore()
     }
 
     WindowEffects {
@@ -136,6 +218,19 @@ Window {
         onTriggered: backend.submit("")
     }
 
+    FontMetrics {
+        id: nameMetrics
+
+        font: window.nameFont
+    }
+
+    FontMetrics {
+        id: hotkeyMetrics
+
+        font.pixelSize: window.hotkeyPixels
+        font.weight: Font.DemiBold
+    }
+
     // PICK-23: a click outside the panel cancels.
     MouseArea {
         anchors.fill: parent
@@ -143,21 +238,27 @@ Window {
         onPressed: backend.cancel()
     }
 
-    Rectangle {
+    Kirigami.ShadowedRectangle {
         id: panel
 
-        Kirigami.Theme.colorSet: Kirigami.Theme.View
+        Kirigami.Theme.colorSet: Kirigami.Theme.Window
         Kirigami.Theme.inherit: false
         x: backend.placed ? window.clamp(backend.placementX - width / 2, Kirigami.Units.largeSpacing, window.width - width - Kirigami.Units.largeSpacing) : (window.width - width) / 2
         y: backend.placed ? window.clamp(backend.placementY - height / 2, Kirigami.Units.largeSpacing, window.height - height - Kirigami.Units.largeSpacing) : (window.height - height) / 2
-        width: content.implicitWidth + 2 * window.panelPadding
-        height: content.implicitHeight + 2 * window.panelPadding
+        width: Math.ceil(content.implicitWidth) + 2 * window.panelPadding
+        height: Math.ceil(content.implicitHeight) + 2 * window.panelPadding
         radius: window.panelRadius
-        // PICK-01, PICK-12: translucent over blur, opaque without it.
-        color: Qt.alpha(Kirigami.Theme.backgroundColor, window.blurred ? 0.82 : 1)
+        // PICK-01, PICK-12: translucent over blur, opaque without it (the
+        // popover colour, "No blur available").
+        color: Qt.alpha(Kirigami.Theme.backgroundColor, window.blurred ? 0.88 : 1)
         border.width: 1
-        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.15)
+        border.color: Qt.alpha(Kirigami.Theme.textColor, 0.2)
+        shadow.size: Kirigami.Units.gridUnit
+        shadow.yOffset: 2
+        shadow.color: Qt.rgba(0, 0, 0, 0.35)
         focus: true
+        Accessible.role: Accessible.Dialog
+        Accessible.name: window.title
         onXChanged: window.updateBlur()
         onYChanged: window.updateBlur()
         onWidthChanged: window.updateBlur()
@@ -180,27 +281,60 @@ Window {
             spacing: Kirigami.Units.smallSpacing
 
             RowLayout {
+                id: tilesRow
+
+                // Centred when the link below is wider.
+                Layout.fillWidth: false
+                Layout.alignment: Qt.AlignHCenter
                 spacing: Kirigami.Units.smallSpacing
 
                 // PICK-03, PICK-13: rows of up to eight tiles.
                 GridLayout {
-                    columns: backend.columns
+                    id: tileGrid
+
+                    visible: window.tiles.length > 0
+                    columns: window.columns
                     rowSpacing: Kirigami.Units.smallSpacing
-                    columnSpacing: 0
+                    columnSpacing: Kirigami.Units.smallSpacing / 2
 
                     Repeater {
+                        id: tileRepeater
+
                         model: window.tiles
 
                         PickerTile {
                             selected: index === backend.selected
-                            pitch: backend.pitch
+                            tileWidth: window.tileWidth
+                            padding: window.tilePadding
                             iconSize: backend.iconSize
                             badgeSize: backend.badgeSize
                             showName: backend.showNames
-                            onHovered: backend.hover(index)
+                            showHotkey: window.hasHotkeys
+                            hotkeyHeight: hotkeyMetrics.height
+                            hotkeyPixels: window.hotkeyPixels
+                            nameFont: window.nameFont
+                            onHovered: point => window.tileHovered(index, point)
                             onChosen: (middle, modifiers) => backend.activate(index, middle, modifiers)
-                            onMenuRequested: tileMenu.openFor(index)
+                            onMenuRequested: tileMenu.openFor(index, null)
                         }
+                    }
+                }
+
+                // No tile to show: the "⋯" menu still opens the link.
+                ColumnLayout {
+                    Layout.margins: Kirigami.Units.smallSpacing
+                    visible: window.tiles.length === 0
+                    spacing: 0
+
+                    QQC2.Label {
+                        text: qsTr("No browsers to show")
+                        font.weight: Font.DemiBold
+                    }
+
+                    QQC2.Label {
+                        text: qsTr("Use ⋯ to open the link another way")
+                        font: Kirigami.Theme.smallFont
+                        opacity: 0.7
                     }
                 }
 
@@ -208,31 +342,44 @@ Window {
                 QQC2.RoundButton {
                     id: overflowButton
 
-                    Layout.alignment: Qt.AlignTop
-                    Layout.topMargin: Kirigami.Units.gridUnit + (backend.iconSize - height) / 2
-                    implicitWidth: window.overflowSize + Kirigami.Units.smallSpacing * 2
+                    Layout.alignment: window.tiles.length > 0 ? Qt.AlignTop : Qt.AlignVCenter
+                    Layout.topMargin: window.tiles.length > 0 ? window.iconCentre - height / 2 : 0
+                    implicitWidth: window.overflowSize + Kirigami.Units.smallSpacing * 3
                     implicitHeight: implicitWidth
                     flat: true
-                    icon.name: "overflow-menu"
+                    focusPolicy: Qt.NoFocus
+                    icon.name: "view-more-horizontal-symbolic"
                     icon.width: window.overflowSize
                     icon.height: window.overflowSize
                     Accessible.name: qsTr("More targets")
-                    onClicked: overflowMenu.popup(overflowButton)
+                    QQC2.ToolTip.visible: hovered && !overflowMenu.visible
+                    QQC2.ToolTip.text: qsTr("More targets")
+                    QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                    onClicked: window.openMore()
                 }
             }
 
             // PICK-14: what the held modifiers do.
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.preferredWidth: tilesRow.implicitWidth
                 visible: backend.hint !== ""
                 text: backend.hint
+                wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
-                opacity: 0.7
+                color: Kirigami.Theme.highlightColor
+                font.weight: Font.DemiBold
             }
 
-            // PICK-09.
+            // PICK-09: centred; as wide as the link, up to the tiles' width
+            // or a limit, whichever is larger. Past that the line cuts the
+            // link.
             PickerUrlLine {
-                Layout.fillWidth: true
+                // A layout fills by default; this one keeps its own width.
+                Layout.fillWidth: false
+                Layout.alignment: Qt.AlignHCenter
+                Layout.maximumWidth: Math.max(tilesRow.implicitWidth, Kirigami.Units.gridUnit * 22)
+                Layout.topMargin: Kirigami.Units.smallSpacing
                 visible: backend.showUrl
                 host: backend.urlHost
                 rest: backend.urlRest
@@ -244,8 +391,10 @@ Window {
             // PKS-06.
             QQC2.Label {
                 Layout.fillWidth: true
+                Layout.preferredWidth: tilesRow.implicitWidth
                 visible: backend.preview
                 text: qsTr("Preview: choosing a browser opens nothing")
+                wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
                 font: Kirigami.Theme.smallFont
                 opacity: 0.6
@@ -258,16 +407,23 @@ Window {
             entries: JSON.parse(backend.openIn || "[]")
             onOpenIn: (group, item) => backend.openInTarget(group, item)
             onAction: name => backend.overflowAction(name)
+            onClosed: panel.forceActiveFocus()
         }
 
         PickerTileMenu {
             id: tileMenu
 
-            function openFor(index) {
-                show(index, JSON.parse(backend.tileMenu(index)));
+            // PICK-30: at the pointer, or under `anchor`.
+            function openFor(index, anchor) {
+                const tile = window.tiles[index];
+                if (tile === undefined) {
+                    return;
+                }
+                show(index, JSON.parse(backend.tileMenu(index)), tile.icon, anchor);
             }
 
             onAction: (index, name) => backend.tileAction(index, name)
+            onClosed: panel.forceActiveFocus()
         }
     }
 }

@@ -1,7 +1,9 @@
-// RulesHelpDialog (RUL-19, 19-help-texts.md "Rules help"): the rule editor's help, a dialog with seven sections.
+// RulesHelpDialog (RUL-19, 19-help-texts.md "Rules help"): the rule editor's help, a dialog with seven sections. The URL
+// matchers section lists each kind with its example pattern, what it matches and what it does not (the spec's table).
 //
 // API
 //   open() / close()
+pragma ComponentBehavior: Bound
 import QtQuick
 import QtQuick.Controls as QQC2
 import QtQuick.Layouts
@@ -11,12 +13,50 @@ import dev.soldunov.wye.ui
 WyeSheet {
     id: dialog
 
-    // One section: a heading and its text.
+    // The kinds of URL matcher and their examples (19-help-texts.md, "URL matchers").
+    readonly property var kinds: [
+        {
+            "kind": qsTr("Domain"),
+            "pattern": "github.com",
+            "matches": "github.com/x, gist.github.com/y",
+            "misses": "notgithub.com"
+        },
+        {
+            "kind": qsTr("Starts with"),
+            "pattern": "docs.google.com/spreadsheets",
+            "matches": "docs.google.com/spreadsheets/d/1",
+            "misses": "docs.google.com/document/d/1"
+        },
+        {
+            "kind": qsTr("Contains"),
+            "pattern": "/pull/",
+            "matches": "github.com/a/b/pull/7",
+            "misses": "github.com/a/b/issues/7"
+        },
+        {
+            "kind": qsTr("Wildcard"),
+            "pattern": "*.atlassian.net/browse/*",
+            "matches": "team.atlassian.net/browse/ABC-1",
+            "misses": "atlassian.net/wiki"
+        },
+        {
+            "kind": qsTr("Regular expression"),
+            "pattern": "^meet\\.google\\.com/[a-z]{3}-",
+            "matches": "meet.google.com/abc-defg-hij",
+            "misses": "meet.google.com/landing"
+        }
+    ]
+
+    // One section: a heading and its text, inset like the sheet's title.
     component Part: ColumnLayout {
         property alias heading: title.text
         property alias body: text.text
+        default property alias extra: extraColumn.data
 
         Layout.fillWidth: true
+        Layout.topMargin: Kirigami.Units.largeSpacing
+        Layout.leftMargin: Kirigami.Units.largeSpacing * 2
+        Layout.rightMargin: Kirigami.Units.largeSpacing * 2
         spacing: Kirigami.Units.smallSpacing
 
         Kirigami.Heading {
@@ -24,20 +64,29 @@ WyeSheet {
 
             Layout.fillWidth: true
             level: 4
+            type: Kirigami.Heading.Type.Primary
             wrapMode: Text.Wrap
         }
+        // Rich text, so <code> is drawn in the fixed-width font.
         QQC2.Label {
             id: text
 
             Layout.fillWidth: true
-            textFormat: Text.StyledText
+            textFormat: Text.RichText
             wrapMode: Text.Wrap
+        }
+        ColumnLayout {
+            id: extraColumn
+
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.largeSpacing
+            visible: children.length > 0
         }
     }
 
     title: qsTr("How Rules Work")
     primaryText: qsTr("Done")
-    sheetWidth: Kirigami.Units.gridUnit * 26
+    sheetWidth: Kirigami.Units.gridUnit * 30
 
     onPrimaryTriggered: close()
 
@@ -48,7 +97,50 @@ WyeSheet {
 
     Part {
         heading: qsTr("URL matchers")
-        body: qsTr("Wye removes <code>https://</code> and a leading <code>www.</code> before matching.") + "<br><br>" + qsTr("<b>Domain</b> <code>github.com</code> matches github.com/x and gist.github.com/y, not notgithub.com.") + "<br>" + qsTr("<b>Starts with</b> <code>docs.google.com/spreadsheets</code> matches docs.google.com/spreadsheets/d/1, not docs.google.com/document/d/1.") + "<br>" + qsTr("<b>Contains</b> <code>/pull/</code> matches github.com/a/b/pull/7, not github.com/a/b/issues/7.") + "<br>" + qsTr("<b>Wildcard</b> <code>*.atlassian.net/browse/*</code> matches team.atlassian.net/browse/ABC-1, not atlassian.net/wiki.") + "<br>" + qsTr("<b>Regular expression</b> <code>^meet\\.google\\.com/[a-z]{3}-</code> matches meet.google.com/abc-defg-hij, not meet.google.com/landing.")
+        body: qsTr("Wye removes <code>https://</code> and a leading <code>www.</code> before matching.")
+
+        Repeater {
+            model: dialog.kinds
+
+            delegate: ColumnLayout {
+                id: kindEntry
+
+                required property var modelData
+
+                Layout.fillWidth: true
+                spacing: 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.largeSpacing
+
+                    QQC2.Label {
+                        font.weight: Font.Bold
+                        text: kindEntry.modelData.kind
+                    }
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        font: Kirigami.Theme.fixedWidthFont
+                        text: kindEntry.modelData.pattern
+                    }
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.gridUnit
+                    color: Kirigami.Theme.disabledTextColor
+                    text: qsTr("Matches %1").arg(kindEntry.modelData.matches)
+                    wrapMode: Text.Wrap
+                }
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: Kirigami.Units.gridUnit
+                    color: Kirigami.Theme.disabledTextColor
+                    text: qsTr("Does not match %1").arg(kindEntry.modelData.misses)
+                    wrapMode: Text.Wrap
+                }
+            }
+        }
     }
 
     Part {
@@ -63,7 +155,7 @@ WyeSheet {
 
     Part {
         heading: qsTr("Before or after built-in rules")
-        body: qsTr("Built-in rules are the mappings on the Apps page. \"Before\" lets a rule override them.")
+        body: qsTr("Built-in rules are the mappings on the Apps page. “Before” lets a rule override them.")
     }
 
     Part {
@@ -74,5 +166,9 @@ WyeSheet {
     Part {
         heading: qsTr("Testing")
         body: qsTr("Use <b>Test Rules…</b> in the Rules page menu to see which rule a link hits.")
+    }
+
+    Item {
+        implicitHeight: Kirigami.Units.largeSpacing
     }
 }

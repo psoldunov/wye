@@ -2,6 +2,7 @@
 // Wye cannot intercept. GEN-01 to GEN-05.
 pragma ComponentBehavior: Bound
 import QtQuick
+import org.kde.kirigami as Kirigami
 import dev.soldunov.wye.ui
 
 WyePage {
@@ -22,11 +23,18 @@ WyePage {
     WyeGroupCard {
         title: qsTr("Default Browser")
 
+        // The status reads as a status (GEN-05): a plain glyph, not a box, so it cannot pass for a checkbox, then the text.
+        // Default: a check tinted in the positive colour. Not default: Breeze's warning triangle (`dialog-warning`), which
+        // the theme already draws in the neutral colour; the symbolic `emblem-important` has a fixed red fill that no tint
+        // reaches. The action that changes it is the row's button.
         WyeButtonRow {
+            buttonHighlighted: !page.isDefault
             buttonText: page.isDefault ? qsTr("Stop Being Default") : qsTr("Make Default")
+            leadingIcon: page.isDefault ? "checkmark-symbolic" : "dialog-warning"
+            leadingIconColor: page.isDefault ? Kirigami.Theme.positiveTextColor : "transparent"
             needsConfig: false
             subtitle: page.isDefault ? "" : (page.currentName !== "" ? qsTr("Your default browser is %1.").arg(page.currentName) : "")
-            title: page.isDefault ? qsTr("✓ Wye is your default browser") : qsTr("Wye is not your default browser")
+            title: page.isDefault ? qsTr("Wye is your default browser") : qsTr("Wye is not your default browser")
 
             onActivated: SettingsBackend.act(page.isDefault ? "stop-being-default" : "make-default")
         }
@@ -81,7 +89,6 @@ WyePage {
     // GEN-04
     WyeCallout {
         calloutId: "general-links"
-        closeLeading: true
         text: qsTr("<b>Wye cannot handle links clicked inside a browser.</b> You can either use the browser extension (see the website for more info), or copy the link and then choose “Open URL from Clipboard” in the Wye menu.")
     }
 }

@@ -10,7 +10,13 @@ const MENU: &str = r#"{
     {"id": "primary:two", "kind": "radio", "label": "Two", "shortcut": "2", "enabled": false},
     {"id": "sep-1", "kind": "separator"},
     {"id": "more", "kind": "submenu", "label": "More", "children": [
-      {"id": "history", "kind": "action", "label": "History…"}
+      {"id": "history", "kind": "action", "label": "History…"},
+      {"id": "recent", "kind": "submenu", "label": "Recent Links", "children": [
+        {"id": "recent:7", "kind": "action", "label": "example.com/seven"}
+      ]},
+      {"id": "none", "kind": "submenu", "label": "None", "children": [
+        {"id": "nothing", "kind": "submenu", "label": "Nothing"}
+      ]}
     ]},
     {"id": "empty", "kind": "submenu", "label": "Empty"},
     {"id": "settings", "kind": "action", "label": "Settings…", "shortcut": "Ctrl+,"}
@@ -68,6 +74,28 @@ fn a_submenu_opens_only_with_entries_tray_15() {
         .find(|row| row.id == "empty")
         .expect("empty");
     assert!(!empty.opens);
+}
+
+#[test]
+fn a_submenu_nests_in_a_submenu_tray_15() {
+    let view = view();
+    let more = view.rows.iter().find(|row| row.id == "more").expect("more");
+    let recent = more
+        .children
+        .iter()
+        .find(|row| row.id == "recent")
+        .expect("recent");
+    assert!(recent.opens);
+    assert_eq!(recent.kind, "submenu");
+    assert_eq!(recent.children[0].id, "recent:7");
+    assert!(view.is_selectable("recent:7"));
+    let none = more
+        .children
+        .iter()
+        .find(|row| row.id == "none")
+        .expect("none");
+    assert!(none.opens, "a submenu with an entry opens");
+    assert!(!none.children[0].opens, "an empty nested submenu does not");
 }
 
 #[test]

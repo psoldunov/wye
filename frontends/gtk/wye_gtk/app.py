@@ -4,76 +4,63 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import traceback
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from importlib import import_module
 from pathlib import Path
-from typing import Any
-from uuid import uuid4
+from typing import Any, cast
+from urllib.parse import urlsplit
 
 from .bus import GtkHost
-from .fixtures import FixtureError, load as load_fixture
-from .service import ServiceClient, ServiceError
+from .fixtures import FixtureError, load as load_fixture, load_trace
+from .models import expansion_disabled, filter_history, nested, patch_for, rule_patch, target_label
+from .service import ServiceClient, ServiceError, parse_revision
+
+ROOT = Path(__file__).resolve().parents[3]
+# Installed assets live in share/; a source checkout keeps the icon under data/.
+LOGO = ROOT / "share/icons/hicolor/scalable/apps/dev.soldunov.wye.svg"
+if not LOGO.is_file():
+    LOGO = ROOT / "data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg"
 
 PAGES = (
     ("general", "General", "preferences-system-symbolic"),
     ("browsers", "Browsers", "web-browser-symbolic"),
     ("apps", "Apps", "application-x-executable-symbolic"),
     ("picker", "Picker", "view-list-symbolic"),
-    ("rules", "Rules", "share-symbolic"),
+    ("rules", "Rules", "insert-object-symbolic"),
     ("extras", "Extras", "starred-symbolic"),
     ("advanced", "Advanced", "preferences-system-symbolic"),
 )
 
 
-def nested(data: object, *keys: str, default: Any = None) -> Any:
-    value = data
-    for key in keys:
-        if not isinstance(value, dict):
-            return default
-        value = value.get(key, default)
-    return value
-
-
-def patch_for(path: tuple[str, ...], value: object) -> dict[str, object]:
-    result: dict[str, object] = {path[-1]: value}
-    for key in reversed(path[:-1]):
-        result = {key: result}
-    return result
-
-
-def target_label(target: object, targets: object) -> str:
-    if isinstance(target, dict):
-        for item in nested(targets, "targets", default=[]):
-            if isinstance(item, dict) and item.get("target") == target:
-                return str(item.get("name", "Unknown target"))
-        if target.get("picker"):
-            return "Picker"
-        if target.get("default"):
-            return "Default"
-    return "Default"
-
-
-def filter_history(entries: Sequence[object], query: str) -> list[dict[str, object]]:
-    needle = query.casefold().strip()
-    return [item for item in entries if isinstance(item, dict) and any(needle in str(item.get(field, "")).casefold() for field in ("finalUrl", "originalUrl", "sourceName", "targetName"))]
-
-
-def rule_patch(existing: dict[str, object], name: str, target: dict[str, object], kind: str, pattern: str, source: str) -> dict[str, object]:
-    if not name.strip() or not (pattern.strip() or source.strip()):
-        raise ValueError("Give the rule a name and a URL pattern or source app.")
-    rule = dict(existing)
-    rule.update({"id": str(existing.get("id") or uuid4()), "name": name.strip(), "target": target,
-                 "url-matchers": [{"kind": kind, "pattern": pattern.strip()}] if pattern.strip() else [],
-                 "source-apps": [source.strip()] if source.strip() else []})
-    return rule
-
-
-def expansion_disabled(disabled: list[str], service_id: str, enabled: bool) -> list[str]:
-    values = [item for item in disabled if item.casefold() != service_id.casefold()]
-    return values if enabled else [*values, service_id]
+def _history_labels(entry: dict[str, object]) -> tuple[str, str]:
+    """DLG-HIS-02: keep the destination path and routing context readable."""
+    url = str(entry.get("finalUrl") or "")
+    try:
+        parts = urlsplit(url)
+        title = (parts.hostname or parts.netloc) + parts.path if parts.netloc else url
+        if parts.netloc:
+            title += f"?{parts.query}" if parts.query else ""
+            title += f"#{parts.fragment}" if parts.fragment else ""
+    except ValueError:
+        title = url
+    source = entry.get("sourceName")
+    target = entry.get("targetName")
+    route = f"from {source} → {target}" if source and target else str(target or source or "")
+    timestamp = entry.get("time")
+    if isinstance(timestamp, (int, float)) and not isinstance(timestamp, bool):
+        try:
+            when = datetime.fromtimestamp(timestamp).strftime("%H:%M")
+            route = f"{route} · {when}" if route else when
+        except (OverflowError, OSError, ValueError):
+            pass
+    details = [str(entry["reason"])] if entry.get("reason") else []
+    details += [label for field, label in (("cleaned", "Cleaned"), ("expanded", "Expanded")) if entry.get(field)]
+    return title, "\n".join(part for part in (route, " · ".join(details)) if part)
 
 
 class WyeGtk:
@@ -83,6 +70,8 @@ class WyeGtk:
         gi.require_version("Adw", "1")
         self.Gtk: Any = import_module("gi.repository.Gtk")
         self.Adw: Any = import_module("gi.repository.Adw")
+        self.Gdk: Any = import_module("gi.repository.Gdk")
+        self.GdkPixbuf: Any = import_module("gi.repository.GdkPixbuf")
         self.Gio: Any = import_module("gi.repository.Gio")
         self.GLib: Any = import_module("gi.repository.GLib")
         self.self_test = self_test
@@ -90,12 +79,43 @@ class WyeGtk:
         self.state: dict[str, object] = {}
         self.windows: dict[str, Any] = {}
         self.settings_stack: Any = None
-        self._expansion_disabled: list[str] = []
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="wye-service")
         self._snapshot_error: str | None = None
         self.app = self.Adw.Application(application_id="dev.soldunov.wye.Gtk")
+        self.app.connect("startup", self._style)
         self.app.connect("activate", self._activate)
         self.host = GtkHost(self.show, self.app.quit)
+
+    def _style(self, _: object) -> None:
+        scheme = os.environ.get("WYE_GTK_SCHEME", "")
+        if scheme in {"light", "dark"}:
+            manager = self.Adw.StyleManager.get_default()
+            manager.set_color_scheme(self.Adw.ColorScheme.FORCE_DARK if scheme == "dark" else self.Adw.ColorScheme.FORCE_LIGHT)
+        provider = self.Gtk.CssProvider()
+        provider.load_from_data("""
+            .wye-hero { padding: 28px 24px 16px; }
+            .wye-brand { color: @accent_color; }
+            .wye-editor { padding: 14px; border-radius: 12px; }
+            .wye-result { padding: 18px; border-radius: 12px; }
+        """)
+        self.Gtk.StyleContext.add_provider_for_display(
+            self.Gdk.Display.get_default(), provider, self.Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+
+    def _logo(self, size: int = 104) -> Any:
+        # Render the SVG at the screenshot/display scale so its edges stay sharp on HiDPI.
+        monitor = self.Gdk.Display.get_default().get_monitors().get_item(0)
+        scale = monitor.get_scale_factor() if monitor is not None else 1
+        pixbuf = self.GdkPixbuf.Pixbuf.new_from_file_at_scale(str(LOGO), size * scale, size * scale, True)
+        picture = self.Gtk.Picture.new_for_paintable(self.Gdk.Texture.new_for_pixbuf(pixbuf))
+        picture.set_size_request(size, size)
+        picture.set_alternative_text("Wye")
+        return picture
+
+    def _heading(self, text: str) -> Any:
+        label = self.Gtk.Label(label=text, css_classes=["title-1"], wrap=True)
+        label.set_justify(self.Gtk.Justification.CENTER)
+        return label
 
     def run(self) -> int:
         result = self.app.run(sys.argv[:1])
@@ -117,6 +137,11 @@ class WyeGtk:
                 base.update(embedded)
             if isinstance(fixture, dict):
                 base.update(fixture)
+            if window == "settings" and argument.get("page") == "rules":
+                rules = nested(load_fixture("rule-editor"), "fixture", "config", "rules", default=[])
+                config = base.get("config", {})
+                if isinstance(config, dict):
+                    base["config"] = {**config, "rules": rules}
             self.state = base
             self.client = None
 
@@ -158,7 +183,7 @@ class WyeGtk:
             self._error_window(str(error))
 
     def _show_loaded(self, window: str, argument: dict[str, object], state: object) -> None:
-        if isinstance(state, dict):
+        if isinstance(state, dict) and parse_revision(state.get("revision", 0)) >= parse_revision(self.state.get("revision", 0)):
             self.state = state
         try:
             builders = {
@@ -208,11 +233,42 @@ class WyeGtk:
     def _writable(self) -> bool:
         return bool(nested(self.state, "status", "config", "writable", default=True))
 
+    def _config_saved(self, result: object) -> None:
+        config, revision = cast(tuple[dict[str, object], int], result)
+        if revision >= parse_revision(self.state.get("revision", 0)):
+            self.state = {**self.state, "config": config, "revision": revision}
+
     def _update(self, path: tuple[str, ...], value: object) -> None:
         client = self.client
         if client is None:
             return
-        self._submit(lambda: client.update(patch_for(path, value)))
+
+        def save() -> object:
+            client.update(patch_for(path, value))
+            return client.config()
+
+        self._submit(save, self._config_saved)
+
+    def _update_array(self, path: tuple[str, ...], change: Callable[[list[object]], list[object]], success: Callable[[], None] | None = None) -> None:
+        client = self.client
+        if client is None:
+            return
+
+        def save() -> object:
+            # Arrays replace in JSON merge patches (SET-06): read on the serial worker,
+            # immediately before applying the user's change, not when the GTK event fires.
+            config, _ = client.config()
+            current = nested(config, *path, default=[])
+            values = change(list(current) if isinstance(current, list) else [])
+            client.update(patch_for(path, values))
+            return client.config()
+
+        def saved(result: object) -> None:
+            self._config_saved(result)
+            if success is not None:
+                success()
+
+        self._submit(save, saved)
 
     def _row(self, kind: str, **properties: object) -> Any:
         # Adw.PreferencesRow uses Pango markup by default, including for titles from D-Bus.
@@ -277,7 +333,7 @@ class WyeGtk:
         return self.Adw.PreferencesPage(title=title, icon_name=icon)
 
     def _settings(self, argument: dict[str, object]) -> None:
-        window = self._window("settings", "General", 680, 920)
+        window = self._window("settings", "General", 780, 700)
         stack = self.Adw.ViewStack()
         self.settings_stack = stack
         for name, title, icon in PAGES:
@@ -287,6 +343,10 @@ class WyeGtk:
             stack.get_page(page).set_icon_name(icon)
         switcher = self.Adw.ViewSwitcher(stack=stack)
         header = self.Adw.HeaderBar()
+        brand = self.Gtk.Box(spacing=6)
+        brand.append(self._logo(22))
+        brand.append(self.Gtk.Label(label="Wye", css_classes=["heading"]))
+        header.pack_start(brand)
         header.set_title_widget(switcher)
         toolbar = self.Adw.ToolbarView()
         toolbar.add_top_bar(header)
@@ -302,7 +362,7 @@ class WyeGtk:
     def _build_general(self, page: object) -> None:
         status = nested(self.state, "status", "defaultBrowser", default={})
         is_default = bool(nested(status, "isDefault", default=False))
-        group = self._group(page, "Default Browser")
+        group = self._group(page, "Default Browser", "Every link starts with Wye, then opens where you choose.")
         self._button_row(group, "Wye is your default browser" if is_default else "Wye is not your default browser", "", "Stop Being Default" if is_default else "Make Default", lambda *_: self._action("StopBeingDefault" if is_default else "MakeDefault"))
         self._switch(group, "Also open local HTML files", ("general", "open-local-html"))
         startup = self._group(page, "Startup")
@@ -356,11 +416,14 @@ class WyeGtk:
         else:
             for rule in rules:
                 if isinstance(rule, dict):
-                    row = self._row("ActionRow", title=str(rule.get("name", "Unnamed rule")), subtitle="Click to edit")
+                    matchers = rule.get("url-matchers", [])
+                    pattern = ", ".join(str(item.get("pattern", "")) for item in matchers if isinstance(item, dict)) if isinstance(matchers, list) else ""
+                    row = self._row("ActionRow", title=str(rule.get("name", "Unnamed rule")), subtitle=pattern or "Source app rule")
+                    row.add_suffix(self.Gtk.Image.new_from_icon_name("go-next-symbolic"))
                     row.set_activatable(True)
                     row.connect("activated", lambda *_args, current=rule: self._rule_editor({"rule": current}))
                     group.add(row)
-        tools = self._group(page, "")
+        tools = self._group(page, "Manage rules")
         self._button_row(tools, "Add a routing rule", "", "Add Rule…", lambda *_: self._rule_editor({}))
         self._button_row(tools, "Try a link without opening it", "", "Test Rules…", lambda *_: self._tester({}))
 
@@ -398,7 +461,7 @@ class WyeGtk:
         page = self.Adw.PreferencesPage()
         group = self._group(page, "Browsers shown in the picker and tray menu")
         for item in nested(self.state, "targets", "targets", default=[]):
-            if isinstance(item, dict) and not item.get("missing"):
+            if isinstance(item, dict) and not item.get("missing") and item.get("kind") != "picker":
                 row = self._row("ActionRow", title=str(item.get("name", "Target")))
                 check = self.Gtk.CheckButton(active=any(entry.get("target") == item.get("target") for entry in nested(self._config(), "browsers", "shown", default=[]) if isinstance(entry, dict)))
                 check.set_sensitive(self._writable())
@@ -408,11 +471,13 @@ class WyeGtk:
         self._present(window, page)
 
     def _toggle_shown(self, target: object, enabled: bool) -> None:
-        shown = nested(self._config(), "browsers", "shown", default=[])
-        values = [entry for entry in shown if isinstance(entry, dict) and entry.get("target") != target] if isinstance(shown, list) else []
-        if enabled:
-            values.append({"target": target})
-        self._update(("browsers", "shown"), values)
+        def change(shown: list[object]) -> list[object]:
+            values = [entry for entry in shown if not isinstance(entry, dict) or entry.get("target") != target]
+            if enabled:
+                values.append({"target": target})
+            return values
+
+        self._update_array(("browsers", "shown"), change)
 
     def _picker_keys(self) -> None:
         window = self._window("picker-keys", "Picker Keys", 500, 620)
@@ -425,40 +490,101 @@ class WyeGtk:
 
     def _onboarding(self, argument: dict[str, object]) -> None:
         try:
-            step = int(str(argument.get("step", 0)))
+            step = min(max(int(str(argument.get("step", 0))), 0), 4)
         except (TypeError, ValueError):
             step = 0
-        window = self._window("first-run", "Welcome to Wye", 600, 500)
-        page = self.Adw.StatusPage(icon_name="web-browser-symbolic")
-        titles = ("Welcome to Wye", "Make Wye your default browser", "Choose your primary browser", "All set")
-        descriptions = ("Wye sends each link to the right browser or app.", "Set Wye as your default browser to route links.", "You can use the picker or select a browser.", "Settings stay available from the Wye menu.")
-        page.set_title(titles[min(max(step, 0), 3)])
-        page.set_description(descriptions[min(max(step, 0), 3)])
-        button = self.Gtk.Button(label="Make Default" if step == 1 else "Open Settings")
-        button.connect("clicked", lambda *_: self._action("MakeDefault") if step == 1 else self.show("settings", {}))
-        page.set_child(button)
-        self._present(window, page)
+        window = self._window("first-run", "Welcome to Wye", 600, 570)
+        titles = ("Welcome to Wye", "Make Wye your default browser", "Choose your browser", "Start with your session", "Ready for every link")
+        descriptions = (
+            "Every link finds its place. Wye opens it in the browser, profile, or app you choose.",
+            "Let Wye receive links first, then decide where each one belongs.",
+            "Keep the picker for each link, or choose a browser to use by default.",
+            "Have Wye ready whenever you sign in.",
+            "Your links have a home. You can change any choice in Settings.",
+        )
+        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=14, valign=self.Gtk.Align.CENTER, halign=self.Gtk.Align.CENTER)
+        box.set_size_request(440, -1)
+        box.add_css_class("wye-hero")
+        box.append(self._logo(112))
+        box.append(self._heading(titles[step]))
+        description = self.Gtk.Label(label=descriptions[step], wrap=True, justify=self.Gtk.Justification.CENTER, css_classes=["dim-label"])
+        description.set_max_width_chars(48)
+        box.append(description)
+        if step == 1:
+            is_default = bool(nested(self.state, "status", "defaultBrowser", "isDefault", default=False))
+            button = self.Gtk.Button(label="Already the default browser" if is_default else "Make Wye Default", halign=self.Gtk.Align.CENTER)
+            button.set_sensitive(not is_default and self.client is not None)
+            if button.get_sensitive():
+                button.add_css_class("suggested-action")
+            button.connect("clicked", lambda *_: self._action("MakeDefault"))
+            box.append(button)
+        elif step == 2:
+            group = self.Adw.PreferencesGroup(title="Primary browser")
+            self._target_choice(group, "Open links in", ("browsers", "primary"), nested(self._config(), "browsers", "primary", default={"picker": True}))
+            box.append(group)
+        elif step == 3:
+            group = self.Adw.PreferencesGroup(title="Startup")
+            self._switch(group, "Launch at login", ("general", "launch-at-login"))
+            box.append(group)
+        navigation = self.Gtk.Box(spacing=12, halign=self.Gtk.Align.CENTER, margin_top=20)
+        if step:
+            back = self.Gtk.Button(label="Back")
+            back.connect("clicked", lambda *_: self._onboarding({"step": step - 1}))
+            navigation.append(back)
+        next_button = self.Gtk.Button(label="Open Settings" if step == 4 else "Get Started" if step == 0 else "Continue", css_classes=["suggested-action"])
+        next_button.connect("clicked", lambda *_: self.show("settings", {}) if step == 4 else self._onboarding({"step": step + 1}))
+        navigation.append(next_button)
+        box.append(navigation)
+        indicator = self.Gtk.Label(label=f"{step + 1} of 5", css_classes=["dim-label"], margin_top=12)
+        box.append(indicator)
+        self._present(window, box)
 
     def _history(self, _: dict[str, object]) -> None:
-        window = self._window("history", "History", 760, 640)
-        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=12, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
-        search = self.Gtk.SearchEntry(placeholder_text="Search history")
+        window = self._window("history", "History", 760, 600)
+        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=16, margin_top=24, margin_bottom=24, margin_start=30, margin_end=30)
+        box.append(self.Gtk.Label(label="Recently opened", xalign=0, css_classes=["title-2"]))
+        entries = nested(self.state, "history", "entries", default=[])
+        count = len(entries) if isinstance(entries, list) else 0
+        box.append(self.Gtk.Label(label=f"{count} links routed by Wye", xalign=0, css_classes=["dim-label"]))
+        search = self.Gtk.SearchEntry(placeholder_text="Search links or apps")
         box.append(search)
         list_box = self.Gtk.ListBox(css_classes=["boxed-list"])
-        entries = nested(self.state, "history", "entries", default=[])
+        list_box.set_selection_mode(self.Gtk.SelectionMode.NONE)
+        content = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, valign=self.Gtk.Align.START)
+        content.append(list_box)
+        scroll = self.Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=self.Gtk.PolicyType.NEVER, child=content)
+        targets = nested(self.state, "targets", "targets", default=[])
+
         def populate(query: str) -> None:
             while child := list_box.get_first_child():
                 list_box.remove(child)
-            for entry in filter_history(entries if isinstance(entries, list) else [], query):
-                row = self._row("ActionRow", title=str(entry.get("finalUrl", "")), subtitle=f"{entry.get('sourceName', 'Unknown source')} → {entry.get('targetName', 'Unknown target')}")
-                delete = self.Gtk.Button(icon_name="user-trash-symbolic", tooltip_text="Delete history entry")
+            matches = filter_history(entries if isinstance(entries, list) else [], query)
+            for entry in matches:
+                title, subtitle = _history_labels(entry)
+                row = self._row("ActionRow", title=title, subtitle=subtitle, title_lines=1, subtitle_lines=2)
+                row.set_tooltip_text(str(entry.get("originalUrl") or entry.get("finalUrl") or ""))
+                target = entry.get("target")
+                match = next((item for item in targets if isinstance(item, dict) and item.get("target") == target), None) if isinstance(targets, list) else None
+                icon_name = match.get("icon") if match else None
+                theme = self.Gtk.IconTheme.get_for_display(self.Gdk.Display.get_default())
+                if not isinstance(icon_name, str) or not theme.has_icon(icon_name):
+                    icon_name = "view-list-symbolic" if isinstance(target, dict) and target.get("picker") else "web-browser-symbolic"
+                icon = self.Gtk.Image.new_from_icon_name(icon_name)
+                icon.set_pixel_size(28)
+                row.add_prefix(icon)
+                delete = self.Gtk.Button(icon_name="user-trash-symbolic", tooltip_text=f"Delete {title} from history", css_classes=["flat"])
+                delete.set_sensitive(self.client is not None)
                 delete.connect("clicked", lambda *_args, item=entry: self._delete_history(item))
                 row.add_suffix(delete)
                 list_box.append(row)
+            if not matches:
+                list_box.append(self._row("ActionRow", title="No matching links" if query else "No history yet", subtitle="Try another search." if query else "Links you open will appear here."))
+
         search.connect("search-changed", lambda control: populate(control.get_text()))
         populate("")
-        box.append(list_box)
-        clear = self.Gtk.Button(label="Clear History")
+        box.append(scroll)
+        clear = self.Gtk.Button(label="Clear History", halign=self.Gtk.Align.END)
+        clear.set_sensitive(self.client is not None and count > 0)
         clear.connect("clicked", lambda *_: self._confirm_clear_history(window))
         box.append(clear)
         self._present(window, box)
@@ -492,28 +618,52 @@ class WyeGtk:
             self._submit(lambda: client.action("ClearHistory"), lambda _: self.show("history", {}))
 
     def _about(self, _: dict[str, object]) -> None:
-        window = self._window("about", "About Wye", 620, 540)
-        page = self.Adw.StatusPage(title="Wye", description="A native Linux browser picker.", icon_name="web-browser-symbolic")
+        window = self._window("about", "About Wye", 620, 620)
+        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=24, margin_top=28, margin_bottom=28, margin_start=42, margin_end=42)
+        hero = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=12, halign=self.Gtk.Align.CENTER)
+        hero.append(self._logo(96))
+        hero.append(self._heading("Wye"))
+        version = self.state.get("version", nested(self.state, "fixture", "version", default=""))
+        hero.append(self.Gtk.Label(label=f"Version {version}" if version else "A native Linux browser picker", css_classes=["dim-label"]))
+        hero.append(self.Gtk.Label(label="Every link, right where it belongs.", css_classes=["wye-brand"]))
+        box.append(hero)
+        group = self.Adw.PreferencesGroup(title="About", description="Made by Philipp Soldunov")
+        group.add(self._row("ActionRow", title="License", subtitle="MIT License"))
+        link = self._row("ActionRow", title="Source code", subtitle="github.com/psoldunov/wye")
+        open_source = self.Gtk.LinkButton(uri="https://github.com/psoldunov/wye", label="Open")
+        link.add_suffix(open_source)
+        group.add(link)
+        box.append(group)
         diagnostics = self.state.get("troubleshooting", nested(self.state, "fixture", "troubleshooting", default=""))
         if diagnostics:
-            page.set_child(self.Gtk.Label(label=str(diagnostics), selectable=True, wrap=True, xalign=0))
-        self._present(window, page)
+            details = self.Gtk.Expander(label="Troubleshooting details")
+            text = self.Gtk.Label(label=str(diagnostics), selectable=True, wrap=True, xalign=0, css_classes=["caption", "dim-label"])
+            text.set_margin_top(12)
+            details.set_child(text)
+            box.append(details)
+        scroll = self.Gtk.ScrolledWindow(child=box, hscrollbar_policy=self.Gtk.PolicyType.NEVER)
+        self._present(window, scroll)
 
     def _script_editor(self, argument: dict[str, object]) -> None:
         scope = str(argument.get("scope", argument.get("value", "global")))
-        window = self._window("script-editor", "Transform Script", 820, 680)
-        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=12, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
+        window = self._window("script-editor", "Transform Script", 820, 650)
+        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=12, margin_top=20, margin_bottom=20, margin_start=24, margin_end=24)
+        box.append(self.Gtk.Label(label="Transform links before routing", xalign=0, css_classes=["title-2"]))
+        box.append(self.Gtk.Label(label="Return a new URL, or return nothing to keep the original.", xalign=0, css_classes=["dim-label"]))
         source = str(nested(self.state, "fixture", "source", default=self.state.get("source", "")))
         if self.client is not None:
             source = "Loading script…"
         buffer = self.Gtk.TextBuffer(text=source)
-        editor = self.Gtk.TextView(buffer=buffer, monospace=True, wrap_mode=self.Gtk.WrapMode.NONE)
-        scroll = self.Gtk.ScrolledWindow(vexpand=True, child=editor)
+        editor = self.Gtk.TextView(buffer=buffer, monospace=True, wrap_mode=self.Gtk.WrapMode.NONE, css_classes=["wye-editor"])
+        scroll = self.Gtk.ScrolledWindow(vexpand=True, child=editor, css_classes=["card"])
         box.append(scroll)
+        box.append(self.Gtk.Label(label="Test with a link", xalign=0, css_classes=["heading"]))
         test_url = self.Gtk.Entry(text=str(self.state.get("testUrl", "https://example.com")), placeholder_text="Test URL")
         box.append(test_url)
-        result = self.Gtk.Label(xalign=0, wrap=True)
-        buttons = self.Gtk.Box(spacing=6, halign=self.Gtk.Align.END)
+        result = self.Gtk.Label(xalign=0, wrap=True, selectable=True, css_classes=["dim-label"])
+        sample = nested(self.state, "run", "url") if self.self_test else None
+        result.set_text(f"Fixture test result: {sample}" if sample else "Enter a link and test the script before saving.")
+        buttons = self.Gtk.Box(spacing=8, halign=self.Gtk.Align.END)
         run = self.Gtk.Button(label="Test")
         run.connect("clicked", lambda *_: self._run_script(buffer, test_url.get_text(), result))
         save = self.Gtk.Button(label="Save", css_classes=["suggested-action"])
@@ -558,7 +708,7 @@ class WyeGtk:
         if self.self_test and argument.get("preview"):
             rules = nested(self._config(), "rules", default=[])
             existing = rules[1] if isinstance(rules, list) and len(rules) > 1 and isinstance(rules[1], dict) else {}
-        window = self._window("rule-editor", "Edit Rule" if existing else "New Rule", 700, 650)
+        window = self._window("rule-editor", "Edit Rule" if existing else "New Rule", 650, 740)
         page = self.Adw.PreferencesPage()
         group = self._group(page, "Rule")
         name = self._row("EntryRow", title="Name", text=str(existing.get("name", "")))
@@ -603,23 +753,34 @@ class WyeGtk:
         except ValueError as error:
             self._error_window(str(error))
             return
-        rules = nested(self._config(), "rules", default=[])
-        values = list(rules) if isinstance(rules, list) else []
-        if existing in values:
-            values[values.index(existing)] = rule
-        else:
-            values.append(rule)
-        self._submit(lambda: client.update({"rules": values}), lambda _: window.close())
+        def change(rules: list[object]) -> list[object]:
+            if not existing:
+                return [*rules, rule]
+            values = list(rules)
+            index = next((i for i, item in enumerate(values) if isinstance(item, dict) and (item.get("id") == existing["id"] if existing.get("id") else item == existing)), None)
+            if index is None or values[index] != existing:
+                raise ServiceError("Rule changed or was removed; reopen it before saving.")
+            values[index] = rule
+            return values
+
+        self._update_array(("rules",), change, window.close)
 
     def _tester(self, _: dict[str, object]) -> None:
-        window = self._window("test-rules", "Test Rules", 700, 480)
-        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=12, margin_top=18, margin_bottom=18, margin_start=18, margin_end=18)
-        url = self.Gtk.Entry(text="https://example.com", placeholder_text="Link to test")
-        output = self.Gtk.Label(xalign=0, wrap=True, selectable=True)
-        test = self.Gtk.Button(label="Test Rules", css_classes=["suggested-action"])
+        window = self._window("test-rules", "Test Rules", 650, 460)
+        box = self.Gtk.Box(orientation=self.Gtk.Orientation.VERTICAL, spacing=16, margin_top=28, margin_bottom=28, margin_start=32, margin_end=32)
+        box.append(self.Gtk.Label(label="Where will this link open?", xalign=0, css_classes=["title-2"]))
+        box.append(self.Gtk.Label(label="Run a link through your rules without opening it.", xalign=0, css_classes=["dim-label"]))
+        trace = load_trace() if self.self_test else {}
+        url = self.Gtk.Entry(text=str(trace.get("finalUrl", "https://github.com/example/repo")), placeholder_text="Paste a link to test")
+        output = self.Gtk.Label(xalign=0, wrap=True, selectable=True, css_classes=["wye-result", "dim-label"])
+        steps = trace.get("steps", [])
+        summary = "\n".join(str(step.get("text", "")) for step in steps if isinstance(step, dict)) if isinstance(steps, list) else ""
+        output.set_text(f"Destination: {trace.get('targetName', '')}\n\n{summary}" if trace else "The matching rule and destination appear here.")
+        test = self.Gtk.Button(label="Test Link", css_classes=["suggested-action"], halign=self.Gtk.Align.START)
         test.connect("clicked", lambda *_: self._test_link(url.get_text(), output))
         box.append(url)
         box.append(test)
+        box.append(self.Gtk.Separator(orientation=self.Gtk.Orientation.HORIZONTAL))
         box.append(output)
         self._present(window, box)
 
@@ -633,8 +794,6 @@ class WyeGtk:
     def _expansion(self) -> None:
         window = self._window("expansion", "URL Expansion", 560, 600)
         page = self.Adw.PreferencesPage()
-        disabled = nested(self._config(), "advanced", "expansion", "disabled", default=[])
-        self._expansion_disabled = list(disabled) if isinstance(disabled, list) else []
         group = self._group(page, "Redirect wrappers")
         for item in nested(self.state, "expansion", "wrappers", default=[]):
             if isinstance(item, dict) and isinstance(item.get("id"), str):
@@ -652,64 +811,27 @@ class WyeGtk:
         group.add(row)
 
     def _set_expansion(self, service_id: str, enabled: bool) -> None:
-        self._expansion_disabled = expansion_disabled(self._expansion_disabled, service_id, enabled)
-        self._update(("advanced", "expansion", "disabled"), self._expansion_disabled)
+        def change(values: list[object]) -> list[object]:
+            if not all(isinstance(value, str) for value in values):
+                raise ServiceError("Expansion settings contain an invalid service identifier.")
+            return list(expansion_disabled(cast(list[str], values), service_id, enabled))
+
+        self._update_array(("advanced", "expansion", "disabled"), change)
 
     def snapshot_all(self, directory: Path) -> None:
-        self.app.hold()  # Keep the application alive between closing each captured window.
-        try:
-            directory.mkdir(parents=True, exist_ok=True)
-        except OSError as error:
-            self._snapshot_error = f"Cannot create screenshot directory: {error}"
-            self.app.quit()
-            return
-        work: list[tuple[str, str, dict[str, object]]] = [(f"settings-{name}", "settings", {"page": name}) for name, _, _ in PAGES]
-        work += [("onboarding", "first-run", {}), ("history", "history", {}), ("about", "about", {}), ("script-editor", "script-editor", {}), ("rule-editor", "rule-editor", {"preview": True}), ("test-rules", "test-rules", {})]
-        index = 0
+        from .snapshots import snapshot_all
 
-        def save_current(name: str, window_name: str) -> bool:
-            nonlocal index
-            try:
-                window = self.windows.get(window_name)
-                if window is None:
-                    raise RuntimeError(f"Could not create {window_name}")
-                paintable = self.Gtk.WidgetPaintable.new(window)
-                snapshot = self.Gtk.Snapshot.new()
-                paintable.snapshot(snapshot, float(window.get_width()), float(window.get_height()))
-                node = snapshot.to_node()
-                if node is None:
-                    raise RuntimeError(f"Could not render {name}")
-                if not window.get_renderer().render_texture(node, None).save_to_png(str(directory / f"{name}.png")):
-                    raise RuntimeError(f"Could not save {name}")
-                window.close()
-                index += 1
-                self.GLib.timeout_add(100, capture_next)
-            except (OSError, RuntimeError, FixtureError, KeyError) as error:
-                self._snapshot_error = str(error)
-                self.app.quit()
-            return False
-
-        def capture_next() -> bool:
-            if index >= len(work):
-                self.app.quit()
-                return False
-            name, window_name, argument = work[index]
-            try:
-                self.show(window_name, argument)
-                self.GLib.timeout_add(250, save_current, name, window_name)
-            except (OSError, RuntimeError, FixtureError, KeyError) as error:
-                self._snapshot_error = str(error)
-                self.app.quit()
-            return False
-
-        self.GLib.timeout_add(100, capture_next)
+        snapshot_all(self, directory, PAGES)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Wye's native GTK settings host")
     parser.add_argument("--self-test", action="store_true", help="render existing JSON fixtures without a Wye service")
     parser.add_argument("--snapshots", type=Path, help="directory for self-test PNG snapshots")
+    parser.add_argument("--scheme", choices=("light", "dark"), help="force the snapshot color scheme")
     args = parser.parse_args()
+    if args.scheme:
+        os.environ["WYE_GTK_SCHEME"] = args.scheme
     if args.snapshots and not args.self_test:
         parser.error("--snapshots requires --self-test")
     app = WyeGtk(self_test=args.self_test)

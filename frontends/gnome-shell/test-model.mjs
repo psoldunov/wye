@@ -19,5 +19,7 @@ for (const {argument} of trayCases)
 assert.equal(keyAction({actions: {next: ['Right'], previous: ['Shift+Tab']}}, 'Shift+Tab'), 'previous');
 assert.equal(keyAction({actions: {next: ['Right']}}, 'Right'), 'next');
 assert.deepEqual(choiceOptions({private: true, background: true}, {private: false, background: true, newWindow: false}), {background: true});
+assert.deepEqual(choiceOptions({'new-window': true}, {newWindow: true}), {'new-window': true});
+assert.deepEqual(choiceOptions({'new-window': true}, {newWindow: false}), {});
 assert.throws(() => parsePicker('{"tiles":[{"name":"bad"}]}'));
 assert.throws(() => parseTray('{"items":[{"kind":"action"}]}'));

@@ -31,13 +31,33 @@ def shell(expression):
 
 
 def host(method, *args):
+    first, second = (args[0], args[1] if len(args) > 1 else '')
+    return call('dev.soldunov.wye', '/dev/soldunov/wye', 'dev.soldunov.wye1',
+                'ForwardHost', GLib.Variant('(sss)', (method, first, second)))
+
+
+def direct_host(method, *args):
     signature = '(ss)' if method == 'ShowPicker' else '(s)'
     return call('dev.soldunov.wye.Gnome', '/dev/soldunov/wye/Gnome',
                 'dev.soldunov.wye.PickerHost1', method, GLib.Variant(signature, args))
 
 
+def fixture(method):
+    return call('dev.soldunov.wye', '/dev/soldunov/wye', 'dev.soldunov.wye1', method)
+
+
+def denied(method, *args):
+    try:
+        direct_host(method, *args)
+    except GLib.Error as error:
+        assert 'AccessDenied' in str(error), f'{method}: unexpected error: {error}'
+    else:
+        raise AssertionError(f'{method}: unauthorized caller accepted')
+
+
 def shot(name, picker_dialog=False, tray_menu=False):
     filename = OUT / f'{name}.png'
+    filename.parent.mkdir(parents=True, exist_ok=True)
     for attempt in range(6):
         probe = str(OUT / f'{name}-{attempt}.png')
         success, used = call('org.gnome.Shell.Screenshot', '/org/gnome/Shell/Screenshot',
@@ -60,49 +80,110 @@ def shot(name, picker_dialog=False, tray_menu=False):
     raise AssertionError(f'{name}: picker dialog never rendered in Shell screenshot')
 
 
-picker = json.loads((ROOT / 'crates/wye-ui/fixtures/picker.json').read_text())['cases'][0]['argument']
+cases = json.loads((ROOT / 'crates/wye-ui/fixtures/picker.json').read_text())['cases']
+picker = cases[1]['argument']
+picker['settings']['showUrl'] = True
+picker['keys'] = cases[0]['argument']['keys']
+for tile, key in zip(picker['tiles'], 'bfwpz', strict=True):
+    tile['hotkey'] = key
 tray = json.loads((ROOT / 'crates/wye-ui/fixtures/tray-menu.json').read_text())['cases'][0]['argument']
-# Browser packages are intentionally absent; use the real theme's generic browser icon.
-for tile in picker['tiles']:
-    tile['icon'] = 'web-browser'
-for group in picker['overflow']:
-    for tile in group['tiles']:
-        tile['icon'] = 'web-browser'
-for entry in tray['items']:
-    if entry.get('icon') in ('firefox', 'chromium'):
-        entry['icon'] = 'web-browser'
+tray['overlay'] = None
+tray['items'][3:4] = [
+    {'id': 'primary:work', 'kind': 'radio', 'label': 'Work Chrome Profile',
+     'icon': 'google-chrome', 'shortcut': '2'},
+    {'id': 'primary:zen', 'kind': 'radio', 'label': 'Zen Browser',
+     'icon': 'zen-browser', 'shortcut': '3'},
+    {'id': 'primary:brave', 'kind': 'radio', 'label': 'Brave Web Browser',
+     'icon': 'brave-browser', 'shortcut': '4'},
+]
 
 shell('Main.overview.hide();')
 time.sleep(8)  # Let Shell's privileged-container warning expire before capture.
 state = shell('JSON.stringify({active: Main.extensionManager.lookup("wye@dev.soldunov").state, '
               'indicator: !!Main.panel.statusArea["wye@dev.soldunov"]})')
 assert isinstance(state, dict) and state['indicator'], state
+denied('ShowPicker', 'spoof', json.dumps(picker))
+denied('ClosePicker', 'replacement')
+denied('ShowMenu', json.dumps(tray))
+assert shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._id') is None
 host('ShowPicker', 'first', json.dumps(picker))
 host('ShowPicker', 'replacement', json.dumps(picker))
 state = shell('JSON.stringify({id: Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._id, '
               'count: Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._tiles.length, '
               'selected: Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._tiles[0].has_style_pseudo_class("selected"), '
               'background: Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._tiles[0].get_theme_node().get_background_color().to_string()})')
-assert isinstance(state, dict) and state['id'] == 'replacement' and state['count'] == 2 and state['selected'], state
+assert isinstance(state, dict) and state['id'] == 'replacement' and state['count'] == 5 and state['selected'], state
 assert state['background'] != '#00000000', f'PICK-07: selected tile invisible: {state}'
-time.sleep(2)
-shot('shell-picker', picker_dialog=True)
-shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._more();')
-time.sleep(1)
-shot('shell-picker-overflow', picker_dialog=True)
-host('ClosePicker', 'replacement')
-shell('Main.panel.statusArea["wye@dev.soldunov"].menu.close();')
-host('ShowMenu', json.dumps(tray))
-assert shell('Main.panel.statusArea["wye@dev.soldunov"].menu.isOpen')
-time.sleep(2)
-shot('shell-tray', tray_menu=True)
-shell('Main.panel.statusArea["wye@dev.soldunov"].menu.close();')
+labels = shell('JSON.stringify(Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._tiles'
+               '.slice(0, 3).map(tile => { const label = tile.get_child().get_children()[2];'
+               'return {name: label.text, lines: label.clutter_text.get_layout().get_line_count(),'
+               'ellipsized: label.clutter_text.get_layout().is_ellipsized()}; }))')
+assert labels[0] == {'name': 'Brave Web Browser', 'lines': 2, 'ellipsized': False}, labels
+assert labels[2] == {'name': 'Work Chrome Profile', 'lines': 3, 'ellipsized': False}, labels
+visual = shell('JSON.stringify({brand: !!Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._brand, '
+               'url: !!Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._url})')
+assert isinstance(visual, dict) and visual['brand'] and visual['url'], visual
+for scheme in ('dark', 'light'):
+    Gio.Settings.new('org.gnome.desktop.interface').set_string('color-scheme',
+        'prefer-dark' if scheme == 'dark' else 'prefer-light')
+    time.sleep(2)
+    if scheme == 'light':
+        host('ClosePicker', 'replacement')
+        host('ShowPicker', 'replacement', json.dumps(picker))
+    shot(f'{scheme}/picker', picker_dialog=True)
+    shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._more();')
+    assert shell('global.stage.get_key_focus().accessible_name') == 'Brave'
+    time.sleep(1)
+    shot(f'{scheme}/picker-more', picker_dialog=True)
+    shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._context('
+          'Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._request.tiles[0]);')
+    assert shell('global.stage.get_key_focus().accessible_name') == 'Open Brave Web Browser'
+    time.sleep(1)
+    shot(f'{scheme}/picker-tile-menu', picker_dialog=True)
+    host('ClosePicker', 'replacement')
+    shell('Main.panel.statusArea["wye@dev.soldunov"].menu.close();')
+    host('ShowMenu', json.dumps(tray))
+    assert shell('Main.panel.statusArea["wye@dev.soldunov"].menu.isOpen')
+    time.sleep(2)
+    shot(f'{scheme}/tray-menu', tray_menu=True)
+    shell('Main.panel.statusArea["wye@dev.soldunov"].menu._getMenuItems().find('
+          'item => item.label?.text === "More").menu.open();')
+    time.sleep(1)
+    shot(f'{scheme}/tray-more', tray_menu=True)
+    shell('Main.panel.statusArea["wye@dev.soldunov"].menu.close();')
+    if scheme == 'dark':
+        host('ShowPicker', 'replacement', json.dumps(picker))
 host('ShowPicker', 'choice', json.dumps(picker))
 shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._choose('
       'Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._request.tiles[1]);')
 time.sleep(1)
 assert 'PickerChose:' in Path('/workspace/fixture.log').read_text(), 'PICK-20: choice not delivered'
 assert shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._id') is None
+host('ShowPicker', 'new-window', json.dumps(picker))
+shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._context('
+      'Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._request.tiles[0]);')
+shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._extra.get_children()[2].emit("clicked", 1);')
+time.sleep(1)
+assert "PickerChose: ('new-window'," in Path('/workspace/fixture.log').read_text() and (
+    "'new-window': True}" in Path('/workspace/fixture.log').read_text()), 'PICK-20: new-window option missing'
+[service_sender] = call('org.freedesktop.DBus', '/org/freedesktop/DBus',
+                        'org.freedesktop.DBus', 'GetNameOwner',
+                        GLib.Variant('(s)', ('dev.soldunov.wye',)))
+fixture('DropName')
+for _ in range(30):
+    if shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._serviceOwner') is None:
+        break
+    time.sleep(0.1)
+denied('ShowPicker', 'absent', json.dumps(picker))
+call(service_sender, '/dev/soldunov/wye', 'dev.soldunov.wye1', 'TakeName')
+for _ in range(30):
+    if shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._registered'):
+        break
+    time.sleep(0.1)
+assert shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._registered'), 'service restart failed'
+host('ShowPicker', 'after-restart', json.dumps(picker))
+assert shell('Main.extensionManager.lookup("wye@dev.soldunov").stateObj._picker._id') == 'after-restart'
+host('ClosePicker', 'after-restart')
 Gio.Settings.new('org.gnome.shell').set_strv('enabled-extensions', [])
 time.sleep(1)
 assert 'UnregisterTray:' in Path('/workspace/fixture.log').read_text(), 'tray not unregistered on disable'

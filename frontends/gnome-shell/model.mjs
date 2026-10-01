@@ -66,6 +66,6 @@ export function choiceOptions(modifiers, capabilities = {}) {
     return Object.fromEntries(Object.entries({
         private: modifiers.private,
         background: modifiers.background,
-        'new-window': modifiers.newWindow,
+        'new-window': modifiers['new-window'],
     }).filter(([name, active]) => active && capabilities[name === 'new-window' ? 'newWindow' : name]));
 }

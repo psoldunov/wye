@@ -254,7 +254,9 @@ let
           ${../frontends/gnome-shell/picker.js} \
           ${../frontends/gnome-shell/model.mjs} \
           ${../frontends/gnome-shell/metadata.json} \
-          ${../frontends/gnome-shell/stylesheet.css}; do
+          ${../frontends/gnome-shell/stylesheet.css} \
+          ${../frontends/gnome-shell/wye-logo.svg} \
+          ${../frontends/gnome-shell/wye-picker-symbolic.svg}; do
           install -Dm644 "$source" \
             $out/share/gnome-shell/extensions/wye@dev.soldunov/"''${source##*/}"
         done

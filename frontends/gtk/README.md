@@ -22,7 +22,15 @@ The self-test reads the existing `crates/wye-ui/fixtures/*.json` files without m
 PYTHONPATH=frontends/gtk python3 -m wye_gtk --self-test --snapshots /tmp/wye-gtk-snapshots
 ```
 
-Run this inside a graphical GNOME/GTK session (or a virtual display). Screenshots render real windows and header bars; fixture mode does not write to the service. A missing fixture or failed image write exits nonzero.
+Run this inside a graphical GNOME/GTK session (or a virtual display). Screenshots render real windows and header bars; fixture mode does not write to the service. A missing fixture or failed image write exits nonzero. `--scheme light|dark` forces the color scheme for captures.
+
+To regenerate the tracked light and dark captures in the Fedora 42 GNOME image (40 images: seven settings pages, three settings auxiliary windows, five onboarding steps, history, about, script editor, rule editor and tester per theme):
+
+```sh
+frontends/gtk/capture.sh
+```
+
+The script uses `wye-gnome:42`, runs a private D-Bus session and Xvfb, then writes to `docs/media/gnome/screenshots/gtk/{light,dark}/`. It captures the Shown Browsers, Picker Keys, and URL Expansion auxiliary windows after loading the Settings fixture. The source SVG in `data/icons/` supplies the Wye logo; screenshots are actual GTK windows, not mockups.
 
 ## Scope and limits
 

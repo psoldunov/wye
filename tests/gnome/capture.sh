@@ -22,7 +22,7 @@ docker exec "$name" systemctl is-active --quiet systemd-logind
 docker exec "$name" systemctl stop gdm
 docker exec "$name" mkdir -p /run/user/0 /workspace/tests/gnome /workspace/crates/wye-ui/fixtures \
     /workspace/shots /root/.local/share/gnome-shell/extensions/wye@dev.soldunov \
-    /usr/share/icons/hicolor/symbolic/apps
+    /usr/share/icons/hicolor/symbolic/apps /usr/share/icons/hicolor/scalable/apps
 docker exec "$name" chmod 700 /run/user/0
 docker cp frontends/gnome-shell/. "$name":/root/.local/share/gnome-shell/extensions/wye@dev.soldunov/
 docker cp tests/gnome/. "$name":/workspace/tests/gnome/
@@ -32,6 +32,7 @@ docker cp data/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg \
     "$name":/usr/share/icons/hicolor/symbolic/apps/
 docker cp data/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg \
     "$name":/usr/share/icons/hicolor/symbolic/apps/
+docker cp tests/gnome/icons/. "$name":/usr/share/icons/hicolor/scalable/apps/
 docker exec "$name" gtk-update-icon-cache -q -f /usr/share/icons/hicolor
 docker exec -d "$name" sh -lc 'exec Xvfb :99 -screen 0 1440x900x24 -nolisten tcp >/workspace/xvfb.log 2>&1'
 sleep 1
@@ -51,8 +52,11 @@ for _ in {1..30}; do
 done
 docker exec "$name" sh -lc 'DBUS_SESSION_BUS_ADDRESS=$(cat /workspace/bus-address) gnome-extensions info wye@dev.soldunov | grep "State: ACTIVE"'
 docker exec "$name" sh -lc 'DBUS_SESSION_BUS_ADDRESS=$(cat /workspace/bus-address) python3 /workspace/tests/gnome/capture.py /workspace/shots'
-for image in shell-picker shell-picker-overflow shell-tray; do
-    docker cp "$name:/workspace/shots/$image.png" "$out/$image.png"
+for scheme in dark light; do
+    mkdir -p "$out/$scheme"
+    for image in picker picker-more picker-tile-menu tray-menu tray-more; do
+        docker cp "$name:/workspace/shots/$scheme/$image.png" "$out/$scheme/$image.png"
+    done
 done
-printf 'Real GNOME Shell screenshots: %s/{shell-picker,shell-picker-overflow,shell-tray}.png\n' "$out"
+printf 'Real GNOME Shell screenshots: %s/{dark,light}/{picker,picker-more,picker-tile-menu,tray-menu,tray-more}.png\n' "$out"
 docker exec "$name" sh -lc 'grep -E "RegisterTray|UnregisterTray|PickerChose|ClipboardHasUrl" /workspace/fixture.log | tail -8; grep "GNOME Shell started" /workspace/shell.log | tail -1'

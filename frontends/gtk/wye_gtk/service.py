@@ -67,7 +67,7 @@ class ServiceClient:
             raise ServiceError(f"{method} returned a JSON value instead of an object")
         return decoded
 
-    def state(self) -> dict[str, object]:
+    def config(self) -> tuple[dict[str, object], int]:
         config_text, revision = self._call("GetConfig")
         try:
             config = json.loads(str(config_text))
@@ -76,7 +76,11 @@ class ServiceClient:
         if not isinstance(config, dict):
             raise ServiceError("GetConfig returned a JSON value instead of an object")
         self.revision = parse_revision(revision)
-        state: dict[str, object] = {"config": config, "revision": self.revision}
+        return config, self.revision
+
+    def state(self) -> dict[str, object]:
+        config, revision = self.config()
+        state: dict[str, object] = {"config": config, "revision": revision}
         for key, method, signature, values in (
             ("targets", "GetTargets", "()", ()),
             ("services", "GetServices", "()", ()),

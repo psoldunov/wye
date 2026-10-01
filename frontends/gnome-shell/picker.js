@@ -1,6 +1,7 @@
 import Clutter from 'gi://Clutter';
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';
+import Pango from 'gi://Pango';
 import St from 'gi://St';
 import * as ModalDialog from 'resource:///org/gnome/shell/ui/modalDialog.js';
 import {parsePicker, keyAction, choiceOptions} from './model.mjs';
@@ -45,8 +46,9 @@ function modifiers(event, keys, held) {
 }
 
 export class Picker {
-    constructor(call) {
+    constructor(call, logo) {
         this._call = call;
+        this._logo = logo;
         this._dialog = new ModalDialog.ModalDialog({
             destroyOnClose: false, shouldFadeIn: false, shouldFadeOut: false,
             styleClass: 'wye-picker',
@@ -60,6 +62,16 @@ export class Picker {
             }
         });
         this._dialog.connect('captured-event', (_actor, event) => this._onEvent(event));
+        this._appearance = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        this._appearanceId = this._appearance.connect('changed::color-scheme', () => this._updateAppearance());
+        this._updateAppearance();
+    }
+
+    _updateAppearance() {
+        if (this._appearance.get_string('color-scheme') === 'prefer-light')
+            this._dialog.dialogLayout.add_style_class_name('wye-light');
+        else
+            this._dialog.dialogLayout.remove_style_class_name('wye-light');
     }
 
     show(id, json) {
@@ -90,6 +102,7 @@ export class Picker {
 
     destroy() {
         this._cancel();
+        this._appearance.disconnect(this._appearanceId);
         this._dialog.destroy();
     }
 
@@ -111,6 +124,10 @@ export class Picker {
         const permitted = prefixes.every(prefix => heldBindings.includes(prefix));
         const action = keyAction(this._keys, key) ??
             (permitted ? keyAction(this._keys, bare) : null);
+        const inExtra = this._extraScroll?.visible &&
+            this._extra?.contains(global.stage.get_key_focus());
+        if (inExtra && (action === 'open' || action === 'next' || action === 'previous'))
+            return Clutter.EVENT_PROPAGATE;
         if (action === 'cancel')
             this._cancel();
         else if (action === 'next' || action === 'previous')
@@ -202,6 +219,14 @@ export class Picker {
         const iconSize = SIZES[settings.iconSize] ?? SIZES.medium;
         const content = new St.BoxLayout({vertical: true, style_class: 'wye-picker-content'});
         this._dialog.contentLayout.add_child(content);
+        const heading = new St.BoxLayout({style_class: 'wye-heading'});
+        heading.add_child(new St.Icon({gicon: this._logo, icon_size: 42}));
+        const headingText = new St.BoxLayout({vertical: true, style_class: 'wye-heading-text'});
+        headingText.add_child(new St.Label({text: 'Wye', style_class: 'wye-title'}));
+        headingText.add_child(new St.Label({text: 'Choose where to open', style_class: 'wye-subtitle'}));
+        heading.add_child(headingText);
+        content.add_child(heading);
+        this._brand = heading;
         const tiles = request.tiles;
         const heldActions = modifiers(null, this._keys, request.held ?? []);
         for (let start = 0; start < tiles.length; start += 8) {
@@ -211,15 +236,34 @@ export class Picker {
                 const tile = tiles[i];
                 const button = new St.Button({style_class: 'wye-tile', can_focus: true,
                     accessible_name: `${tile.name}${tile.hotkey ? `, ${tile.hotkey}` : ''}`});
-                const body = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.CENTER});
-                body.add_child(new St.Label({text: tile.hotkey ?? ' ', style_class: 'wye-hotkey'}));
-                const icon = new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
-                    [tile.icon ?? 'web-browser', 'web-browser']), icon_size: iconSize});
-                body.add_child(icon);
-                if (settings.showBadge !== false && tile.badge?.initial)
-                    body.add_child(new St.Label({text: tile.badge.initial, style_class: 'wye-badge'}));
-                if (settings.showNames !== false)
-                    body.add_child(new St.Label({text: tile.name, style_class: 'wye-tile-name'}));
+                const body = new St.BoxLayout({vertical: true, x_align: Clutter.ActorAlign.CENTER,
+                    style_class: 'wye-tile-body'});
+                body.add_child(new St.Label({text: tile.hotkey?.toUpperCase() ?? ' ',
+                    style_class: 'wye-hotkey'}));
+                const iconFrame = new St.Widget({layout_manager: new Clutter.BinLayout(),
+                    style_class: 'wye-icon-frame'});
+                iconFrame.add_child(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
+                    [tile.icon ?? 'web-browser', 'web-browser']), icon_size: iconSize}));
+                if (settings.showBadge !== false && tile.badge?.initial) {
+                    const badge = new St.Label({text: tile.badge.initial,
+                        style_class: 'wye-badge', x_align: Clutter.ActorAlign.END,
+                        y_align: Clutter.ActorAlign.END});
+                    const color = tile.badge.color;
+                    if (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) {
+                        const [r, g, b] = [1, 3, 5].map(offset =>
+                            parseInt(color.slice(offset, offset + 2), 16));
+                        badge.style = `background-color: ${color}; color: ${
+                            r * 0.2126 + g * 0.7152 + b * 0.0722 > 150 ? '#182333' : '#fff'};`;
+                    }
+                    iconFrame.add_child(badge);
+                }
+                body.add_child(iconFrame);
+                if (settings.showNames !== false) {
+                    const name = new St.Label({text: tile.name, style_class: 'wye-tile-name'});
+                    name.clutter_text.line_wrap = true;
+                    name.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+                    body.add_child(name);
+                }
                 button.set_child(body);
                 if (Object.entries(heldActions).some(([name, enabled]) => enabled &&
                     !tile.capabilities?.[name === 'new-window' ? 'newWindow' : name]))
@@ -241,14 +285,27 @@ export class Picker {
                 this._tiles.push(button);
             }
         }
-        const more = new St.Button({label: '⋯', style_class: 'wye-more', can_focus: true,
-            accessible_name: 'More opening choices'});
+        const more = new St.Button({label: 'More choices  ›', style_class: 'wye-more',
+            can_focus: true, accessible_name: 'More opening choices'});
         more.connect('clicked', () => this._more());
         content.add_child(more);
+        this._moreButton = more;
         if (settings.showUrl && request.url) {
-            const text = `${request.source?.name ? `from ${request.source.name} · ` : ''}${request.url.host ?? ''}${request.url.rest ?? ''}`;
-            content.add_child(new St.Label({text, style_class: 'wye-url',
-                accessible_name: request.url.full}));
+            const footer = new St.BoxLayout({style_class: 'wye-footer'});
+            const source = request.source?.name ? `From ${request.source.name}` : 'Open link';
+            if (request.source?.icon)
+                footer.add_child(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
+                    [request.source.icon, 'application-x-executable']), icon_size: 18}));
+            footer.add_child(new St.Label({text: source, style_class: 'wye-source'}));
+            const link = new St.BoxLayout({style_class: 'wye-link'});
+            link.add_child(new St.Icon({icon_name: 'insert-link-symbolic', icon_size: 16}));
+            link.add_child(new St.Label({text: `${request.url.host ?? ''}${request.url.rest ?? ''}`,
+                style_class: 'wye-url', accessible_name: request.url.full}));
+            footer.add_child(link);
+            content.add_child(footer);
+            this._url = footer;
+        } else {
+            this._url = null;
         }
         const hint = Object.entries(heldActions).filter(([, enabled]) => enabled)
             .map(([name]) => name === 'new-window' ? 'new window' : name).join(', ');
@@ -267,31 +324,47 @@ export class Picker {
             this._select(0);
     }
 
-    _extraButton(label, callback) {
-        const button = new St.Button({label, can_focus: true, style_class: 'wye-extra-button'});
+    _extraButton(label, callback, icon = null) {
+        const button = new St.Button({can_focus: true, style_class: 'wye-extra-button',
+            accessible_name: label, x_expand: true});
+        const row = new St.BoxLayout({style_class: 'wye-extra-row', x_expand: true,
+            x_align: Clutter.ActorAlign.START});
+        if (icon)
+            row.add_child(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
+                [icon, 'web-browser']), icon_size: 20}));
+        row.add_child(new St.Label({text: label, style_class: 'wye-extra-label'}));
+        button.set_child(row);
         button.connect('clicked', callback);
         this._extra.add_child(button);
     }
 
     _more() {
+        if (this._extraScroll.visible && this._extraMode === 'more') {
+            this._extraScroll.hide();
+            this._moreButton.grab_key_focus();
+            return;
+        }
+        this._extraMode = 'more';
         this._extra.remove_all_children();
         this._extraScroll.show();
         for (const group of this._request.overflow) {
             if (group.label)
                 this._extra.add_child(new St.Label({text: group.label, style_class: 'wye-group'}));
             for (const tile of group.tiles)
-                this._extraButton(tile.name, () => this._choose(tile));
+                this._extraButton(tile.name, () => this._choose(tile), tile.icon);
         }
         this._extraButton('Copy Link', () => this._action('copy-link'));
         this._extraButton('Create Rule…', () => this._action('create-rule'));
         this._extraButton('Settings…', () => this._call('ShowWindow', '(ss)', ['settings', ''])
             .then(() => this._cancel()).catch(error => logError(error, 'Wye settings')));
+        this._extra.get_children().find(child => child.can_focus)?.grab_key_focus();
     }
 
     _context(tile) {
+        this._extraMode = 'context';
         this._extra.remove_all_children();
         this._extraScroll.show();
-        this._extraButton(`Open ${tile.name}`, () => this._choose(tile));
+        this._extraButton(`Open ${tile.name}`, () => this._choose(tile), tile.icon);
         for (const [name, option] of [['Private Window', 'private'],
             ['New Window', 'newWindow'], ['Background', 'background']]) {
             if (tile.capabilities?.[option])
@@ -300,5 +373,6 @@ export class Picker {
         }
         this._extraButton('Make Primary Browser', () => this._call('SetPrimary', '(s)',
             [JSON.stringify(tile.target)]).catch(error => logError(error, 'Wye primary browser')));
+        this._extra.get_children().find(child => child.can_focus)?.grab_key_focus();
     }
 }

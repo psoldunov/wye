@@ -26,10 +26,17 @@ export default class WyeExtension extends Extension {
         this._registered = false;
         this._serviceOwner = null;
         this._connection = null;
-        this._picker = new Picker((method, signature, args) => this._call(method, signature, args));
+        this._logo = new Gio.FileIcon({file: Gio.File.new_for_path(`${this.path}/wye-logo.svg`)});
+        this._pickerIcon = new Gio.FileIcon({file: Gio.File.new_for_path(
+            `${this.path}/wye-picker-symbolic.svg`)});
+        this._picker = new Picker((method, signature, args) => this._call(method, signature, args), this._logo);
         this._indicator = new PanelMenu.Button(0.0, 'Wye', false);
-        this._icon = new St.Icon({icon_name: 'dev.soldunov.wye-symbolic', style_class: 'system-status-icon'});
+        this._icon = new St.Icon({gicon: this._logo, icon_size: 20,
+            style_class: 'system-status-icon'});
         this._indicator.add_child(this._icon);
+        this._appearance = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
+        this._appearanceId = this._appearance.connect('changed::color-scheme', () => this._updateAppearance());
+        this._updateAppearance();
         this._indicator.menu.actor.connect('captured-event', (_actor, event) => {
             if (!this._indicator.menu.isOpen || event.type() !== Clutter.EventType.KEY_PRESS)
                 return Clutter.EVENT_PROPAGATE;
@@ -71,14 +78,24 @@ export default class WyeExtension extends Extension {
             () => this._lost());
     }
 
+    _updateAppearance() {
+        if (this._appearance.get_string('color-scheme') === 'prefer-light')
+            this._indicator.menu.actor.add_style_class_name('wye-tray-light');
+        else
+            this._indicator.menu.actor.remove_style_class_name('wye-tray-light');
+    }
+
     _acquired(connection) {
         if (!this._enabled)
             return;
         this._connection = connection;
         this._export = Gio.DBusExportedObject.wrapJSObject(XML, {
-            ShowPicker: (id, request) => this._picker.show(id, request),
-            ClosePicker: id => this._picker.close(id),
-            ShowMenu: menu => this._toggleMenu(menu),
+            ShowPickerAsync: ([id, request], invocation) =>
+                this._hostCall(invocation, () => this._picker.show(id, request)),
+            ClosePickerAsync: ([id], invocation) =>
+                this._hostCall(invocation, () => this._picker.close(id)),
+            ShowMenuAsync: ([menu], invocation) =>
+                this._hostCall(invocation, () => this._toggleMenu(menu)),
         });
         this._export.export(connection, HOST_PATH);
         this._changedId = connection.signal_subscribe(SERVICE,
@@ -92,6 +109,40 @@ export default class WyeExtension extends Extension {
             Gio.BusNameWatcherFlags.NONE,
             (_bus, _name, owner) => this._appeared(owner),
             () => this._vanished());
+    }
+
+    _hostCall(invocation, action) {
+        const connection = this._connection;
+        const denied = () => invocation.return_dbus_error(
+            'org.freedesktop.DBus.Error.AccessDenied', 'Wye service owner required');
+        if (!this._enabled || !connection) {
+            denied();
+            return;
+        }
+        // Ask the bus daemon instead of trusting the name-watch cache: the
+        // current owner may call before its watch callback arrives.
+        connection.call('org.freedesktop.DBus', '/org/freedesktop/DBus',
+            'org.freedesktop.DBus', 'GetNameOwner', new GLib.Variant('(s)', [SERVICE]),
+            new GLib.VariantType('(s)'), Gio.DBusCallFlags.NONE, 3000, null, (bus, result) => {
+                let owner;
+                try {
+                    [owner] = bus.call_finish(result).deepUnpack();
+                } catch (_error) {
+                    denied();
+                    return;
+                }
+                if (!this._enabled || this._connection !== connection ||
+                    owner !== invocation.get_sender()) {
+                    denied();
+                    return;
+                }
+                try {
+                    action();
+                    invocation.return_value(null);
+                } catch (error) {
+                    invocation.return_dbus_error('dev.soldunov.wye.Error.Failed', error.message);
+                }
+            });
     }
 
     _lost() {
@@ -184,12 +235,9 @@ export default class WyeExtension extends Extension {
         }
         this._tray = tray;
         this._indicator.visible = tray.visible !== false;
-        let icon = 'dev.soldunov.wye-symbolic';
-        if (tray.icon?.kind === 'theme')
-            icon = tray.icon.name;
-        else if (tray.icon?.kind === 'picker')
-            icon = 'dev.soldunov.wye-picker-symbolic';
-        this._icon.icon_name = icon;
+        this._icon.gicon = tray.icon?.kind === 'theme'
+            ? Gio.ThemedIcon.new_from_names([tray.icon.name, 'web-browser'])
+            : tray.icon?.kind === 'picker' ? this._pickerIcon : this._logo;
         this._icon.style_class = tray.overlay === 'warning'
             ? 'system-status-icon wye-warning' : 'system-status-icon';
         this._renderMenu(tray.items);
@@ -198,6 +246,14 @@ export default class WyeExtension extends Extension {
     _renderMenu(items) {
         this._clipboardItem = null;
         this._indicator.menu.removeAll();
+        const brand = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false,
+            style_class: 'wye-tray-heading'});
+        brand.add_child(new St.Icon({gicon: this._logo, icon_size: 34}));
+        const label = new St.BoxLayout({vertical: true});
+        label.add_child(new St.Label({text: 'Wye', style_class: 'wye-tray-title'}));
+        label.add_child(new St.Label({text: 'Open links your way', style_class: 'wye-tray-subtitle'}));
+        brand.add_child(label);
+        this._indicator.menu.addMenuItem(brand);
         const add = (destination, entries) => {
             for (const entry of entries) {
                 if (entry.kind === 'separator') {
@@ -210,13 +266,17 @@ export default class WyeExtension extends Extension {
                     add(submenu.menu, entry.children ?? []);
                 } else {
                     const item = new PopupMenu.PopupMenuItem(entry.label ?? entry.id);
-                    if (entry.icon)
-                        item.insert_child_at_index(new St.Icon({gicon: Gio.ThemedIcon.new_from_names(
-                            [entry.icon, 'web-browser']), icon_size: 20}), 1);
+                    item.add_style_class_name('wye-tray-item');
+                    const icon = entry.id === 'primary:picker' ? this._logo : entry.icon
+                        ? Gio.ThemedIcon.new_from_names([entry.icon, 'web-browser']) : null;
+                    if (icon)
+                        item.insert_child_at_index(new St.Icon({gicon: icon, icon_size: 20,
+                            style_class: 'wye-tray-icon'}), 1);
                     if (entry.kind === 'radio' && entry.checked)
                         item.setOrnament(PopupMenu.Ornament.DOT);
                     if (entry.shortcut)
-                        item.add_child(new St.Label({text: entry.shortcut, style_class: 'wye-shortcut'}));
+                        item.add_child(new St.Label({text: entry.shortcut, style_class: 'wye-shortcut',
+                            x_expand: true, x_align: Clutter.ActorAlign.END}));
                     item.setSensitive(entry.enabled !== false);
                     item.connect('activate', () => this._activate(entry.id));
                     destination.addMenuItem(item);
@@ -244,6 +304,7 @@ export default class WyeExtension extends Extension {
     }
 
     disable() {
+        this._appearance.disconnect(this._appearanceId);
         this._picker?.destroy();
         this._picker = null;
         this._enabled = false;

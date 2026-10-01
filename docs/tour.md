@@ -59,6 +59,16 @@ holds History, Recent Links, Test Rules…, Rescan Browsers, Set Up Wye…, Help
   </picture>
 </p>
 
+While history is on, Recent Links lists the last ten links you opened; choosing one opens it
+in the picker again.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="media/kde/screenshots/dark/tray-recent.png">
+    <img src="media/kde/screenshots/light/tray-recent.png" width="820" alt="The tray menu with More and its Recent Links submenu open: the last links opened, as host and path">
+  </picture>
+</p>
+
 ## Settings
 
 Settings has seven pages: General, Browsers, Apps, Picker, Rules, Extras and Advanced.

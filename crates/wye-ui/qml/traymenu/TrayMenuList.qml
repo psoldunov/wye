@@ -1,7 +1,7 @@
 pragma ComponentBehavior: Bound
 
-// A panel of tray-menu rows (TRAY-08): the menu itself, or the submenu
-// beside it (TRAY-15). Only interactive rows take the highlight.
+// A panel of tray-menu rows (TRAY-08): the menu itself, or a submenu
+// beside its parent (TRAY-15). Only interactive rows take the highlight.
 //
 // Drawn as a Plasma menu (qqc2-desktop-style's Menu): the Window colours, a
 // rounded frame in the theme's frame contrast, a soft shadow, and as wide as
@@ -15,6 +15,9 @@ Item {
     // Rows of TrayMenuBackend.rows.
     property var entries: []
     property int currentIndex: -1
+    // Whether this panel opened to the left of its parent (a submenu with no
+    // room on the right); the next level then prefers the left too.
+    property bool leftward: false
     readonly property int padding: Kirigami.Units.smallSpacing
     readonly property var currentEntry: currentIndex >= 0 && currentIndex < entries.length ? entries[currentIndex] : null
     // Whether a row has a check mark: then every row keeps the check column.

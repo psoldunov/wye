@@ -55,10 +55,19 @@ device pixels, twice as large. A change to the layout of a surface may need the
 positions in `capture.sh` or `demo.sh` adjusted: the comments next to each say what they
 point at.
 
+Plasma fills a tray submenu (More, Recent Links) only when Qt first tries to show it, and Qt
+shows no empty menu, so the submenu opens on the next pointer motion over its row. A hand on
+a mouse never notices; the stage's pointer stops dead, so `capture.sh` glides over each such
+row twice. A screenshot taken between a pointer move and a click loses that click in Wye's
+tray-menu popup (seen there; other surfaces untested): move the pointer again after
+`shot.py` before clicking.
+
+The stage's look-and-feel defaults (`.config/kdedefaults` in its home directory, written by
+`plasma-apply-lookandfeel`) come first in `XDG_CONFIG_DIRS`, and the host session's are
+left out, as `startplasma` does: the Plasma style and the icon theme follow the stage's
+scheme, not your own.
+
 ## Known gaps
 
 - The Wye UI host runs with the Mesa from the repository's nixpkgs (`tools.nix`): with the
   host's drivers, its Qt finds no EGL and aborts.
-- Plasma's panel stays dark on the light stage.
-- In both tray menus, the third-level submenu (More → Recent Links) does not open on the
-  stage, so no screenshot shows it.

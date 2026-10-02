@@ -217,6 +217,43 @@ async fn scr_08_external_edits_are_announced_and_own_saves_are_not() {
     assert_eq!(signal.args().expect("args").scope, "rule:gh");
 }
 
+/// SCR-08: every external edit is announced, not only the first: appends
+/// (`>>`) and editor-style replacements alike, a few seconds apart.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn scr_08_every_external_edit_is_announced() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let wye = service.wye().await;
+    let mut changes = wye.receive_script_file_changed().await.expect("subscribed");
+    wye.get_script("global").await.expect("read");
+    let path = service.desktop.path(GLOBAL_FILE);
+    let mut text = String::from("export default function transform() {}\n");
+    for edit in 0..6 {
+        let line = format!("// edit {edit}\n");
+        text.push_str(&line);
+        if edit % 2 == 0 {
+            use std::io::Write as _;
+            let mut file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .expect("opened");
+            let appended = if edit == 0 { &text } else { &line };
+            file.write_all(appended.as_bytes()).expect("appended");
+        } else {
+            service.desktop.replace(GLOBAL_FILE, &text);
+        }
+        let signal = tokio::time::timeout(PATIENCE, changes.next())
+            .await
+            .unwrap_or_else(|_| panic!("edit {edit} announced"))
+            .expect("stream open");
+        // The next edit starts once this one is announced, so no two edits
+        // share the watcher's quiet time.
+        assert_eq!(signal.args().expect("args").scope, "global");
+    }
+}
+
 // Scripts on the link path (PIPE-05, PIPE-14, SCR-22).
 
 const SCRIPTED: &str = "[browsers]\nprimary = { app = \"fake-one.desktop\" }\n\n[advanced]\ntransform = true\n\n[[rules]]\nid = \"to-two\"\nname = \"X in Two\"\ntarget = { app = \"fake-two.desktop\" }\nurl-matchers = [{ kind = \"domain\", pattern = \"x.com\" }]\ntransform = true\n";

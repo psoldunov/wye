@@ -300,8 +300,16 @@ fn popup_at(row: &gtk::ListBoxRow, menu_button: &gtk::MenuButton, x: f64, y: f64
     popover.set_pointing_to(Some(&gdk::Rectangle::new(x as i32, y as i32, 1, 1)));
     popover.connect_closed(|popover| {
         // After the item's action ran: GTK activates it as the menu closes.
-        let popover = popover.clone();
-        glib::idle_add_local_once(move || popover.unparent());
+        // An action can rebuild the list first (DLG-HIS-03: Delete Entry, and
+        // any update the service announces meanwhile) and drop this row. Keep
+        // the row until the popover has left it: a row finalized with its
+        // popover still attached leaves the popover a dangling parent, and
+        // unparenting it then crashes GTK.
+        let (popover, row) = (popover.clone(), popover.parent());
+        glib::idle_add_local_once(move || {
+            popover.unparent();
+            drop(row);
+        });
     });
     popover.popup();
 }

@@ -218,10 +218,76 @@ fn without_a_previous_default_the_picker_leads_and_a_stored_primary_is_checked()
 }
 
 #[test]
+fn a_stored_picker_is_checked_after_the_replaced_browser() {
+    // ONB-03, GG-4: with the Picker stored and Firefox remembered, the
+    // Picker (second) is the checked entry, not the first.
+    let previous = AppRef {
+        id: "firefox.desktop".to_owned(),
+        name: "Firefox".to_owned(),
+        icon: None,
+    };
+    let picker = json!({"picker": true});
+    let choices = primary_choices(&inventory(), &none(), Some(&previous), Some(&picker));
+    let checked: Vec<usize> = choices
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.checked)
+        .map(|(index, _)| index)
+        .collect();
+    assert_eq!(checked, [1]);
+    assert_eq!(choices[1].name, "Picker");
+}
+
+#[test]
+fn a_primary_that_is_not_a_browser_is_listed_last_and_checked() {
+    // ONB-03: a profile set as primary elsewhere shows as itself, not as
+    // the first entry.
+    let profile = json!({"profile": {"app": "chrome.desktop", "id": "Profile 1"}});
+    let choices = primary_choices(&inventory(), &none(), None, Some(&profile));
+    let last = choices.last().expect("choices");
+    assert_eq!(last.name, "Work (Chrome)");
+    assert!(last.checked);
+    assert_eq!(choices.iter().filter(|c| c.checked).count(), 1);
+    // A browser stored as primary adds nothing.
+    let zen = json!({"app": "zen.desktop"});
+    let with_zen = primary_choices(&inventory(), &none(), None, Some(&zen));
+    assert_eq!(with_zen.len(), choices.len() - 1);
+    // Nor does a primary the inventory does not know.
+    let gone = json!({"app": "gone.desktop"});
+    let with_gone = primary_choices(&inventory(), &none(), None, Some(&gone));
+    assert_eq!(with_gone.len(), with_zen.len());
+    assert!(with_gone.iter().all(|c| !c.checked));
+}
+
+#[test]
+fn choosing_the_picker_over_a_stored_browser_replaces_the_target() {
+    // ONB-03, BRW-01: a stored `{app = …}` must not keep its key next to
+    // `picker`; the service refuses a target table with two keys.
+    let config = json!({"browsers": {"primary": {"app": "firefox.desktop"}}});
+    let patch = primary_patch(&json!({"picker": true})).unwrap();
+    let merged = wye_core::merge_patch::apply(&config, &patch);
+    assert_eq!(merged, json!({"browsers": {"primary": {"picker": true}}}));
+    let back = primary_patch(&json!({"app": "zen.desktop"})).unwrap();
+    assert_eq!(
+        wye_core::merge_patch::apply(&merged, &back),
+        json!({"browsers": {"primary": {"app": "zen.desktop"}}})
+    );
+}
+
+#[test]
+fn a_primary_that_is_not_a_target_is_refused() {
+    assert!(primary_patch(&json!({"picker": true, "app": "zen.desktop"})).is_err());
+    assert!(primary_patch(&json!("zen")).is_err());
+}
+
+#[test]
 fn choices_become_merge_patches() {
     assert_eq!(
-        primary_patch(&json!({"app": "zen.desktop"})),
-        json!({"browsers": {"primary": {"app": "zen.desktop"}}})
+        primary_patch(&json!({"app": "zen.desktop"})).unwrap(),
+        json!({"browsers": {"primary": {
+            "app": "zen.desktop",
+            "picker": null, "default": null, "private": null, "profile": null, "custom": null,
+        }}})
     );
     assert_eq!(
         launch_patch(false),

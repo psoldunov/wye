@@ -80,6 +80,8 @@ pub trait LockMonitor: Send + Sync {
 pub trait Notifier: Send + Sync {
     /// Show a notification; returns its ID.
     async fn notify(&self, notification: &Notification) -> Result<u32, PlatformError>;
+    /// Withdraw notification `id` (DEF-03: a takeover that was fixed).
+    async fn close(&self, id: u32) -> Result<(), PlatformError>;
     /// Buttons the user pressed.
     fn actions(&self) -> broadcast::Receiver<NotificationAction>;
 }

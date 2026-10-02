@@ -293,6 +293,8 @@ Kirigami.ApplicationWindow {
                         model: window.sourceChoices(backend.sourcesJson)
                         textRole: "name"
                         valueRole: "id"
+                        // Scrolling over the box must not change the source app (SCR-04).
+                        wheelEnabled: false
                         Accessible.name: qsTr("Source app")
                         onActivated: {
                             backend.sourceApp = currentValue;

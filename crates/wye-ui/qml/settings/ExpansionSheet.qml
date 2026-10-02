@@ -179,6 +179,8 @@ WyeSheet {
                 to: 10
                 textFromValue: value => qsTr("%1 s").arg((value * 0.5).toFixed(1))
                 value: units
+                // Scrolling the sheet over the box must not change the setting (DLG-EXP-04).
+                wheelEnabled: false
 
                 onValueModified: {
                     SettingsBackend.setValue("advanced.expansion.timeout-ms", JSON.stringify(timeout.value * 500));
@@ -199,6 +201,8 @@ WyeSheet {
                 from: 1
                 to: 10
                 value: current
+                // Scrolling the sheet over the box must not change the setting (DLG-EXP-04).
+                wheelEnabled: false
 
                 onValueModified: {
                     SettingsBackend.setValue("advanced.expansion.max-redirects", JSON.stringify(redirects.value));

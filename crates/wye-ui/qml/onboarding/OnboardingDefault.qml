@@ -64,8 +64,11 @@ OnboardingPage {
         type: Kirigami.MessageType.Error
         visible: OnboardingBackend.error !== ""
 
+        // The close button sets `visible` outright, which ends the binding: put it back, or the next error would
+        // never show.
         onVisibleChanged: if (!visible) {
-            OnboardingBackend.clearError()
+            OnboardingBackend.clearError();
+            visible = Qt.binding(() => OnboardingBackend.error !== "");
         }
     }
 

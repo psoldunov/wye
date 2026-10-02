@@ -31,6 +31,7 @@ RowLayout {
     }
 
     QQC2.Label {
+        Layout.preferredWidth: Math.ceil(implicitWidth)
         Layout.rightMargin: Kirigami.Units.largeSpacing
         visible: line.sourceName !== ""
         text: qsTr("from %1").arg(line.sourceName)
@@ -42,9 +43,12 @@ RowLayout {
     // The host gives way last. It stands out by weight alone (PICK-09): the
     // same small font as the rest, in bold. Styled text keeps it the very same
     // font, where a font built from the theme's could resolve to another family.
+    // Widths are whole pixels: the layout rounds a fractional text width down,
+    // which cut a short link that had room ("example.com/…" for "/a").
     QQC2.Label {
-        Layout.maximumWidth: implicitWidth
-        Layout.minimumWidth: Math.min(implicitWidth, Kirigami.Units.gridUnit * 12)
+        Layout.preferredWidth: Math.ceil(implicitWidth)
+        Layout.maximumWidth: Math.ceil(implicitWidth)
+        Layout.minimumWidth: Math.min(Math.ceil(implicitWidth), Kirigami.Units.gridUnit * 12)
         Layout.fillWidth: true
         text: "<b>" + line.host.replace(/&/g, "&amp;").replace(/</g, "&lt;") + "</b>"
         textFormat: Text.StyledText
@@ -53,7 +57,8 @@ RowLayout {
     }
 
     QQC2.Label {
-        Layout.maximumWidth: implicitWidth
+        Layout.preferredWidth: Math.ceil(implicitWidth)
+        Layout.maximumWidth: Math.ceil(implicitWidth)
         Layout.fillWidth: true
         text: line.rest
         textFormat: Text.PlainText

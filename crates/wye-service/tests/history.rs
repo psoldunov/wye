@@ -67,6 +67,46 @@ async fn dlg_his_the_stored_links_are_listed_with_names() {
     assert!(listed.entries[0].cleaned);
 }
 
+/// DLG-HIS-02: an entry whose target is an installed app the configuration
+/// no longer names (a custom app, or an app no service lists) still shows
+/// the app's name and icon, not its desktop file name.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn dlg_his02_installed_apps_the_config_does_not_name_keep_name_and_icon() {
+    let figma = wye_core::DesktopId::new("figma-linux-next.desktop").expect("valid");
+    let stored = History::new()
+        .record(entry(
+            "https://www.figma.com/file/one",
+            Target::Custom(wye_core::CustomApp::Desktop(figma.clone())),
+        ))
+        .record(entry("https://www.figma.com/file/two", Target::App(figma)));
+    let text = stored.to_json().expect("JSON");
+    let Some(service) = Service::start_with("[advanced]\nhistory = true\n", |desktop| {
+        desktop.write(
+            "data/applications/figma-linux-next.desktop",
+            "[Desktop Entry]\nType=Application\nName=Figma Linux Next\n\
+             Icon=figma-linux\nExec=figma-linux-next %u\n",
+        );
+        desktop.write(HISTORY, &text);
+    })
+    .await
+    else {
+        return;
+    };
+    let listed = history(&service).await;
+    let shown: Vec<(&str, Option<&str>)> = listed
+        .entries
+        .iter()
+        .map(|entry| (entry.target_name.as_str(), entry.target_icon.as_deref()))
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            ("Figma Linux Next", Some("figma-linux")),
+            ("Figma Linux Next", Some("figma-linux")),
+        ]
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn dlg_his03_delete_and_clear_persist_and_bump_the_revision() {
     let Some(service) = with_history("").await else {

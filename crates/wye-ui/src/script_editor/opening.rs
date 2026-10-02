@@ -97,13 +97,19 @@ fn scope(text: &str) -> Result<ScriptScope, String> {
         .map_err(|error: wye_api::UnknownValue| error.to_string())
 }
 
+/// What the title calls a rule with no name: one the rule editor has not
+/// saved and the user has not named yet, as that sheet's own title (RUL-10).
+const UNNAMED_RULE: &str = "New Rule";
+
 /// "Transform Script — Global" or "Transform Script — <rule name>" (SCR-01).
+/// A rule's internal ID never shows: without a name it reads "New Rule"
+/// until the configuration names it.
 #[must_use]
 pub fn title(scope: &ScriptScope, rule_name: Option<&str>) -> String {
     match (scope, rule_name) {
         (ScriptScope::Global, _) => format!("{TITLE} \u{2014} Global"),
         (ScriptScope::Rule(_), Some(name)) => format!("{TITLE} \u{2014} {name}"),
-        (ScriptScope::Rule(id), None) => format!("{TITLE} \u{2014} Rule {id}"),
+        (ScriptScope::Rule(_), None) => format!("{TITLE} \u{2014} {UNNAMED_RULE}"),
     }
 }
 
@@ -161,7 +167,9 @@ mod tests {
             title(&rule, Some("GitHub")),
             "Transform Script \u{2014} GitHub"
         );
-        assert_eq!(title(&rule, None), "Transform Script \u{2014} Rule gh");
+        // An unsaved, unnamed rule: never its ID (SCR-01, RUL-10).
+        let unsaved = ScriptScope::Rule("rule-1a0fc71c4fe".into());
+        assert_eq!(title(&unsaved, None), "Transform Script \u{2014} New Rule");
     }
 
     #[test]

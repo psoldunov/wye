@@ -74,7 +74,7 @@ WyePage {
             // SCR-09: turning the transform on with no script opens the editor.
             onSwitched: on => {
                 if (on) {
-                    SettingsBackend.openScriptIfMissing("global");
+                    SettingsBackend.openScriptIfMissing("global", "");
                 }
             }
         }

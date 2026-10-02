@@ -514,8 +514,16 @@ fn popup(row: &adw::ActionRow, menu: &gio::Menu, at: Option<(f64, f64)>) {
     let (x, y) = at.map_or((24, row.height()), |(x, y)| (x as i32, y as i32));
     popover.set_pointing_to(Some(&gdk::Rectangle::new(x, y, 1, 1)));
     popover.connect_closed(|popover| {
-        let popover = popover.clone();
-        glib::idle_add_local_once(move || popover.unparent());
+        // GTK runs the item's action as the menu closes, and an action that
+        // changes the rules (RUL-04: Duplicate, Move Up, Delete) rebuilds
+        // the list and drops this row. Keep the row until the popover has
+        // left it: a row finalized with its popover still attached leaves
+        // the popover a dangling parent, and unparenting it then crashes.
+        let (popover, row) = (popover.clone(), popover.parent());
+        glib::idle_add_local_once(move || {
+            popover.unparent();
+            drop(row);
+        });
     });
     popover.popup();
 }

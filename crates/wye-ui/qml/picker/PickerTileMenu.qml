@@ -27,8 +27,10 @@ QQC2.Menu {
         }
         tileIndex = index;
         tileIcon = icon;
+        // Created in the menu's content item: an item made with the menu (not an item) as its parent logs "Created
+        // graphical object was not placed in the graphics scene". `addItem` moves it into place.
         for (const entry of entries) {
-            const item = entry.action === "" ? separator.createObject(menu) : entryItem.createObject(menu, {
+            const item = entry.action === "" ? separator.createObject(menu.contentItem) : entryItem.createObject(menu.contentItem, {
                 "text": entry.label,
                 "name": entry.action
             });

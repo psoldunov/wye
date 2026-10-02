@@ -56,6 +56,29 @@ impl Watch {
             _ => None,
         }
     }
+
+    /// The notification on screen, still remembered: a newer one replaces it
+    /// only once that is shown (DEF-03), so a failed `notify` leaves its
+    /// buttons working.
+    pub fn on_screen(&self) -> Option<u32> {
+        lock(&self.shown).as_ref().map(|(id, _)| *id)
+    }
+
+    /// The notification on screen, forgetting it: its takeover was fixed or
+    /// kept another way, so its buttons answer nothing any more.
+    pub fn withdraw(&self) -> Option<u32> {
+        lock(&self.shown).take().map(|(id, _)| id)
+    }
+}
+
+/// DEF-03, ONB-11: withdraw the takeover notification, if one is shown.
+pub(crate) async fn withdraw(ctx: &ServiceContext) {
+    let Some(id) = ctx.default_browser().takeover.withdraw() else {
+        return;
+    };
+    if let Err(error) = ctx.platform().notifier.close(id).await {
+        tracing::debug!(%error, id, "cannot withdraw the takeover notification");
+    }
 }
 
 /// The notification for `app` taking over; `name` is its display name.
@@ -145,6 +168,32 @@ mod tests {
         assert_eq!(watch.answered(8), None);
         assert_eq!(watch.answered(7), Some(id("firefox.desktop")));
         assert_eq!(watch.answered(7), None);
+    }
+
+    #[test]
+    fn a_withdrawn_notification_answers_nothing() {
+        let watch = Watch::default();
+        assert_eq!(watch.withdraw(), None);
+        watch.shown(7, id("firefox.desktop"));
+        assert_eq!(watch.withdraw(), Some(7));
+        assert_eq!(watch.answered(7), None, "ONB-11: a stale Keep button");
+    }
+
+    #[test]
+    fn def03_the_notification_to_replace_is_kept_until_replaced() {
+        let watch = Watch::default();
+        assert_eq!(watch.on_screen(), None);
+        watch.shown(7, id("firefox.desktop"));
+        assert_eq!(watch.on_screen(), Some(7));
+        assert_eq!(
+            watch.answered(7),
+            Some(id("firefox.desktop")),
+            "still answers until a newer one is shown"
+        );
+        watch.shown(7, id("firefox.desktop"));
+        watch.shown(9, id("brave.desktop"));
+        assert_eq!(watch.answered(7), None);
+        assert_eq!(watch.answered(9), Some(id("brave.desktop")));
     }
 
     #[test]

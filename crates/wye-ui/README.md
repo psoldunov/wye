@@ -137,7 +137,8 @@ The building blocks are in `qml/components/`, each with its API at the top of it
 (BLK-09), `WyeDisabledRow` (BLK-10), `WyeSheet` (BLK-11), `WyeSection` (BLK-14),
 `WyeChecklist` (BLK-15), `WyeShortcutRecorder` and `WyeShortcutChips` (BLK-16), `WyeLinkText` (BLK-17),
 `WyeModifierChooser` + `WyeModifierRow` (BLK-18), `WyeAppChooser` (DLG-APP),
-`WyeGlobalShortcutRow` (ADV-05 to ADV-07), `WyeCopyButton`, `WyeConfirmDialog`.
+`WyeGlobalShortcutRow` (ADV-05 to ADV-07), `WyeCopyButton`, `WyeConfirmDialog`,
+`WyePopupTracker` (SET-07).
 
 Properties that are easy to miss: `WyeRow.leadingIcon` (an icon before the title) with
 `leadingIconColor` (tints a symbolic one; the General page's status uses a plain check or
@@ -149,6 +150,14 @@ button after the secondary); `WyeConfirmDialog.confirmIcon` / `declineIcon`;
 `WyeShortcutRecorder.emptyText` (what it reads while unset); `WyeTargetRow.popup()` (open the
 menu from code) and `WyeTargetRow.controlWidth` (a fixed combo width, to line up with a neighbouring field). The script editor's
 `ScriptUnsavedDialog` (SCR-10) is a `WyeSheet` with Save, Discard and Cancel.
+
+**Popups.** Every popup, menu or sheet in the window is counted through a `WyePopupTracker`
+placed inside its owner (`popup: combo.popup`, or the sheet itself), never by calling
+`SettingsBackend.popupOpened` / `popupClosed` or `popupSettling` / `popupSettled` from the
+component. The tracker follows the popup's `visible` and `opened`, so the counts stay right when a
+popup closes during its enter transition or is destroyed during its exit one.
+`SettingsBackend.popups` (more than 0: Escape closes the popup, not the window, SET-07) and
+`SettingsBackend.settling` (a help popover opens only at 0, BLK-08) are what QML reads.
 
 `fixtures/settings.json` feeds the window with `key: "settings"` and an `argument` that is a
 page name or an object `{page, fixture, scheme, sheet}`. `fixture` is what the service would

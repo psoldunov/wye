@@ -12,8 +12,15 @@ use wye_service::run::{ServiceOptions, run as run_service};
 use super::Console;
 use crate::notice;
 
-/// Environment variable with the log filter, `info` when unset.
+/// Environment variable with the log filter, [`DEFAULT_FILTER`] when unset.
 const LOG_FILTER: &str = "WYE_LOG";
+
+/// `info`, without zbus's "Failed to populate properties cache via
+/// `GetAll`" (its only `zbus::proxy` warning). ashpd builds a property-caching proxy
+/// for each portal `Request` before the portal creates the object, so every
+/// portal call logged it twice; the proxies are ashpd's, so their caching
+/// cannot be turned off here.
+const DEFAULT_FILTER: &str = "info,zbus::proxy=error";
 
 /// Runs until SIGINT, SIGTERM or `Quit`. Exits with
 /// [`ALREADY_RUNNING_EXIT`] when another service owns the name.
@@ -58,7 +65,8 @@ async fn start_by_name() -> anyhow::Result<()> {
 
 /// Logs to stderr, which journald keeps for the systemd unit.
 fn init_logging() {
-    let filter = EnvFilter::try_from_env(LOG_FILTER).unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter =
+        EnvFilter::try_from_env(LOG_FILTER).unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILTER));
     // A subscriber installed earlier (never, in this binary) keeps logging.
     let _ = tracing_subscriber::fmt()
         .with_env_filter(filter)

@@ -9,6 +9,8 @@ use serde_json::{Value, json};
 use wye_api::AppRef;
 use wye_api::services::ServiceInfo;
 use wye_api::targets::{TargetInfo, TargetInventory, TargetKind};
+use wye_core::Target;
+use wye_core::merge_patch::target_patch;
 
 use crate::settings::icon;
 
@@ -127,10 +129,18 @@ pub fn shown_patch(shown: &[Value]) -> Value {
     json!({"browsers": {"shown": shown}})
 }
 
-/// The patch that makes `target` the primary browser (BRW-01).
-#[must_use]
-pub fn primary_patch(target: &Value) -> Value {
-    json!({"browsers": {"primary": target}})
+/// The patch that makes `target` the primary browser (BRW-01, ONB-03).
+///
+/// The configuration holds a target as a table with one key, so the patch
+/// clears every other kind ([`target_patch`]): a plain merge patch would put
+/// `picker` next to the stored `app`, which the service refuses.
+///
+/// # Errors
+///
+/// The reason `target` is not a target.
+pub fn primary_patch(target: &Value) -> Result<Value, serde_json::Error> {
+    let target: Target = serde_json::from_value(target.clone())?;
+    Ok(json!({"browsers": {"primary": target_patch(&target)}}))
 }
 
 /// The patch for the **Launch at login** switch (GEN-01).
@@ -262,7 +272,7 @@ pub fn primary_choices(
             |name| icon::source(Some(name)),
         ),
     );
-    previous
+    let listed: Vec<PrimaryChoice> = previous
         .map(browser_choice)
         .into_iter()
         .chain([picker_choice])
@@ -271,7 +281,22 @@ pub fn primary_choices(
                 .filter(|info| previous.is_none_or(|kept| kept.target != info.target))
                 .map(browser_choice),
         )
-        .collect()
+        .collect();
+    // A primary the list does not hold (a profile, a private window, a
+    // custom app) goes last, so the popup shows what is set instead of its
+    // first entry.
+    let configured = listed
+        .iter()
+        .all(|choice| !choice.checked)
+        .then(|| {
+            inventory
+                .targets
+                .iter()
+                .find(|info| info.target == current && !info.missing)
+        })
+        .flatten()
+        .map(browser_choice);
+    listed.into_iter().chain(configured).collect()
 }
 
 #[cfg(test)]

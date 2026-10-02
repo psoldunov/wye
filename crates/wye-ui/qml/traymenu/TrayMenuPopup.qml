@@ -20,6 +20,13 @@ Window {
     id: popup
 
     readonly property int margin: Kirigami.Units.largeSpacing
+    // The span submenus keep to. The popup covers the whole output, panels included (the layer shell's work area is
+    // not known here), and the menu opens beside the tray icon, so against the panel the icon is on: no submenu goes
+    // past the menu's edge on that side, as Plasma's own menus do not cover the panel (TRAY-15). Unplaced, the screen
+    // is the limit.
+    readonly property bool menuLow: backend.placed && menu.y + menu.height / 2 >= popup.height / 2
+    readonly property real levelTop: backend.placed && !menuLow ? Math.min(menu.y, popup.height / 2) : popup.margin
+    readonly property real levelBottom: menuLow ? Math.max(menu.y + menu.height, popup.height / 2) : popup.height - popup.margin
     property bool wasActive: false
     // The level the keyboard is in: 0 is the menu, N the Nth submenu.
     property int depth: 0
@@ -268,7 +275,7 @@ Window {
             // the left has room, so a chain near the right edge keeps going left.
             leftward: !roomRight || (level.parentList !== null && level.parentList.leftward && roomLeft)
             x: level.parentList === null ? 0 : (leftward ? level.parentList.x - level.width : level.parentList.x + level.parentList.width)
-            y: popup.clamp(level.anchorY - level.padding, popup.margin, popup.height - level.height - popup.margin)
+            y: popup.clamp(level.anchorY - level.padding, popup.levelTop, popup.levelBottom - level.height)
             onPointed: row => {
                 popup.depth = level.index + 1;
                 popup.openSubmenu(level.index + 1, row);

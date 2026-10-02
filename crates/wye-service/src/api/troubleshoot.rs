@@ -1,5 +1,6 @@
 //! `GetTroubleshooting`: the About window's troubleshooting text
-//! (DLG-ABT-02), built from `Status` and the inventory.
+//! (DLG-ABT-02), built from `Status`, the inventory, the session, the tray
+//! and the picker frontend.
 
 use std::fmt::Write as _;
 
@@ -22,6 +23,12 @@ pub async fn get_troubleshooting(ctx: &ServiceContext) -> Result<String> {
         .environment()
         .map(|environment| environment.xdg.current_desktops.join(":"))
         .unwrap_or_default();
+    let session = Session {
+        desktops,
+        kind: session_type(|name| std::env::var(name).ok()),
+        tray: super::tray::mechanism(ctx).await,
+        picker: super::picker::host::describe(ctx).await,
+    };
     let apps = match super::inventory::current(ctx).await {
         Ok(scan) => {
             let handlers = scan.inventory.web_handlers();
@@ -34,11 +41,34 @@ pub async fn get_troubleshooting(ctx: &ServiceContext) -> Result<String> {
         }
         Err(error) => format!("not scanned ({error})"),
     };
-    Ok(text(&status, &desktops, &apps))
+    Ok(text(&status, &session, &apps))
+}
+
+/// What the report says about this session besides `Status`.
+#[derive(Debug, Default)]
+struct Session {
+    /// `XDG_CURRENT_DESKTOP`, joined with `:`.
+    desktops: String,
+    /// `wayland`, `x11` or what `XDG_SESSION_TYPE` says.
+    kind: String,
+    /// How the tray icon shows.
+    tray: String,
+    /// The picker frontend and the host serving it.
+    picker: String,
+}
+
+/// The session type: `XDG_SESSION_TYPE`, else guessed from the display
+/// variables the service sees.
+fn session_type(var: impl Fn(&str) -> Option<String>) -> String {
+    let set = |name: &str| var(name).filter(|value| !value.is_empty());
+    set("XDG_SESSION_TYPE")
+        .or_else(|| set("WAYLAND_DISPLAY").map(|_| "wayland".to_owned()))
+        .or_else(|| set("DISPLAY").map(|_| "x11".to_owned()))
+        .unwrap_or_else(|| "unknown".to_owned())
 }
 
 /// The report.
-fn text(status: &Status, desktops: &str, apps: &str) -> String {
+fn text(status: &Status, session: &Session, apps: &str) -> String {
     let mut out = String::new();
     let mut line = |label: &str, value: &str| {
         // Writing to a String cannot fail.
@@ -47,12 +77,13 @@ fn text(status: &Status, desktops: &str, apps: &str) -> String {
     line("Wye", env!("CARGO_PKG_VERSION"));
     line(
         "Desktop",
-        if desktops.is_empty() {
+        if session.desktops.is_empty() {
             "unknown"
         } else {
-            desktops
+            &session.desktops
         },
     );
+    line("Session type", &session.kind);
     line("Default browser", &default_browser(status));
     let config = &status.config;
     line("Configuration", &config.path);
@@ -68,6 +99,8 @@ fn text(status: &Status, desktops: &str, apps: &str) -> String {
         line("Configuration warning", warning);
     }
     line("Apps", apps);
+    line("Tray", &session.tray);
+    line("Picker frontend", &session.picker);
     capabilities(&status.capabilities, &mut line);
     line("Screen locked", yes_no(status.locked));
     line("Onboarding done", yes_no(status.ui_state.onboarding_done));
@@ -141,7 +174,13 @@ mod tests {
             },
             ..Status::default()
         };
-        let report = text(&status, "KDE", "3 apps");
+        let session = Session {
+            desktops: "KDE".to_owned(),
+            kind: "wayland".to_owned(),
+            tray: "status-notifier-item".to_owned(),
+            picker: "auto (Qt); Qt running".to_owned(),
+        };
+        let report = text(&status, &session, "3 apps");
         for label in [
             "Held keys: wayland-layer-shell",
             "Pointer position: unavailable",
@@ -154,9 +193,34 @@ mod tests {
             "Lock detection",
             "Layer shell: no",
             "Desktop: KDE",
+            "Session type: wayland",
+            "Tray: status-notifier-item",
+            "Picker frontend: auto (Qt); Qt running",
             "Default browser: none",
         ] {
             assert!(report.contains(label), "{label} missing:\n{report}");
         }
+    }
+
+    #[test]
+    fn dlg_abt_02_the_session_type_falls_back_to_the_display() {
+        let vars = |pairs: &'static [(&'static str, &'static str)]| {
+            move |name: &str| {
+                pairs
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .map(|(_, value)| (*value).to_owned())
+            }
+        };
+        assert_eq!(session_type(vars(&[("XDG_SESSION_TYPE", "x11")])), "x11");
+        assert_eq!(
+            session_type(vars(&[
+                ("XDG_SESSION_TYPE", ""),
+                ("WAYLAND_DISPLAY", "wayland-0")
+            ])),
+            "wayland"
+        );
+        assert_eq!(session_type(vars(&[("DISPLAY", ":0")])), "x11");
+        assert_eq!(session_type(vars(&[])), "unknown");
     }
 }

@@ -55,6 +55,20 @@ fn rows_are_newest_first_whatever_order_they_arrive_in() {
 }
 
 #[test]
+fn history_switched_off_lists_nothing() {
+    // DLG-HIS-04: "History Is Off" alone, not over the entries the service
+    // still keeps.
+    let history = History {
+        enabled: false,
+        entries: vec![entry(1, 100, "https://a.example/")],
+    };
+    let view = View::build(&history, &inventory(), "");
+    assert!(!view.enabled);
+    assert!(view.rows.is_empty());
+    assert_eq!(view.total, 0);
+}
+
+#[test]
 fn the_search_narrows_the_rows_but_not_the_total() {
     // DLG-HIS-01
     let history = History {
@@ -127,6 +141,23 @@ fn an_unknown_target_gets_the_browser_icon() {
     assert_eq!(
         View::build(&history, &inventory(), "").rows[0].icon,
         FALLBACK_ICON
+    );
+}
+
+#[test]
+fn an_app_the_inventory_does_not_list_takes_the_entrys_icon() {
+    // DLG-HIS-02: an installed custom app the configuration no longer names.
+    let mut custom = entry(1, 100, "https://a.example/");
+    custom.target = json!({"custom": "figma-linux-next.desktop"});
+    custom.target_icon = Some("/opt/figma/icon.png".to_owned());
+    let history = History {
+        enabled: true,
+        entries: vec![custom],
+    };
+    // Each frontend's own form of an icon path.
+    assert_eq!(
+        View::build(&history, &inventory(), "").rows[0].icon,
+        icon::source(Some("/opt/figma/icon.png"))
     );
 }
 

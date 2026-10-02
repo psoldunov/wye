@@ -25,7 +25,7 @@ mod menu;
 )]
 pub mod model;
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
@@ -60,6 +60,12 @@ struct Inner {
     view: RefCell<Option<MenuView>>,
     /// Action name to row ID, for the menu shown.
     ids: RefCell<HashMap<String, String>>,
+    /// The compositor has focused the window since the menu opened.
+    had_focus: Cell<bool>,
+    /// Counts the times the menu opened. A `when_mapped` callback from an
+    /// opening closed before its window mapped still fires on the next
+    /// map; it runs only while its opening is the latest (TRAY-08).
+    opened: Cell<u64>,
 }
 
 impl TrayMenu {
@@ -98,6 +104,28 @@ fn connect(window: &gtk::Window, popover: &gtk::PopoverMenu, inner: &Weak<Inner>
         }
         glib::Propagation::Proceed
     });
+    // A popover without autohide does not close on a click outside: another
+    // window taking the focus closes it instead. Not `is-active`, which
+    // also drops while a submenu of the menu has the keyboard: the
+    // compositor keeps the window activated then.
+    let weak = inner.clone();
+    window.connect_realize(move |window| {
+        let Some(toplevel) = window
+            .surface()
+            .and_then(|surface| surface.downcast::<gdk::Toplevel>().ok())
+        else {
+            return;
+        };
+        let weak = weak.clone();
+        toplevel.connect_state_notify(move |toplevel| {
+            let Some(inner) = weak.upgrade() else { return };
+            if toplevel.state().contains(gdk::ToplevelState::FOCUSED) {
+                inner.had_focus.set(true);
+            } else if inner.had_focus.get() && !inner.popover.is_autohide() {
+                inner.popover.popdown();
+            }
+        });
+    });
 }
 
 fn keys(inner: &Weak<Inner>) -> gtk::EventControllerKey {
@@ -133,6 +161,15 @@ impl Inner {
         popover.set_has_arrow(false);
         popover.add_css_class("wye-tray-menu");
         popover.set_parent(&surface);
+        if overlay::is_plain_wayland(&window) {
+            // Mutter dismisses a grabbing popup at once unless it comes with
+            // the serial of a fresh click or key in this client, and
+            // `wye menu` or the toggle-menu shortcut gives it none: the menu
+            // would never show (TRAY-08). Without the grab the window keeps
+            // the keyboard and passes its keys to the menu, and losing the
+            // focus closes it (`connect`).
+            popover.set_autohide(false);
+        }
         connect(&window, &popover, weak);
         Self {
             me: weak.clone(),
@@ -141,6 +178,8 @@ impl Inner {
             popover,
             view: RefCell::default(),
             ids: RefCell::default(),
+            had_focus: Cell::new(false),
+            opened: Cell::new(0),
         }
     }
 
@@ -173,6 +212,12 @@ impl Inner {
         self.window.insert_action_group(menu::GROUP, Some(&group));
         self.popover.set_menu_model(Some(&built.menu));
         menu_icons::add(&self.popover, &built.icons);
+        if let Some((width, height)) = self.menu_size().filter(|_| self.covers_window()) {
+            // The window takes the menu's size, so the compositor keeps all
+            // of it on screen wherever it puts the window, and the menu
+            // covers it (`pop_up`).
+            self.window.set_default_size(width.max(1), height.max(1));
+        }
         *self.ids.borrow_mut() = built.ids;
         let placement = view.placement.clone();
         *self.view.borrow_mut() = Some(view);
@@ -180,15 +225,19 @@ impl Inner {
             .as_ref()
             .and_then(|at| overlay::monitor_named(&at.output));
         overlay::set_monitor(&self.window, monitor.as_ref());
+        self.had_focus.set(false);
         self.window.present();
         if let Some((at, monitor)) = placement.as_ref().zip(monitor.as_ref()) {
             // On X11 the menu hangs from the window: put it at the pointer.
             overlay::place_window(&self.window, (at.x, at.y), monitor, false);
         }
-        // The popover needs its parent on screen.
+        // The popover needs its parent on screen: a popup asked for before
+        // the compositor has mapped the window is never shown (TRAY-08).
+        let opening = self.opened.get().wrapping_add(1);
+        self.opened.set(opening);
         let weak = self.me.clone();
-        glib::idle_add_local_once(move || {
-            if let Some(inner) = weak.upgrade() {
+        overlay::when_mapped(&self.window, move || {
+            if let Some(inner) = weak.upgrade().filter(|inner| inner.opened.get() == opening) {
                 inner.pop_up(placement.as_ref().map(|at| (at.x, at.y)), monitor.as_ref());
             }
         });
@@ -224,14 +273,36 @@ impl Inner {
             }
             return;
         }
-        if pointer.is_some() && monitor.is_some() {
-            // The window's corner is at the pointer (X11): hang from it.
+        if self.covers_window() || (pointer.is_some() && monitor.is_some()) {
+            // The window's corner is at the pointer (X11), or the window is
+            // the menu's size (Wayland without layer shell): hang from it.
             self.popover.set_halign(gtk::Align::Start);
             self.popover
                 .set_pointing_to(Some(&gdk::Rectangle::new(0, 0, 1, 1)));
         }
         self.popover.set_position(gtk::PositionType::Bottom);
         self.popover.popup();
+        if !self.popover.is_autohide() && self.popover.focus_child().is_none() {
+            // TRAY-08: the arrows and Enter work at once, as GTK arranges
+            // for a popover with autohide.
+            self.popover.child_focus(gtk::DirectionType::TabForward);
+        }
+    }
+
+    /// Whether the menu covers its window, sized to it: Wayland without
+    /// layer shell, where the compositor places the window and nothing
+    /// tells where (GNOME with the Shell extension off).
+    fn covers_window(&self) -> bool {
+        overlay::is_plain_wayland(&self.window)
+    }
+
+    /// The menu's natural size, measured while the popover is hidden (its
+    /// contents are visible widgets of their own).
+    fn menu_size(&self) -> Option<(i32, i32)> {
+        let contents = self.popover.child()?.parent()?;
+        let width = contents.measure(gtk::Orientation::Horizontal, -1).1;
+        let height = contents.measure(gtk::Orientation::Vertical, width).1;
+        Some((width, height))
     }
 
     /// KEY-51: the top-level row whose shortcut is the key pressed.

@@ -70,6 +70,8 @@ QQC2.ItemDelegate {
         spacing: Kirigami.Units.largeSpacing
 
         Kirigami.Icon {
+            id: rowIcon
+
             Layout.alignment: Qt.AlignVCenter
             Layout.preferredHeight: Kirigami.Units.iconSizes.medium
             Layout.preferredWidth: Kirigami.Units.iconSizes.medium
@@ -103,15 +105,32 @@ QQC2.ItemDelegate {
 
             // The details, then the badges right after them; the details give way (elide) when the row is narrow.
             RowLayout {
+                id: detailsLine
+
+                // The line's room, from the row's own width: the line's laid-out width follows what it holds, so it
+                // cannot say how much room there is.
+                readonly property real room: row.availableWidth - rowIcon.Layout.preferredWidth - actionsButton.implicitWidth - 2 * Kirigami.Units.largeSpacing
+                // What the badges take, with the gap before each: the details get the rest of the line.
+                readonly property real badgesWidth: {
+                    let total = 0;
+                    for (const child of detailsLine.children) {
+                        if (child instanceof HistoryBadge && child.visible) {
+                            total += child.implicitWidth + detailsLine.spacing;
+                        }
+                    }
+                    return total;
+                }
+
                 Layout.fillWidth: true
                 Layout.topMargin: Kirigami.Units.smallSpacing / 2
                 spacing: Kirigami.Units.smallSpacing
 
-                // Not `fillWidth` with a maximum: the layout then shares the room with the spacer and rounds the label
-                // below its text's width, which elides it with room to spare.
+                // A width worked out here, not `fillWidth`: a layout keeps an item without `fillWidth` at its preferred
+                // width, so a long line pushed the "…" button past the edge (DLG-HIS-02); and with `fillWidth` it shares
+                // the room with the spacer, which cuts the details with room to spare. Whole pixels, so a fitting text is
+                // not rounded below its width.
                 QQC2.Label {
-                    Layout.minimumWidth: Kirigami.Units.gridUnit * 3
-                    Layout.preferredWidth: Math.ceil(implicitWidth)
+                    Layout.preferredWidth: Math.max(Kirigami.Units.gridUnit * 3, Math.min(Math.ceil(implicitWidth), Math.floor(detailsLine.room - detailsLine.badgesWidth)))
                     color: Kirigami.Theme.disabledTextColor
                     elide: Text.ElideRight
                     font: Kirigami.Theme.smallFont
@@ -142,6 +161,8 @@ QQC2.ItemDelegate {
         }
 
         QQC2.ToolButton {
+            id: actionsButton
+
             Accessible.name: qsTr("Actions for %1").arg(row.modelData.host)
             Layout.alignment: Qt.AlignVCenter
             display: QQC2.AbstractButton.IconOnly

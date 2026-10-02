@@ -501,3 +501,30 @@ fn key06_held_keys_defaults_to_auto_and_round_trips() {
     assert_eq!(unknown.config.advanced.held_keys, HeldKeys::Auto);
     assert!(!unknown.is_lossless(), "an unknown value is reported");
 }
+
+#[test]
+fn adv12_frontend_defaults_to_auto_and_round_trips() {
+    assert_eq!(parse("").config.advanced.frontend, Frontend::Auto);
+    for (text, frontend) in [
+        ("auto", Frontend::Auto),
+        ("kde", Frontend::Kde),
+        ("gnome", Frontend::Gnome),
+    ] {
+        let loaded = parse(&format!("[advanced]\nfrontend = \"{text}\"\n"));
+        assert!(loaded.is_lossless(), "{:?}", loaded.warnings);
+        assert_eq!(loaded.config.advanced.frontend, frontend);
+        let again = parse(&loaded.config.to_toml().unwrap());
+        assert_eq!(again.config.advanced.frontend, frontend);
+    }
+
+    let unknown = parse("[advanced]\nfrontend = \"xfce\"\n");
+    assert_eq!(unknown.config.advanced.frontend, Frontend::Auto);
+    assert!(
+        matches!(
+            unknown.warnings.as_slice(),
+            [ConfigWarning::InvalidValue { key, .. }] if key == "advanced.frontend"
+        ),
+        "{:?}",
+        unknown.warnings
+    );
+}

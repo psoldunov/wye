@@ -48,6 +48,8 @@
                 passthru = {
                   unwrapped = wye.package;
                   inherit (frontends) extension;
+                  # ADV-12: ships the GTK host (nix/channel.nix).
+                  inherit (wye.package) hasGtk;
                 };
               }
               ''
@@ -184,36 +186,73 @@
           # The D-Bus activation files and the systemd user unit the package
           # installs (DEF-04): absolute paths to this package's binaries, and
           # bus activation of the service handed to systemd.
-          installed-dbus-files = pkgs.runCommand "wye-installed-dbus-files" { } ''
-            services=${wye.package}/share/dbus-1/services
-            grep -qxF 'Name=dev.soldunov.wye' $services/dev.soldunov.wye.service
-            grep -qxF 'Exec=${wye.package}/bin/wye service' $services/dev.soldunov.wye.service
-            grep -qxF 'SystemdService=wye.service' $services/dev.soldunov.wye.service
-            grep -qxF 'Name=dev.soldunov.wye.Ui' $services/dev.soldunov.wye.Ui.service
-            grep -qxF 'Exec=${wye.package}/bin/wye-ui' $services/dev.soldunov.wye.Ui.service
-            grep -qxF 'SystemdService=wye-ui.service' $services/dev.soldunov.wye.Ui.service
-            unit=${wye.package}/share/systemd/user/wye.service
-            grep -qxF 'Type=dbus' $unit
-            grep -qxF 'BusName=dev.soldunov.wye' $unit
-            grep -qxF 'ExecStart=${wye.package}/bin/wye service' $unit
-            grep -qxF 'KillMode=process' $unit
-            # The UI host: bus-activated through systemd, never at login.
-            ui=${wye.package}/share/systemd/user/wye-ui.service
-            grep -qxF 'Type=dbus' $ui
-            grep -qxF 'BusName=dev.soldunov.wye.Ui' $ui
-            grep -qxF 'ExecStart=${wye.package}/bin/wye-ui' $ui
-            if grep -q '^\[Install\]' $ui; then exit 1; fi
-            # NixOS' `systemd.packages` finds both units under lib/.
-            test -f ${wye.package}/lib/systemd/user/wye.service
-            test -f ${wye.package}/lib/systemd/user/wye-ui.service
-            # No template placeholder left anywhere.
-            if grep -rF '@bindir@' ${wye.package}/share; then exit 1; fi
-            test -x ${wye.package}/bin/wye
-            test -x ${wye.package}/bin/wye-ui
-            # The extension's native-messaging host (BEXT-04) ships with it.
-            test -x ${wye.package}/bin/wye-native-host
-            touch $out
-          '';
+          installed-dbus-files =
+            pkgs.runCommand "wye-installed-dbus-files"
+              {
+                nativeBuildInputs = [
+                  pkgs.jq
+                  pkgs.nodejs
+                ];
+              }
+              ''
+                services=${wye.package}/share/dbus-1/services
+                grep -qxF 'Name=dev.soldunov.wye' $services/dev.soldunov.wye.service
+                grep -qxF 'Exec=${wye.package}/bin/wye service' $services/dev.soldunov.wye.service
+                grep -qxF 'SystemdService=wye.service' $services/dev.soldunov.wye.service
+                grep -qxF 'Name=dev.soldunov.wye.Ui' $services/dev.soldunov.wye.Ui.service
+                grep -qxF 'Exec=${wye.package}/bin/wye-ui' $services/dev.soldunov.wye.Ui.service
+                grep -qxF 'SystemdService=wye-ui.service' $services/dev.soldunov.wye.Ui.service
+                grep -qxF 'Name=dev.soldunov.wye.Gtk' $services/dev.soldunov.wye.Gtk.service
+                grep -qxF 'Exec=${wye.package}/bin/wye-gtk' $services/dev.soldunov.wye.Gtk.service
+                grep -qxF 'SystemdService=wye-gtk.service' $services/dev.soldunov.wye.Gtk.service
+                unit=${wye.package}/share/systemd/user/wye.service
+                grep -qxF 'Type=dbus' $unit
+                grep -qxF 'BusName=dev.soldunov.wye' $unit
+                grep -qxF 'ExecStart=${wye.package}/bin/wye service' $unit
+                grep -qxF 'KillMode=process' $unit
+                # The UI host: bus-activated through systemd, never at login.
+                ui=${wye.package}/share/systemd/user/wye-ui.service
+                grep -qxF 'Type=dbus' $ui
+                grep -qxF 'BusName=dev.soldunov.wye.Ui' $ui
+                grep -qxF 'ExecStart=${wye.package}/bin/wye-ui' $ui
+                if grep -q '^\[Install\]' $ui; then exit 1; fi
+                # The GTK host is bus-activated, never enabled at login.
+                gtk=${wye.package}/share/systemd/user/wye-gtk.service
+                grep -qxF 'Type=dbus' $gtk
+                grep -qxF 'BusName=dev.soldunov.wye.Gtk' $gtk
+                grep -qxF 'ExecStart=${wye.package}/bin/wye-gtk' $gtk
+                if grep -q '^\[Install\]' $gtk; then exit 1; fi
+                # NixOS' `systemd.packages` finds every unit under lib/.
+                test -f ${wye.package}/lib/systemd/user/wye.service
+                test -f ${wye.package}/lib/systemd/user/wye-ui.service
+                test -f ${wye.package}/lib/systemd/user/wye-gtk.service
+                # The GTK host is the wrapped Rust binary, with GTK's run-time
+                # environment (wrapGAppsHook4) and no Python left.
+                test -x ${wye.package}/bin/wye-gtk
+                ${wye.package}/bin/wye-gtk --help > /dev/null
+                grep -q 'XDG_DATA_DIRS' ${wye.package}/bin/wye-gtk
+                # The Adwaita icons its windows name, whatever the desktop has.
+                grep -qF '${pkgs.adwaita-icon-theme}/share' ${wye.package}/bin/wye-gtk
+                if [ -e ${wye.package}/lib/wye-gtk ]; then exit 1; fi
+                # GNOME Shell finds the extension but package installation does not enable it.
+                extension=${wye.package}/share/gnome-shell/extensions/wye@dev.soldunov
+                jq -e '.uuid == "wye@dev.soldunov" and (."shell-version" | index("48"))' $extension/metadata.json > /dev/null
+                for file in extension.js picker.js model.mjs stylesheet.css; do test -f $extension/$file; done
+                # The whole directory ships, except its README and tests.
+                # (find, not a glob: stdenv sets nullglob, so an unmatched
+                # glob would leave a bare `ls` that succeeds.)
+                if [ -e $extension/README.md ] || [ -n "$(find $extension -name 'test-*')" ]; then exit 1; fi
+                node --check $extension/extension.js
+                node --check $extension/picker.js
+                node --check $extension/model.mjs
+                # No template placeholder left anywhere.
+                if grep -rF '@bindir@' ${wye.package}/share; then exit 1; fi
+                test -x ${wye.package}/bin/wye
+                test -x ${wye.package}/bin/wye-ui
+                # The extension's native-messaging host (BEXT-04) ships with it.
+                test -x ${wye.package}/bin/wye-native-host
+                touch $out
+              '';
           # Every QML file of wye-ui against the types its imports and its own
           # cxx-qt bridges declare; any warning fails.
           qmllint = craneLib.mkCargoDerivation (
@@ -251,6 +290,34 @@
                 export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
                 mkdir -m 700 $XDG_RUNTIME_DIR
                 ${wye.package}/bin/wye-ui --self-test
+                touch $out
+              '';
+          # Every surface of the installed wye-gtk shows its fixtures on a
+          # private Xvfb (cairo renderer) and logs no unexpected GTK, libadwaita
+          # or GLib warning (crates/wye-gtk/src/selftest).
+          gtk-selftest =
+            let
+              fonts = pkgs.makeFontsConf {
+                fontDirectories = [
+                  pkgs.adwaita-fonts
+                  pkgs.dejavu_fonts
+                ];
+              };
+            in
+            pkgs.runCommand "wye-gtk-selftest"
+              {
+                nativeBuildInputs = [ pkgs.xvfb ];
+                # What a GNOME session provides and the sandbox lacks: fonts
+                # and a UTF-8 locale. The icon theme is the wrapper's own, as
+                # on a desktop without one.
+                FONTCONFIG_FILE = fonts;
+                WYE_GTK_FONTCONFIG_FILE = fonts;
+                LANG = "C.UTF-8";
+              }
+              ''
+                export HOME=$TMPDIR XDG_RUNTIME_DIR=$TMPDIR/runtime
+                mkdir -m 700 $XDG_RUNTIME_DIR
+                ${wye.package}/bin/wye-gtk --self-test
                 touch $out
               '';
           # Both browser families' extensions, unpacked and zipped, with the
@@ -295,7 +362,7 @@
       devShells = forAllSystems (
         pkgs:
         let
-          inherit ((mkBuild pkgs).wye) qt;
+          inherit ((mkBuild pkgs).wye) qt gtk;
         in
         {
           default = pkgs.mkShell {
@@ -316,9 +383,22 @@
               ])
               # qmllint and the other Qt tools come with qt.env.
               ++ qt.nativeBuildInputs
-              ++ [ qt.qmllint ];
-            inherit (qt) buildInputs;
+              ++ [ qt.qmllint ]
+              # glib-compile-resources for wye-gtk's build script, and Xvfb:
+              # `wye-gtk --self-test` runs its windows on a private headless
+              # X server when one is on PATH.
+              ++ gtk.nativeBuildInputs
+              ++ [ pkgs.xvfb ];
+            buildInputs = qt.buildInputs ++ gtk.buildInputs;
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
+            # `wye-gtk --self-test` children draw with GNOME's fonts (Adwaita
+            # Sans), whatever the host's fontconfig has.
+            WYE_GTK_FONTCONFIG_FILE = pkgs.makeFontsConf {
+              fontDirectories = [
+                pkgs.adwaita-fonts
+                pkgs.dejavu_fonts
+              ];
+            };
             # `wye-ui --self-test --snapshots` loads the `kde` platform theme
             # from here: the desktop's copy is built against another Qt.
             WYE_SNAPSHOT_QT_PLUGIN_PATH = "${pkgs.kdePackages.plasma-integration}/${pkgs.qt6.qtbase.qtPluginPrefix}";

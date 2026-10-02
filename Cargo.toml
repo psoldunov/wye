@@ -85,6 +85,21 @@ cxx-qt = "0.10"
 cxx-qt-build = "0.10"
 cxx-qt-lib = { version = "0.10", default-features = false, features = ["qt_gui", "qt_qml"] }
 
+# The GTK 4 / libadwaita host (`wye-gtk`), for GNOME sessions. The features
+# name the newest API the nixpkgs libraries offer (GTK 4.22, libadwaita 1.9,
+# GLib 2.88); an older system library fails at link time, not at run time.
+gtk = { package = "gtk4", version = "0.11", features = ["gnome_50"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_9"] }
+# The picker and tray-menu popup of the GTK host as wlr-layer-shell overlays
+# (02-picker.md, "Linux notes": Sway, Hyprland, niri, river and others).
+gtk4-layer-shell = "0.8"
+# The X11 window ID of the GTK host's picker, to place it at the pointer
+# (PICK-02) where GTK 4 cannot position a window.
+gdk4-x11 = "0.11"
+# The script editor's source view (16-script-editor.md), for the GTK host.
+sourceview5 = { version = "0.11", features = ["v5_18"] }
+glib-build-tools = "0.22"
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

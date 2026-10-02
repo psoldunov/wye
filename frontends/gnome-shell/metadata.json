@@ -1,0 +1,7 @@
+{
+  "uuid": "wye@dev.soldunov",
+  "name": "Wye",
+  "description": "Native GNOME Shell tray and link picker for Wye",
+  "shell-version": ["48", "49", "50"],
+  "url": "https://github.com/psoldunov/wye"
+}

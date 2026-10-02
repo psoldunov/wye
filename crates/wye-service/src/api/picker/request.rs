@@ -29,6 +29,8 @@ pub(crate) struct Input<'a> {
     pub placement: Option<Placement>,
     /// PKS-06: choosing opens nothing.
     pub preview: bool,
+    /// The link's activation token, for the picker window's focus.
+    pub activation_token: Option<String>,
 }
 
 /// Every target `PickerChose` may answer `input`'s request with: each tile
@@ -98,6 +100,7 @@ pub(crate) fn build(input: &Input<'_>) -> PickerRequest {
         held: modifiers(input.held),
         placement: input.placement.clone(),
         preview: input.preview,
+        activation_token: input.activation_token.clone(),
     }
 }
 

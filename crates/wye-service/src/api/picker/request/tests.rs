@@ -87,6 +87,7 @@ fn request(config: &Config, held: Modifiers, preview: bool) -> PickerRequest {
             y: 20,
         }),
         preview,
+        activation_token: Some("token-1".to_owned()),
     })
 }
 
@@ -181,5 +182,7 @@ fn url_settings_held_keys_and_placement_are_carried() {
     assert_eq!(request.held, vec![WireModifier::Shift]);
     assert_eq!(request.placement.map(|p| p.output).as_deref(), Some("DP-1"));
     assert!(request.preview, "PKS-06");
+    // The link's activation token reaches the host, for the window's focus.
+    assert_eq!(request.activation_token.as_deref(), Some("token-1"));
     assert_eq!(request.settings.icon_size, icon_size(IconSize::default()));
 }

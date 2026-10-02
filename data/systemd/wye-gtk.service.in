@@ -1,0 +1,16 @@
+[Unit]
+Description=Wye GTK windows
+Documentation=https://github.com/psoldunov/wye
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# Started by D-Bus activation of dev.soldunov.wye.Gtk when a GNOME session
+# requests a Wye window; it stays resident once started.
+Type=dbus
+BusName=dev.soldunov.wye.Gtk
+ExecStart=@bindir@/wye-gtk
+Restart=on-failure
+RestartSec=2
+
+# No [Install] section: nothing starts the GTK host at login.

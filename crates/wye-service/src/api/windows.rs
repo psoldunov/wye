@@ -2,22 +2,15 @@
 //! `ActivateAction`, `ShowWindow`, `Quit` (TRAY-05, TRAY-16, TRAY-17,
 //! SET-04).
 //!
-//! Windows belong to the UI host: they are forwarded to
-//! `dev.soldunov.wye.Windows1` on `dev.soldunov.wye.Ui`, which the bus starts
-//! when it is not running.
-
-use std::time::Duration;
+//! Windows belong to a UI host: on GNOME use activatable GTK when installed;
+//! otherwise use the existing activatable Qt host.
 
 use wye_api::Error;
 use wye_api::actions::{ApplicationAction, Window};
-use wye_api::proxy::Windows1Proxy;
 use zbus::zvariant::OwnedValue;
 
 use super::{Caller, Dict, Result};
 use crate::context::ServiceContext;
-
-/// How long the UI host may take to start and answer.
-const UI_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// `org.freedesktop.Application.Activate`: Wye started without a link
 /// (TRAY-05).
@@ -82,22 +75,13 @@ pub async fn show_window(ctx: &ServiceContext, window: &str, argument: &str) -> 
 
 /// Forward to the UI host; `Unavailable` when it cannot be reached.
 async fn show(ctx: &ServiceContext, window: Window, argument: &str) -> Result<()> {
-    let connection = ctx
-        .connection()
-        .ok_or_else(|| Error::Unavailable("the service is not on a bus".to_owned()))?;
-    let call = async {
-        let proxy = Windows1Proxy::new(connection).await?;
-        proxy.show_window(window.as_str(), argument).await
-    };
-    match tokio::time::timeout(UI_TIMEOUT, call).await {
-        Ok(Ok(())) => Ok(()),
-        Ok(Err(error)) => Err(Error::Unavailable(format!(
-            "the Wye window host did not open {window}: {error}"
-        ))),
-        Err(_) => Err(Error::Unavailable(format!(
-            "the Wye window host did not answer within {UI_TIMEOUT:?}"
-        ))),
-    }
+    super::picker::host::show_window(ctx, window, argument)
+        .await
+        .map_err(|error| {
+            Error::Unavailable(format!(
+                "the Wye window host did not open {window}: {error}"
+            ))
+        })
 }
 
 /// `dev.soldunov.wye1.Quit` (TRAY-17): the service stops; the next link

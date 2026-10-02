@@ -1,7 +1,7 @@
 # 10 · Advanced page
 
-URL expansion, the global transform script, global keyboard shortcuts, history, and the
-browser-extension override.
+URL expansion, the global transform script, global keyboard shortcuts, history, the
+browser-extension override, and the frontend.
 
 <p align="center">
   <picture>
@@ -41,6 +41,12 @@ Miscellaneous
 │ Force show picker when opening from browser extension  [on ] │
 │   When opening, hold Alt to not force show the picker.       │
 │ Bypass key                          [Shift][Ctrl][Alt][Super]│
+└──────────────────────────────────────────────────────────────┘
+Interface
+┌──────────────────────────────────────────────────────────────┐
+│ Frontend                                     [Automatic ▾]   │
+│   Automatic uses GNOME on GNOME and KDE everywhere else.     │
+│   Applies to windows opened after the change.                │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,3 +94,9 @@ portal, are in [15-keyboard.md](15-keyboard.md#global-shortcuts).
 |---|---|---|---|
 | ADV-10 | Group **Miscellaneous**: switch row **Force show picker when opening from browser extension**, subtitle "When opening, hold \<bypass key\> to not force show the picker." With the switch on, links from the browser extension ([IN-05](11-url-pipeline.md#entry-points)) always open the picker, whatever the rules say, unless the bypass key is held. | on | Specified |
 | ADV-11 | Modifier chooser row **Bypass key** ([BLK-18](03-settings-window.md#shared-building-blocks)) under ADV-10: the modifier that skips the forced picker. Default **Alt**. | — | Proposed |
+
+## Interface
+
+| ID | Requirement | Value in design | Evidence |
+|---|---|---|---|
+| ADV-12 | Group **Interface**: popup row **Frontend** ([BLK-04](03-settings-window.md#shared-building-blocks) for plain values) with **Automatic**, **KDE** and **GNOME**, subtitle "Automatic uses GNOME on GNOME and KDE everywhere else. Applies to windows opened after the change." It picks the frontend that shows the picker, the tray-menu popup and the windows (`advanced.frontend`: `auto`, `kde`, `gnome`). **Automatic**: in a GNOME Shell session (`org.gnome.Shell` runs; Budgie and GNOME Flashback, which also name GNOME in `XDG_CURRENT_DESKTOP`, are not one) the Shell extension's picker while the extension runs, else the GTK host's, and the GTK host's windows; elsewhere `wye-ui`. **KDE**: `wye-ui` on every desktop. **GNOME**: on every desktop, the Shell extension's picker while the extension runs, else the GTK host's; the GTK host's windows. It suits window managers, where Automatic means KDE. A frontend that is not installed, cannot be reached or does not serve the call hands it to the other frontend and logs a warning, so a link is never lost (a window host that answers with an error keeps the error). The choice applies to the next picker, tray popup or window; open ones stay where they are. The Nix modules set it with `programs.wye.frontend`. | Automatic | Proposed |

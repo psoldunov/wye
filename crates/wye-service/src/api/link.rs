@@ -43,6 +43,10 @@ const MAX_FAILED: usize = 8;
 /// service that is still starting.
 const PROBES_PATIENCE: std::time::Duration = std::time::Duration::from_millis(300);
 
+/// How long the link held for the unlock (PKS-07) waits for the GNOME Shell
+/// picker, which the Shell switches off while the screen is locked.
+const SHELL_GRACE: std::time::Duration = std::time::Duration::from_secs(2);
+
 /// What this topic keeps between calls.
 #[derive(Debug, Default)]
 pub struct State {
@@ -371,6 +375,9 @@ async fn release_on_unlock(ctx: ServiceContext) {
         }
         if let Some(held) = ctx.link().release() {
             tracing::info!("screen unlocked; opening the held link");
+            // GNOME Shell turns its extensions on again after the unlock:
+            // its picker gets a moment to come back (ADV-12).
+            super::picker::host::wait_for_shell(&ctx, SHELL_GRACE).await;
             if let Err(error) = to_picker(&ctx, held.needed, held.activation).await {
                 tracing::warn!(%error, "cannot open the held link");
             }

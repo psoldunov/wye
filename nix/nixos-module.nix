@@ -2,7 +2,8 @@
 #
 # Parity gap with the home-manager module, by design: no `settings` option and
 # no local-HTML association (DEF-07), because `config.toml` is per user. Users
-# set those in Wye's Settings window or with home-manager.
+# set those in Wye's Settings window or with home-manager. `frontend` (ADV-12)
+# reaches each user's file through the `wye` unit, before the service starts.
 { self, release }:
 {
   config,
@@ -20,11 +21,14 @@ let
       pkgs
       ;
   } cfg;
+  frontend = import ./frontend.nix { inherit lib pkgs; } cfg;
   desktopId = "dev.soldunov.wye.desktop";
 in
 {
   options.programs.wye = channel.options // {
     enable = lib.mkEnableOption "Wye, a native browser picker that sends every link to the right browser";
+
+    frontend = frontend.option;
 
     defaultBrowser = lib.mkOption {
       type = lib.types.bool;
@@ -51,14 +55,19 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    inherit (channel) assertions;
+    assertions = channel.assertions ++ frontend.assertions;
     environment.systemPackages = [ cfg.package ];
-    # The D-Bus activation files and the systemd user units `wye` and
-    # `wye-ui` (lib/systemd/user) come from the package.
+    # The D-Bus activation files and the systemd user units `wye`, `wye-ui`
+    # and, in packages that ship it, `wye-gtk` (lib/systemd/user) come from
+    # the package.
     services.dbus.packages = [ cfg.package ];
     systemd.packages = [ cfg.package ];
     systemd.user.services.wye = {
       wantedBy = lib.optional cfg.launchAtLogin "graphical-session.target";
+      # ADV-12: the declared frontend, set in each user's config.toml.
+      serviceConfig = lib.mkIf (frontend.execStartPre != [ ]) {
+        ExecStartPre = frontend.execStartPre;
+      };
       environment = {
         # Browsers with a bare `Exec=firefox` are looked up here: the
         # per-user and system profiles first, then a user's own Nix profile

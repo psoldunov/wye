@@ -1,147 +1,17 @@
 //! The picker round trip on a private bus (PIPE-13, PICK-23, PICK-27,
 //! PICK-29, PICK-31, PICK-33, PKS-06, PKS-07, IN-06): a fake UI host owns
 //! `dev.soldunov.wye.Ui` and records what the service asks of it; the test
-//! answers the way the picker would. Skips without `dbus-daemon`.
+//! answers the way the picker would. The frontends (ADV-12) are in
+//! `frontends.rs`. Skips without `dbus-daemon`.
 
 mod support;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 
-use support::{Service, TWO, eventually};
-use wye_api::names::{UI_BUS_NAME, UI_OBJECT_PATH};
-use wye_api::picker::PickerRequest;
-use wye_api::proxy::Wye1Proxy;
+use support::hosts::{Call, PICKER, URL, cli, fake_ui, shown_count, two, wye};
+use support::{Service, eventually};
 use wye_api::{Error, context};
 use zbus::zvariant::Value;
-
-const URL: &str = "https://example.com/";
-const PICKER: &str = "[browsers]\nprimary = { picker = true }\n";
-
-/// One call the fake UI received.
-#[derive(Debug, Clone, PartialEq)]
-enum Call {
-    Show {
-        id: String,
-        request: Box<PickerRequest>,
-    },
-    Close {
-        id: String,
-    },
-    Window {
-        window: String,
-        argument: String,
-    },
-}
-
-#[derive(Clone, Default)]
-struct FakeUi {
-    calls: Arc<Mutex<Vec<Call>>>,
-}
-
-impl FakeUi {
-    fn record(&self, call: Call) {
-        self.calls.lock().expect("not poisoned").push(call);
-    }
-
-    fn calls(&self) -> Vec<Call> {
-        self.calls.lock().expect("not poisoned").clone()
-    }
-
-    fn shown(&self) -> Vec<(String, PickerRequest)> {
-        self.calls()
-            .into_iter()
-            .filter_map(|call| match call {
-                Call::Show { id, request } => Some((id, *request)),
-                _ => None,
-            })
-            .collect()
-    }
-}
-
-struct PickerHost(FakeUi);
-
-#[allow(
-    clippy::unused_self,
-    reason = "the fake serves the whole interface; members it ignores still take their arguments"
-)]
-#[zbus::interface(name = "dev.soldunov.wye.PickerHost1")]
-impl PickerHost {
-    fn show_picker(&self, request_id: &str, request: &str) -> zbus::fdo::Result<()> {
-        let request = serde_json::from_str(request)
-            .map_err(|error| zbus::fdo::Error::InvalidArgs(error.to_string()))?;
-        self.0.record(Call::Show {
-            id: request_id.to_owned(),
-            request: Box::new(request),
-        });
-        Ok(())
-    }
-
-    fn close_picker(&self, request_id: &str) {
-        self.0.record(Call::Close {
-            id: request_id.to_owned(),
-        });
-    }
-
-    fn show_menu(&self, menu: &str) {
-        // The tray-menu popup is not the picker; nothing to record.
-        let _ = menu;
-    }
-}
-
-struct Windows(FakeUi);
-
-#[allow(
-    clippy::unused_self,
-    reason = "the fake serves the whole interface; Quit has nothing to record"
-)]
-#[zbus::interface(name = "dev.soldunov.wye.Windows1")]
-impl Windows {
-    fn show_window(&self, window: &str, argument: &str) {
-        self.0.record(Call::Window {
-            window: window.to_owned(),
-            argument: argument.to_owned(),
-        });
-    }
-
-    fn quit(&self) {}
-}
-
-/// The fake UI host, owning its name on the service's bus.
-async fn fake_ui(service: &Service) -> (FakeUi, zbus::Connection) {
-    let ui = FakeUi::default();
-    let connection = service.bus.connect().await;
-    let server = connection.object_server();
-    server
-        .at(UI_OBJECT_PATH, PickerHost(ui.clone()))
-        .await
-        .expect("served");
-    server
-        .at(UI_OBJECT_PATH, Windows(ui.clone()))
-        .await
-        .expect("served");
-    connection.request_name(UI_BUS_NAME).await.expect("name");
-    (ui, connection)
-}
-
-fn cli() -> HashMap<&'static str, Value<'static>> {
-    HashMap::from([(context::ENTRY, Value::from("cli"))])
-}
-
-async fn wye(service: &Service) -> Wye1Proxy<'static> {
-    Wye1Proxy::new(&service.client).await.expect("proxy")
-}
-
-fn two() -> String {
-    format!(r#"{{"app":"{TWO}"}}"#)
-}
-
-async fn shown_count(ui: &FakeUi, count: usize) {
-    eventually("the picker to be shown", || async {
-        ui.shown().len() >= count
-    })
-    .await;
-}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_choice_opens_the_link_with_the_pickers_token() {
@@ -218,6 +88,15 @@ async fn a_new_link_supersedes_the_pending_one() {
         service.launched(),
         [vec!["fake-two".to_owned(), URL.to_owned()]]
     );
+    // One host shows both: its new request replaced the old one, so it is
+    // never asked to close it (as before ADV-12).
+    assert!(
+        !ui.calls()
+            .iter()
+            .any(|call| matches!(call, Call::Close { .. })),
+        "{:?}",
+        ui.calls()
+    );
 }
 
 /// KEY-13: the picker's private-window choice of a shown browser is its
@@ -275,6 +154,25 @@ async fn a_target_the_picker_did_not_show_is_refused() {
         .await
         .expect("still pending");
     assert_eq!(service.fakes.launcher.launched().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_links_activation_token_reaches_the_picker() {
+    // PICK-01, LAUNCH-03: a picker window may take the focus with it.
+    let Some(service) = Service::start(PICKER).await else {
+        return;
+    };
+    let (ui, _ui_connection) = fake_ui(&service).await;
+    let mut context = cli();
+    context.insert(context::ACTIVATION_TOKEN, Value::from("link-token"));
+    wye(&service)
+        .await
+        .open_link(URL, context)
+        .await
+        .expect("routed");
+    shown_count(&ui, 1).await;
+    let (_, request) = ui.shown().remove(0);
+    assert_eq!(request.activation_token.as_deref(), Some("link-token"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

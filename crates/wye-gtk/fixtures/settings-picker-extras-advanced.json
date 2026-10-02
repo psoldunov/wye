@@ -1,0 +1,209 @@
+{
+  "surface": "settings",
+  "cases": [
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "picker",
+        "scheme": "light",
+        "fixture": {
+          "config": {
+            "browsers": {
+              "primary": { "picker": true },
+              "alternative": { "app": "firefox.desktop" },
+              "alternative-key": ["Shift"],
+              "shown": [
+                { "target": { "app": "firefox.desktop" }, "hotkey": "f" },
+                { "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } }, "hotkey": "c" },
+                { "target": { "app": "org.kde.konsole.desktop" } }
+              ]
+            },
+            "picker": {
+              "hotkeys": "per-target",
+              "icon-size": "medium",
+              "skip-when-locked": true,
+              "keys": {
+                "open": ["Return", "KP_Enter", "space"],
+                "cancel": ["Escape"],
+                "next": ["Right", "Tab"],
+                "previous": ["Left", "Shift+Tab"],
+                "first": ["Home"],
+                "last": ["End"],
+                "copy-link": ["Ctrl+c"],
+                "more": ["Menu"],
+                "create-rule": ["Ctrl+r"],
+                "private-modifier": ["Shift"],
+                "background-modifier": ["Ctrl"],
+                "new-window-modifier": ["Alt"]
+              }
+            },
+            "extras": {
+              "strip-tracking-on-open": true,
+              "strip-tracking-on-copy": true,
+              "force-https": false
+            },
+            "advanced": {
+              "history": true,
+              "force-picker-from-extension": true,
+              "bypass-key": ["Alt"],
+              "expansion": {
+                "disabled": ["t.co"],
+                "custom-short-links": ["mine.link"],
+                "timeout-ms": 2000,
+                "max-redirects": 5,
+                "notify-on-failure": false
+              }
+            },
+            "shortcuts": { "toggle-menu": "Ctrl+Alt+o" }
+          },
+          "revision": 7,
+          "status": {
+            "defaultBrowser": { "isDefault": true },
+            "config": { "path": "/home/user/.config/wye/config.toml", "writable": true, "lossless": true, "warnings": [] },
+            "capabilities": {
+              "heldKeys": "gnome-shell",
+              "clipboardRead": "gnome-shell",
+              "clipboardWatch": "gnome-shell",
+              "clipboardWrite": "gnome-shell",
+              "globalShortcuts": "portal"
+            },
+            "uiState": { "onboardingDone": true, "dismissedCallouts": [], "lastPage": "picker" }
+          },
+          "targets": {
+            "targets": [
+              { "target": { "app": "firefox.desktop" }, "kind": "app", "name": "Firefox", "icon": "firefox", "capabilities": { "private": true, "newWindow": true, "background": true }, "packaging": "native" },
+              { "target": { "app": "google-chrome.desktop" }, "kind": "app", "name": "Google Chrome", "icon": "google-chrome", "capabilities": { "private": true, "newWindow": true, "background": true }, "packaging": "native" },
+              { "target": { "app": "org.kde.konsole.desktop" }, "kind": "app", "name": "Konsole", "icon": "utilities-terminal", "capabilities": { "private": false, "newWindow": false, "background": true }, "packaging": "native" },
+              { "target": { "profile": { "app": "google-chrome.desktop", "id": "Profile 1" } }, "kind": "profile", "name": "Work (Google Chrome)", "shortName": "Work", "icon": "google-chrome", "badge": { "initial": "W", "color": "#336699" }, "browser": "google-chrome.desktop" }
+            ]
+          },
+          "shortcuts": {
+            "mechanism": "portal",
+            "bindings": [
+              { "action": "toggle-menu", "description": "Toggle menu", "trigger": "CTRL+ALT+O", "command": "wye menu" },
+              { "action": "clipboard-primary", "description": "Open URL from clipboard with primary browser", "command": "wye clipboard" },
+              { "action": "clipboard-alternative", "description": "Open URL from clipboard with alternative browser", "command": "wye clipboard --alternative" }
+            ]
+          },
+          "expansion": {
+            "wrappers": [
+              { "id": "google-search", "name": "Google search results", "hosts": ["google.com/url"], "enabled": true },
+              { "id": "facebook", "name": "Facebook and Instagram", "hosts": ["l.facebook.com", "l.instagram.com"], "enabled": true },
+              { "id": "safelinks", "name": "Microsoft Safe Links", "hosts": ["*.safelinks.protection.outlook.com"], "enabled": true },
+              { "id": "slack", "name": "Slack", "hosts": ["slack-redir.net"], "enabled": true },
+              { "id": "steam", "name": "Steam", "hosts": ["steamcommunity.com/linkfilter"], "enabled": true },
+              { "id": "youtube", "name": "YouTube", "hosts": ["youtube.com/redirect"], "enabled": true }
+            ],
+            "shortLinks": [
+              { "domain": "bit.ly", "enabled": true },
+              { "domain": "t.co", "enabled": false },
+              { "domain": "tinyurl.com", "enabled": true },
+              { "domain": "lnkd.in", "enabled": true },
+              { "domain": "mine.link", "enabled": true }
+            ]
+          }
+        }
+      }
+    },
+    { "action": "show", "key": "settings", "argument": { "page": "picker", "sheet": "picker-keys" } },
+    { "action": "show", "key": "settings", "argument": "extras" },
+    { "action": "show", "key": "settings", "argument": "advanced" },
+    { "action": "show", "key": "settings", "argument": { "page": "advanced", "sheet": "expansion" } },
+    { "action": "show", "key": "settings", "argument": { "page": "advanced", "sheet": "history-confirm" } },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "extras",
+        "fixture": {
+          "status": {
+            "defaultBrowser": { "isDefault": true },
+            "config": { "path": "/home/user/.config/wye/config.toml", "writable": true, "lossless": true, "warnings": [] },
+            "capabilities": {},
+            "uiState": { "onboardingDone": true, "dismissedCallouts": [], "lastPage": "extras" }
+          },
+          "shortcuts": { "mechanism": "none", "bindings": [] }
+        }
+      }
+    },
+    { "action": "show", "key": "settings", "argument": "advanced" },
+    { "action": "show", "key": "settings", "argument": { "page": "picker", "sheet": "picker-keys" } },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "advanced",
+        "fixture": {
+          "status": {
+            "defaultBrowser": { "isDefault": true },
+            "config": { "path": "/home/user/.config/wye/config.toml", "writable": true, "lossless": true, "warnings": [] },
+            "capabilities": { "heldKeys": "x11", "clipboardWatch": "x11", "globalShortcuts": "x11" },
+            "uiState": { "onboardingDone": true, "dismissedCallouts": ["expansion-info"], "lastPage": "advanced" }
+          },
+          "shortcuts": {
+            "mechanism": "x11",
+            "bindings": [
+              { "action": "toggle-menu", "description": "Toggle menu", "trigger": "Ctrl+Alt+o", "command": "wye menu" },
+              { "action": "clipboard-primary", "description": "Open URL from clipboard with primary browser", "command": "wye clipboard" },
+              { "action": "clipboard-alternative", "description": "Open URL from clipboard with alternative browser", "command": "wye clipboard --alternative" }
+            ]
+          }
+        }
+      }
+    },
+    { "action": "show", "key": "settings", "argument": { "page": "advanced", "sheet": "expansion" } },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "picker",
+        "scheme": "dark",
+        "fixture": {
+          "status": {
+            "defaultBrowser": { "isDefault": true },
+            "config": { "path": "/home/user/.config/wye/config.toml", "writable": true, "lossless": true, "warnings": [] },
+            "capabilities": { "globalShortcuts": "portal" },
+            "uiState": { "onboardingDone": true, "dismissedCallouts": [], "lastPage": "picker" }
+          },
+          "shortcuts": {
+            "mechanism": "portal",
+            "bindings": [
+              { "action": "toggle-menu", "description": "Toggle menu", "trigger": "CTRL+ALT+O", "command": "wye menu" },
+              { "action": "clipboard-primary", "description": "Open URL from clipboard with primary browser", "command": "wye clipboard" },
+              { "action": "clipboard-alternative", "description": "Open URL from clipboard with alternative browser", "command": "wye clipboard --alternative" }
+            ]
+          }
+        }
+      }
+    },
+    { "action": "show", "key": "settings", "argument": { "page": "picker", "sheet": "picker-keys", "scheme": "dark" } },
+    { "action": "show", "key": "settings", "argument": { "page": "extras", "scheme": "dark" } },
+    { "action": "show", "key": "settings", "argument": { "page": "advanced", "scheme": "dark" } },
+    { "action": "show", "key": "settings", "argument": { "page": "advanced", "sheet": "expansion", "scheme": "dark" } },
+    { "action": "show", "key": "settings", "argument": { "page": "advanced", "sheet": "history-confirm", "scheme": "dark" } },
+    {
+      "action": "show",
+      "key": "settings",
+      "argument": {
+        "page": "picker",
+        "scheme": "light",
+        "fixture": {
+          "config": {
+            "picker": { "hotkeys": "letters", "icon-size": "small", "show-url": true },
+            "advanced": { "expand-urls": false, "transform": true, "frontend": "gnome", "bypass-key": [] }
+          },
+          "status": {
+            "defaultBrowser": { "isDefault": true },
+            "config": { "path": "/home/user/.config/wye/config.toml", "writable": false, "lossless": true, "warnings": [] },
+            "capabilities": { "heldKeys": "x11", "clipboardWatch": "x11", "globalShortcuts": "x11" },
+            "uiState": { "onboardingDone": true, "dismissedCallouts": [], "lastPage": "picker" }
+          }
+        }
+      }
+    },
+    { "action": "show", "key": "settings", "argument": "advanced" },
+    { "action": "show", "key": "settings", "argument": "extras" },
+    { "action": "show", "key": "settings", "argument": "picker" }
+  ]
+}

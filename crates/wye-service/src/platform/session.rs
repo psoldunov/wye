@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::clipboard::{self, NoClipboard};
+use super::gnome_shell::{self, ShellHelper};
 use super::kwin::Reports;
 use super::lock::{NoLockMonitor, SessionLockMonitor};
 use super::modifiers::{self, NoModifiers};
@@ -70,6 +71,33 @@ impl Probes {
             ..platform.clone()
         }
     }
+
+    /// GNOME: the Shell extension's helper for whatever the session
+    /// offered no other way to do (Mutter has no data control, layer shell
+    /// or pointer query). What another mechanism found is kept.
+    #[must_use]
+    pub fn or_shell_helper(self, helper: Arc<ShellHelper>) -> Self {
+        Self {
+            clipboard: if self.clipboard.capabilities().read.is_none() {
+                Arc::clone(&helper) as _
+            } else {
+                self.clipboard
+            },
+            modifiers: self
+                .modifiers
+                .mechanism()
+                .map_or_else(|| Arc::clone(&helper) as _, |_| self.modifiers),
+            pointer: self
+                .pointer
+                .mechanism()
+                .map_or_else(|| Arc::clone(&helper) as _, |_| self.pointer),
+            focus: self
+                .focus
+                .mechanism()
+                .map_or_else(|| helper as _, |_| self.focus),
+            lock: self.lock,
+        }
+    }
 }
 
 /// Screen lock (logind and the screen saver), clipboard, held modifiers,
@@ -109,21 +137,30 @@ pub async fn probes(session: &zbus::Connection, reports: &Reports) -> Probes {
     );
     let (lock, clipboard, modifiers, (pointer, focus)) =
         tokio::join!(lock, clipboard, modifiers, pointer_and_focus);
-    tracing::info!(
-        lock = lock.mechanism(),
-        clipboard = ?clipboard.capabilities().read,
-        held_keys = modifiers.mechanism(),
-        pointer = pointer.mechanism(),
-        focus = focus.mechanism(),
-        "session probes"
-    );
-    Probes {
+    let found = Probes {
         lock,
         clipboard,
         modifiers,
         pointer,
         focus,
-    }
+    };
+    // GNOME Shell (not every desktop that names GNOME in
+    // XDG_CURRENT_DESKTOP): the extension's helper may start after the
+    // service, so it is used whether it runs yet or not.
+    let found = if gnome_shell::is_gnome_session(session).await {
+        found.or_shell_helper(Arc::new(ShellHelper::start(session)))
+    } else {
+        found
+    };
+    tracing::info!(
+        lock = found.lock.mechanism(),
+        clipboard = ?found.clipboard.capabilities().read,
+        held_keys = found.modifiers.mechanism(),
+        pointer = found.pointer.mechanism(),
+        focus = found.focus.mechanism(),
+        "session probes"
+    );
+    found
 }
 
 /// Global shortcuts through the portal (KEY-40), preferring the triggers in

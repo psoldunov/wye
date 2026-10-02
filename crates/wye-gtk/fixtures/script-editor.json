@@ -1,0 +1,130 @@
+{
+  "cases": [
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "// Return a new URL to change the link, or nothing to keep it.\n//\n// url      The link after expansion and cleaning, as a WHATWG URL.\n// context  { sourceApp, entryPoint, heldKeys, rule }\nexport default function transform(url, context) {\n  // Read Reddit threads on the old, lighter site.\n  if (url.hostname === \"www.reddit.com\") {\n    url.hostname = \"old.reddit.com\";\n  }\n\n  // Open Google AMP pages as the article they wrap.\n  const amp = \"/amp/s/\";\n  if (url.hostname === \"www.google.com\" && url.pathname.startsWith(amp)) {\n    return \"https://\" + url.pathname.slice(amp.length);\n  }\n\n  // Wikipedia links from the chat app open in English.\n  if (context.sourceApp === \"org.gnome.Fractal.desktop\") {\n    url.hostname = url.hostname.replace(/^\\w+\\.(?=wikipedia)/, \"en.\");\n  }\n\n  return url;\n}\n",
+          "testUrl": "https://www.reddit.com/r/gnome/comments/1fx2k9q/gnome_49_is_out/?share_id=Xy12&utm_content=1",
+          "run": {
+            "ok": true,
+            "url": "https://old.reddit.com/r/gnome/comments/1fx2k9q/gnome_49_is_out/?share_id=Xy12&utm_content=1",
+            "changed": [[8, 11]],
+            "micros": 700
+          },
+          "apps": [["org.gnome.Fractal.desktop", "Fractal"], ["org.gnome.Nautilus.desktop", "Files"]]
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "// Return a new URL to change the link, or nothing to keep it.\nexport default function transform(url, context) {\n  console.log(\"host\", url.hostname);\n  if (url.hostname === \"twitter.com\") url.hostname = \"x.com\";\n  return url;\n}\n",
+          "testUrl": "https://twitter.com/example/status/1",
+          "run": {
+            "ok": true,
+            "url": "https://x.com/example/status/1",
+            "changed": [[8, 9]],
+            "micros": 400,
+            "logs": ["host twitter.com"]
+          },
+          "apps": [["com.slack.Slack.desktop", "Slack"], ["org.gnome.Nautilus.desktop", "Files"]]
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:github",
+        "ruleName": "GitHub in Firefox",
+        "fixture": {
+          "source": "export default function transform(url, context) {\n  const a = 1;\n  return missing.href;\n}\n",
+          "run": { "ok": false, "error": "ReferenceError: missing is not defined", "line": 3, "micros": 180 },
+          "externalChange": true
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url.;\n}\n",
+          "run": { "ok": false, "error": "SyntaxError: unexpected token in expression: ';'", "line": 2, "micros": 90 }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "export default function transform(url) {}\n",
+          "run": { "ok": true, "micros": 50 }
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:work",
+        "ruleName": "Work links",
+        "fixture": {
+          "source": "// Return a new URL to change the link, or nothing to keep it.\n//\n// url      The link after expansion and cleaning, as a WHATWG URL. Mutable.\n// context  { sourceApp, entryPoint, heldKeys, rule }\nexport default function transform(url, context) {\n  // Example: open Twitter links on x.com.\n  // if (url.hostname === \"twitter.com\") url.hostname = \"x.com\";\n  return url;\n}\n",
+          "run": { "ok": true, "url": "https://example.com/?utm_source=test", "micros": 60 }
+        }
+      }
+    },
+    { "action": "show", "key": "script-editor", "argument": "rule:unsaved" },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:github",
+        "ruleName": "GitHub in Firefox",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url;\n}\n",
+          "testUrl": "https://github.com/example/repo?tab=readme",
+          "run": { "ok": true, "url": "https://codeberg.org/example/repo?tab=readme", "changed": [[8, 20]], "micros": 70 },
+          "edit": "export default function transform(url) {\n  url.hostname = \"codeberg.org\";\n  return url;\n}\n"
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "rule:github",
+        "ruleName": "GitHub in Firefox",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url;\n}\n",
+          "testUrl": "https://github.com/example/repo?tab=readme",
+          "run": { "ok": true, "micros": 70 },
+          "edit": "export default function transform(url) {\n  url.hostname = \"codeberg.org\";\n  return url;\n}\n",
+          "confirmClose": true
+        }
+      }
+    },
+    {
+      "action": "show",
+      "key": "script-editor",
+      "argument": {
+        "scope": "global",
+        "fixture": {
+          "source": "export default function transform(url) {\n  return url;\n}\n",
+          "run": { "ok": true, "micros": 60 },
+          "reference": true
+        }
+      }
+    }
+  ]
+}

@@ -12,6 +12,7 @@
 pub mod clipboard;
 pub mod fake;
 pub mod focus;
+pub mod gnome_shell;
 pub mod http;
 pub mod kwin;
 pub mod lock;
@@ -107,6 +108,10 @@ pub trait ClipboardProvider: Send + Sync {
     async fn write(&self, text: &str) -> Result<(), PlatformError>;
     /// New clipboard text as it is copied, when watching is possible.
     fn watch(&self) -> Option<broadcast::Receiver<String>>;
+    /// Whether a copy-time rewrite is switched on, so changes are wanted
+    /// (EXT-12). Providers that see every change anyway ignore it; one that
+    /// has to be asked for them asks only while this is true.
+    fn set_watching(&self, _wanted: bool) {}
     /// What is possible in this session.
     fn capabilities(&self) -> ClipboardCapabilities;
 }

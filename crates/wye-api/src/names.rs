@@ -24,15 +24,28 @@ pub const UI_BUS_NAME: &str = "dev.soldunov.wye.Ui";
 /// The UI host's object.
 pub const UI_OBJECT_PATH: &str = "/dev/soldunov/wye/Ui";
 
+/// GNOME Shell extension's live picker host (not bus-activatable).
+pub const GNOME_BUS_NAME: &str = "dev.soldunov.wye.Gnome";
+
+/// GNOME Shell extension's picker object.
+pub const GNOME_OBJECT_PATH: &str = "/dev/soldunov/wye/Gnome";
+
+/// Bus-activatable GTK window host for GNOME sessions.
+pub const GTK_BUS_NAME: &str = "dev.soldunov.wye.Gtk";
+
+/// GTK window host's object.
+pub const GTK_OBJECT_PATH: &str = "/dev/soldunov/wye/Gtk";
+
 /// Shows and closes the picker and the tray-menu popup. Served by `wye-ui`,
-/// later also by the GNOME Shell extension under its own name.
+/// or by the GNOME Shell extension under its own name.
 pub const PICKER_HOST_INTERFACE: &str = "dev.soldunov.wye.PickerHost1";
 
 /// Opens the UI host's windows.
 pub const WINDOWS_INTERFACE: &str = "dev.soldunov.wye.Windows1";
 
-/// Reserved for the GNOME Shell extension (pointer, modifiers, focus,
-/// clipboard). Not implemented yet.
+/// The GNOME Shell extension's session helper on [`GNOME_OBJECT_PATH`]:
+/// pointer, modifiers, focus and clipboard where Mutter offers no protocol
+/// for them.
 pub const SESSION_HELPER_INTERFACE: &str = "dev.soldunov.wye.SessionHelper1";
 
 /// Wye's desktop entry.

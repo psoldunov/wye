@@ -115,7 +115,7 @@ All read-only.
 | `UpdateUiState(s merge_patch) → ()` | Merge patch of `uiState` in `Status`: dismissed callouts (BLK-09), last page (SET-08), help arrow (RUL-19), onboarding done (ONB-06). |
 | `ShowWindow(s window, s argument) → ()` | Open a window in the UI host: `settings` (argument: page), `first-run`, `history`, `test-rules`, `about`, `script-editor` (argument: scope), `rule-editor` (argument: JSON prefill). `InvalidArgs` for an unknown window, `Unavailable` when the UI host cannot be started or does not answer within 10 s. |
 | `ToggleMenu() → ()` | Open or close the tray-menu popup (TRAY-08): emits `MenuRequested`, then calls `PickerHost1.ShowMenu` with the `Tray` model and the pointer. `Unavailable` when the UI host cannot be reached within 10 s. The `toggle-menu` shortcut and `wye menu` call the same. |
-| `RegisterTray(s kind) → ()` | Reserved for external tray hosts: Wye's own tray is its StatusNotifierItem on every desktop, KDE Plasma included, and Wye ships no host that calls this. A host announces itself (`plasma-applet`, the applet earlier versions shipped, still accepted; later `gnome-extension`). The service hides its own StatusNotifierItem until the caller has called `UnregisterTray` as often as `RegisterTray`, or its connection closes (instances of one host may share a connection, as applets share plasmashell's). The item shows as soon as the service starts; there is no wait for a host. `InvalidArgs` for another kind. |
+| `RegisterTray(s kind) → ()` | For external tray hosts: Wye's own tray is its StatusNotifierItem on every desktop, KDE Plasma included, except where a host draws it. The GNOME Shell extension registers as `gnome-extension` (GNOME has no StatusNotifierItem host); `plasma-applet`, the applet earlier versions shipped, is still accepted. The service hides its own StatusNotifierItem until the caller has called `UnregisterTray` as often as `RegisterTray`, or its connection closes (instances of one host may share a connection, as applets share plasmashell's). The item shows as soon as the service starts; there is no wait for a host. `InvalidArgs` for another kind. |
 | `UnregisterTray() → ()` | Ends one of the caller's registrations (a host calls it when an instance is removed or disabled, since a shared connection outlives it). When none is left and no other host is registered, the StatusNotifierItem comes back at once. Unregistering a caller that never registered changes nothing. |
 | `ActivateTrayItem(s id) → ()` | Carry out the `Tray` item `id`, for every tray host: `make-default` (`MakeDefault`), `open-clipboard` (`OpenClipboard(false)`), `primary:picker` / `primary:<n>` (the item's target becomes `browsers.primary`, TRAY-11), `settings`, `history`, `test-rules`, `set-up`, `about` (`ShowWindow`), `recent:<id>` (`ReopenHistoryEntry(id, "picker")`), `rescan`, `help` (opens the project page as a link), `quit`. `InvalidArgs` for a header, separator, submenu or unknown ID; otherwise the error of the call it makes. |
 | `GetTroubleshooting() → s` | Plain-text troubleshooting report for the About window (DLG-ABT-02). |
@@ -165,10 +165,20 @@ the service starts it when a link may end on the picker and it stays resident. A
 with `Windows1.ShowWindow` and exits 0. These interfaces are not part of the public
 contract.
 
+The GNOME frontend serves them under its own names: the GNOME Shell extension owns
+`dev.soldunov.wye.Gnome` at `/dev/soldunov/wye/Gnome` (`PickerHost1`, while the Shell runs
+it; not activatable), and `wye-gtk` owns `dev.soldunov.wye.Gtk` at `/dev/soldunov/wye/Gtk`
+(`Windows1` and `PickerHost1`; activatable through `dev.soldunov.wye.Gtk.service` and the
+`wye-gtk.service` user unit). `advanced.frontend` (ADV-12) decides which host the service
+calls first and which it falls back to; see [architecture.md](architecture.md#frontends-adv-12).
+
 ### Interface `dev.soldunov.wye.PickerHost1`
 
-A GNOME Shell extension may implement it later under its own name; the service then
-prefers it.
+Served by `wye-ui`, the GNOME Shell extension and `wye-gtk`. The service calls the first
+host `advanced.frontend` names that runs or can be started; a host that fails or does not
+serve the interface hands the call to the next, all within one 10 s deadline.
+`ClosePicker` goes to every running host, and to a host that still shows a request a newer
+one replaced on another host (PICK-27).
 
 | Signature | Description |
 |-----------|-------------|
@@ -183,11 +193,25 @@ prefers it.
 | `ShowWindow(s window, s argument) → ()` | Open or raise a window (same names as `dev.soldunov.wye1.ShowWindow`). |
 | `Quit() → ()` | Quit the UI host. |
 
-### Interface `dev.soldunov.wye.SessionHelper1` (reserved)
+### Interface `dev.soldunov.wye.SessionHelper1`
 
-Reserved for the GNOME Shell extension; not implemented. `QueryPointer() → (i x, i y, s
-output)`, `QueryModifiers() → as`, `FocusedApp() → s`, `ReadClipboard() → s`,
-`WatchClipboard(b)` and the signal `ClipboardChanged(s)`.
+Served by the GNOME Shell extension at `/dev/soldunov/wye/Gnome`, beside `PickerHost1`:
+what Mutter offers no protocol for. On a GNOME Shell session (`org.gnome.Shell` has an
+owner on the session bus) the service uses it for each of the clipboard, held modifiers, the pointer and the
+focused app that no other mechanism provides. It follows `dev.soldunov.wye.Gnome`, so the
+extension may start before or after the service, and reports `gnome-shell` in
+`Status.capabilities` while the extension serves it. Only the current owner of
+`dev.soldunov.wye` may call it; anyone else gets `org.freedesktop.DBus.Error.AccessDenied`.
+
+| Signature | Description |
+|-----------|-------------|
+| `QueryPointer() → (i x, i y, s output)` | The pointer in the logical coordinates of `output`, a connector name (PICK-02). |
+| `QueryModifiers() → as` | The modifiers held now: `Shift`, `Ctrl`, `Alt`, `Super` (KEY-06). |
+| `FocusedApp() → s` | The focused window's desktop ID, such as `org.gnome.Ptyxis.desktop`; empty when unknown (source-app step 4). |
+| `ReadClipboard() → s` | The clipboard's text only when it is a link Wye uses: one trimmed token with no whitespace, `http` or `https` with a host, or `mailto:` with an address (IN-02, TRAY-10, EXT-12 to EXT-15). Empty for anything else, so other text, a secret from a password manager that marks none, content with an image or more than 8192 characters never leaves the Shell. |
+| `WriteClipboard(s text) → ()` | Replace the clipboard's text (EXT-12, Copy Link). |
+| `WatchClipboard(b watch) → ()` | Start or stop `ClipboardChanged` for the caller. The service asks only while a copy-time rewrite is on (EXT-12 to EXT-15), and again whenever the extension or the service restarts. |
+| signal `ClipboardChanged(s text)` | A newly copied link, filtered as `ReadClipboard` (nothing is sent for other text); sent to the watching service's unique name alone, never broadcast. Of quick successive copies only the newest is sent. |
 
 ## Browser extension: native messaging (BEXT-04, BEXT-05)
 

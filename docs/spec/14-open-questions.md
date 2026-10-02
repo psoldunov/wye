@@ -6,7 +6,7 @@ Each has a proposal in the spec; the proposal stands until someone decides other
 
 | # | Decision | Proposal | Where |
 |---|---|---|---|
-| 1 | Toolkit strategy: one toolkit on every desktop (GTK 4 + libadwaita), or one frontend per desktop like Token Station (GNOME Shell extension + libadwaita, Plasma/Kirigami, SNI fallback) | Per-desktop frontends over a Rust service: the GNOME extension is needed anyway for the picker, held keys and clipboard on GNOME | [03](03-settings-window.md#native-control-mapping), [13](13-linux-platform.md#architecture-precedent) |
+| 1 | Toolkit strategy: one toolkit on every desktop (GTK 4 + libadwaita), or one frontend per desktop like Token Station (GNOME Shell extension + libadwaita, Plasma/Kirigami, SNI fallback) | Per-desktop frontends over a Rust service: the GNOME extension is needed anyway for the picker, held keys and clipboard on GNOME. Built: KDE (`wye-ui`) and GNOME (Shell extension plus the GTK host `wye-gtk`); [ADV-12](10-advanced.md#interface) lets the user pick either on any desktop, Automatic choosing by session | [03](03-settings-window.md#native-control-mapping), [13](13-linux-platform.md#architecture-precedent), [ADV-12](10-advanced.md#interface) |
 | 2 | Held-modifier detection on KDE Plasma and wlroots Wayland sessions | Prototype the transient layer-shell surface; fall back to disabling modifier features with an explanation | [13](13-linux-platform.md#capability-matrix), [KEY-06](15-keyboard.md#controls) |
 | 3 | Picker placement on KDE Plasma and wlroots Wayland sessions | Centre on the active screen; investigate a KWin script for the pointer position | [02](02-picker.md#linux-notes) |
 | 4 | Script language | JavaScript via QuickJS (`rquickjs`) | [16](16-script-editor.md#script-api) |

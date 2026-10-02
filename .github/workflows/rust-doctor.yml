@@ -31,6 +31,20 @@ jobs:
           path: ${{ runner.temp }}/rust-doctor
           key: rust-doctor-0.7.0-${{ runner.os }}
 
+      # Nearly all of the job's time is the `cargo clippy --workspace` that
+      # rust-doctor runs into `target/`, compiling every dependency and build
+      # script (cxx-qt's C++, QuickJS) from scratch; `nix develop` itself takes
+      # about half a minute. Keeping `target/` between runs leaves only the
+      # crates that changed to check. The toolchain comes from the flake, so a
+      # `flake.lock` change starts an empty cache (the old artifacts would never
+      # be read again), while a `Cargo.lock` change starts from the previous one.
+      - name: Cache target
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target
+          key: rust-doctor-target-${{ runner.os }}-${{ hashFiles('flake.lock') }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: rust-doctor-target-${{ runner.os }}-${{ hashFiles('flake.lock') }}-
+
       # Scans the whole workspace and fails on any blocking warning, the same
       # command AGENTS.md gives contributors. `--scope baseline` (fail only on
       # what a pull request introduces) is not used: rust-doctor 0.7.0 runs
@@ -38,8 +52,12 @@ jobs:
       # dev shell has no rustup (a rustup shim would replace its cargo).
       # Running inside `nix develop` also gives wye-ui's build script what
       # it needs: Qt and KDE Frameworks, QMAKE pointing at the merged Qt
-      # prefix (set by the shell hook) and the wrapped ld.lld.
+      # prefix (set by the shell hook) and the wrapped ld.lld. Incremental
+      # compilation is off: its session data would make the cached `target/`
+      # much bigger for little gain on a run that checks each crate once.
       - name: rust-doctor
+        env:
+          CARGO_INCREMENTAL: 0
         run: |
           nix develop -c sh -c '
             set -eu

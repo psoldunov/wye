@@ -91,6 +91,9 @@ struct Inner {
     selected: RefCell<Vec<String>>,
     choice: Choice,
     chosen: Box<Chosen>,
+    /// Told which app a single choice picked, so its row has a name at once
+    /// (TGT-06).
+    store: SettingsStore,
 }
 
 /// An open app chooser. Clones share it.
@@ -116,7 +119,7 @@ impl AppChooser {
         choice: Choice,
         chosen: impl Fn(&[Value]) + 'static,
     ) -> Self {
-        let this = Self::build(choice, Box::new(chosen));
+        let this = Self::build(store, choice, Box::new(chosen));
         this.inner.dialog.present(Some(parent));
         this.inner.dialog.set_focus(Some(&this.inner.search));
         let weak = Rc::downgrade(&this.inner);
@@ -134,7 +137,7 @@ impl AppChooser {
         refresh(&self.inner);
     }
 
-    fn build(choice: Choice, chosen: Box<Chosen>) -> Self {
+    fn build(store: &SettingsStore, choice: Choice, chosen: Box<Chosen>) -> Self {
         let multiple = matches!(choice, Choice::Multiple { .. });
         let cancel = gtk::Button::with_label("Cancel");
         let add = gtk::Button::builder()
@@ -179,6 +182,7 @@ impl AppChooser {
             selected: RefCell::default(),
             choice,
             chosen,
+            store: store.clone(),
         });
         connect(&inner, &cancel, &browse);
         // The sheet keeps itself until it closes; its widgets hold it weakly.
@@ -419,14 +423,16 @@ fn app_row(inner: &Rc<Inner>, row: &chooser::Row) -> adw::ActionRow {
 
 /// DLG-APP-03, single choice: the app with desktop ID `id` is the answer.
 fn choose(inner: &Rc<Inner>, id: &str) {
-    let target = inner
+    let picked = inner
         .apps
         .borrow()
         .apps
         .iter()
         .find(|app| app.id == id)
-        .map(chooser::target_for);
-    if let Some(target) = target {
+        .map(|app| (chooser::target_for(app), chooser::chosen_info(app)));
+    if let Some((target, info)) = picked {
+        // Before the answer: the row saves on it and must already resolve.
+        inner.store.remember_chosen(info);
         answer(inner, &[target]);
     }
 }
@@ -471,11 +477,19 @@ fn browse_file(inner: &Rc<Inner>) {
             // Dismissed: nothing to do.
             return;
         };
-        let target = file
-            .path()
-            .and_then(|path| chooser::browse_target(&path.to_string_lossy()));
-        if let Some(target) = target {
-            with(&weak, |inner| answer(inner, &[target]));
+        let Some(path) = file.path() else {
+            return;
+        };
+        let path = path.to_string_lossy();
+        if let Some(target) = chooser::browse_target(&path) {
+            with(&weak, |inner| {
+                if inner.choice == Choice::Single
+                    && let Some(info) = chooser::browse_info(&path, &inner.apps.borrow())
+                {
+                    inner.store.remember_chosen(info);
+                }
+                answer(inner, &[target]);
+            });
         }
     });
 }

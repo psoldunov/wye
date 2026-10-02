@@ -70,6 +70,7 @@ impl SettingsStore {
                     .find(|candidate| candidate.id == service),
                 services: &snapshot.services.services,
                 primary_name: &primary_name,
+                chosen: &snapshot.chosen,
             };
             build(snapshot, &request)
         })

@@ -3,8 +3,9 @@
 
 use serde::Serialize;
 use serde_json::{Value, json};
-use wye_api::Packaging;
 use wye_api::apps::{AppInfo, AppList};
+use wye_api::targets::{TargetInfo, TargetKind};
+use wye_api::{Packaging, TargetCapabilities};
 
 use super::icon;
 
@@ -165,6 +166,58 @@ pub fn browse_target(path: &str) -> Option<Value> {
     }
 }
 
+fn chosen(target: Value, kind: TargetKind, name: String, icon: Option<String>) -> TargetInfo {
+    TargetInfo {
+        target,
+        kind,
+        name,
+        short_name: None,
+        icon,
+        badge: None,
+        browser: None,
+        capabilities: TargetCapabilities::default(),
+        packaging: None,
+        missing: false,
+    }
+}
+
+/// How the service would list the app just chosen (TGT-01, TGT-06), so its
+/// row has a name and an icon before the service lists it.
+#[must_use]
+pub fn chosen_info(app: &AppInfo) -> TargetInfo {
+    let kind = if app.is_browser {
+        TargetKind::App
+    } else {
+        TargetKind::Custom
+    };
+    TargetInfo {
+        packaging: app.packaging,
+        ..chosen(target_for(app), kind, app.name.clone(), app.icon.clone())
+    }
+}
+
+/// The same for a file picked with "Browse…" (DLG-APP-04, TGT-06): a
+/// `.desktop` file takes the name and icon of the app in `list` with that
+/// ID, an executable its file name and no icon, as the service lists it.
+/// `None` for an empty path or a `.desktop` file the list does not know.
+#[must_use]
+pub fn browse_info(path: &str, list: &AppList) -> Option<TargetInfo> {
+    let target = browse_target(path)?;
+    let id = target.get("custom").and_then(Value::as_str)?;
+    if id.ends_with(".desktop") {
+        let app = list.apps.iter().find(|app| app.id == id)?;
+        let (name, icon, packaging) = (app.name.clone(), app.icon.clone(), app.packaging);
+        return Some(TargetInfo {
+            packaging,
+            ..chosen(target, TargetKind::Custom, name, icon)
+        });
+    }
+    let name = std::path::Path::new(id)
+        .file_name()
+        .map_or_else(|| id.to_owned(), |name| name.to_string_lossy().into_owned());
+    Some(chosen(target, TargetKind::Custom, name, None))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,5 +348,55 @@ mod tests {
             Some(json!({"custom": "/opt/tool/bin/tool"}))
         );
         assert_eq!(browse_target("  "), None);
+    }
+
+    #[test]
+    fn a_chosen_app_is_listed_as_the_service_would() {
+        // TGT-06: a browser is an app target, any other app a custom one
+        let apps = AppList {
+            apps: vec![AppInfo {
+                icon: Some("discord".to_owned()),
+                packaging: Some(Packaging::Flatpak),
+                ..app("discord.desktop", "Discord", false)
+            }],
+            ..AppList::default()
+        };
+        let info = chosen_info(&apps.apps[0]);
+        assert_eq!(info.target, json!({"custom": "discord.desktop"}));
+        assert_eq!(info.kind, TargetKind::Custom);
+        assert_eq!(
+            (info.name.as_str(), info.icon.as_deref(), info.packaging),
+            ("Discord", Some("discord"), Some(Packaging::Flatpak))
+        );
+        assert!(!info.missing);
+        let browser = chosen_info(&app("firefox.desktop", "Firefox", true));
+        assert_eq!(browser.target, json!({"app": "firefox.desktop"}));
+        assert_eq!(browser.kind, TargetKind::App);
+    }
+
+    #[test]
+    fn browse_labels_a_desktop_file_from_the_list_and_an_executable_by_its_name() {
+        // DLG-APP-04, TGT-06
+        let list = AppList {
+            apps: vec![AppInfo {
+                icon: Some("/icons/foo.png".to_owned()),
+                ..app("foo.desktop", "Foo", false)
+            }],
+            ..AppList::default()
+        };
+        let desktop = browse_info("/usr/share/applications/foo.desktop", &list).expect("known");
+        assert_eq!(desktop.target, json!({"custom": "foo.desktop"}));
+        assert_eq!(
+            (desktop.name.as_str(), desktop.icon.as_deref()),
+            ("Foo", Some("/icons/foo.png"))
+        );
+        let exe = browse_info("/opt/tool/bin/tool", &list).expect("executable");
+        assert_eq!(exe.target, json!({"custom": "/opt/tool/bin/tool"}));
+        assert_eq!((exe.name.as_str(), exe.icon.as_deref()), ("tool", None));
+        assert_eq!(
+            browse_info("/usr/share/applications/bar.desktop", &list),
+            None
+        );
+        assert_eq!(browse_info("  ", &list), None);
     }
 }

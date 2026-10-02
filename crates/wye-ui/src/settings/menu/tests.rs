@@ -93,6 +93,7 @@ fn request<'a>(
         service,
         services,
         primary_name: "Firefox",
+        chosen: &[],
     }
 }
 
@@ -272,6 +273,39 @@ fn an_unknown_target_shows_as_missing() {
     let row = describe(&inventory(), &request(Surface::Apps, &current, None, &[]));
     assert!(row.missing);
     assert_eq!(row.label, "ghost.desktop");
+}
+
+#[test]
+fn a_just_chosen_app_is_described_before_the_service_lists_it() {
+    // TGT-01, TGT-06: a custom app the inventory does not know yet
+    let current = json!({"custom": "figma-linux-next.desktop"});
+    let chosen = [info(&current, TargetKind::Custom, "Figma")];
+    let mut asked = request(Surface::Rule, &current, None, &[]);
+    let row = describe(&inventory(), &asked);
+    assert!(row.missing);
+    assert_eq!(row.label, "figma-linux-next.desktop");
+    asked.chosen = &chosen;
+    let row = describe(&inventory(), &asked);
+    assert!(!row.missing);
+    assert_eq!((row.label.as_str(), row.icon.as_str()), ("Figma", "figma"));
+    assert!(row.checked);
+}
+
+#[test]
+fn the_inventory_wins_over_a_chosen_app() {
+    // APP-10: a configured app the service lists as gone stays missing
+    let current = json!({"app": "ghost.desktop"});
+    let mut gone = info(&current, TargetKind::Custom, "Ghost");
+    gone.missing = true;
+    let inventory = TargetInventory {
+        targets: vec![gone],
+    };
+    let chosen = [info(&current, TargetKind::Custom, "Not this")];
+    let mut asked = request(Surface::Apps, &current, None, &[]);
+    asked.chosen = &chosen;
+    let row = describe(&inventory, &asked);
+    assert!(row.missing);
+    assert_eq!(row.label, "Ghost");
 }
 
 #[test]

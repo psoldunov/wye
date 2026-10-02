@@ -197,6 +197,13 @@ pub mod qobject {
         #[cxx_name = "rememberPage"]
         fn remember_page(self: Pin<&mut Self>, page: &QString);
 
+        /// Remember an app just picked in the app chooser (TGT-06):
+        /// `infoJson` is a `TargetInfo`, so the target rows and the rule
+        /// editor can name it before the service lists it.
+        #[qinvokable]
+        #[cxx_name = "rememberChosen"]
+        fn remember_chosen(self: Pin<&mut Self>, info_json: &QString);
+
         /// Merge a patch into `Status.uiState` (`UpdateUiState`).
         #[qinvokable]
         #[cxx_name = "updateUiState"]

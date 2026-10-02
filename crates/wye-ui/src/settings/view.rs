@@ -48,6 +48,7 @@ fn with_request<T>(
         service: service(snapshot, service_id),
         services: &snapshot.services.services,
         primary_name: &primary_name,
+        chosen: &snapshot.chosen,
     };
     Some(build(&request))
 }
@@ -95,7 +96,12 @@ pub fn shown_entries(snapshot: &Snapshot) -> Vec<Entry> {
 #[must_use]
 pub fn shown_rows(snapshot: &Snapshot) -> String {
     let foreign = menu::foreign_app_ids(&snapshot.services.services);
-    let rows = shown::rows(&snapshot.targets, &shown_entries(snapshot), &foreign);
+    let rows = shown::rows(
+        &snapshot.targets,
+        &shown_entries(snapshot),
+        &foreign,
+        &snapshot.chosen,
+    );
     let labels = hotkeys::scheme_labels(&snapshot.typed_config(), &rows);
     if labels.is_empty() {
         text(&rows)

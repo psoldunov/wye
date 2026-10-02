@@ -26,6 +26,7 @@ use adw::subclass::prelude::*;
 use gtk::glib;
 use serde_json::Value;
 use wye_api::Error;
+use wye_api::targets::TargetInfo;
 
 use super::fixture::Fixture;
 use super::patch::{self, PatchError};
@@ -422,6 +423,13 @@ impl SettingsStore {
     pub fn dismiss_callout(&self, id: &str) {
         let dismissed = self.with_snapshot(|s| s.status.ui_state.dismissed_callouts.clone());
         self.update_ui_state(&patch::dismiss_callout(&dismissed, id));
+    }
+
+    /// Remember an app just picked in the app chooser (TGT-06): its label is
+    /// known before the service lists it.
+    pub fn remember_chosen(&self, info: TargetInfo) {
+        let next = self.with_snapshot(|snapshot| snapshot.with_chosen(info));
+        self.show(next);
     }
 
     /// Remember the page shown last (SET-08).

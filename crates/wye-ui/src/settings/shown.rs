@@ -148,13 +148,21 @@ fn row(inventory: &TargetInventory, info: &TargetInfo, entry: Option<&Entry>) ->
 
 /// The rows: checked ones in the list's order, then every other candidate
 /// (SHOWN-02, SHOWN-03). Candidates are the installed browsers, every
-/// profile, added apps, then private windows.
+/// profile, added apps, then private windows. A checked entry the inventory
+/// does not list yet (an app just added with "Add App…", SHOWN-05) is shown
+/// from `chosen`; the inventory wins, and candidates come from it alone.
 #[must_use]
-pub fn rows(inventory: &TargetInventory, shown: &[Entry], foreign: &BTreeSet<String>) -> Vec<Row> {
+pub fn rows(
+    inventory: &TargetInventory,
+    shown: &[Entry],
+    foreign: &BTreeSet<String>,
+    chosen: &[TargetInfo],
+) -> Vec<Row> {
     let checked = shown.iter().filter_map(|entry| {
         let info = inventory
             .targets
             .iter()
+            .chain(chosen)
             .find(|info| info.target == entry.target)?;
         Some(row(inventory, info, Some(entry)))
     });

@@ -69,14 +69,21 @@ impl Api for Wye1Proxy<'_> {
 pub struct Known {
     pub config: u64,
     pub inventory: u64,
+    /// The configuration revision the targets and services were read at.
+    /// They name the configuration's custom apps and missing targets
+    /// (TGT-06, APP-10), which `inventory` does not count, so a config move
+    /// reads them again. Zero is unknown.
+    pub inventory_config: u64,
 }
 
-/// Targets and services with the revision they belong to.
+/// Targets and services with the revisions they belong to.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Inventory {
     pub targets: String,
     pub services: String,
     pub revision: u64,
+    /// The configuration revision read just before the targets.
+    pub config_revision: u64,
 }
 
 /// What changed on the service since [`Known`].
@@ -101,6 +108,10 @@ impl Delta {
                 .inventory
                 .as_ref()
                 .map_or(known.inventory, |i| i.revision),
+            inventory_config: self
+                .inventory
+                .as_ref()
+                .map_or(known.inventory_config, |i| i.config_revision),
         }
     }
 
@@ -124,7 +135,8 @@ impl Delta {
 
 /// Read what changed: the status always (default-browser state and the
 /// configuration's health change without a revision), the configuration and
-/// the inventory only when their revision moved.
+/// the inventory only when its revision or the configuration's moved (the
+/// targets list the configuration's custom apps, TGT-06).
 ///
 /// # Errors
 ///
@@ -138,15 +150,17 @@ pub async fn poll<A: Api>(api: &A, known: Known) -> Result<Delta, Error> {
         Some(api.get_config().await?)
     };
     let inventory_revision = api.inventory_revision().await?;
-    let inventory = if inventory_revision == known.inventory {
-        None
-    } else {
-        Some(Inventory {
-            targets: api.get_targets().await?,
-            services: api.get_services().await?,
-            revision: inventory_revision,
-        })
-    };
+    let inventory =
+        if inventory_revision == known.inventory && config_revision == known.inventory_config {
+            None
+        } else {
+            Some(Inventory {
+                targets: api.get_targets().await?,
+                services: api.get_services().await?,
+                revision: inventory_revision,
+                config_revision,
+            })
+        };
     Ok(Delta {
         status,
         config,

@@ -6,7 +6,8 @@
 // API
 //   multiple: bool         checkboxes and Add (source apps); default false (a click chooses)
 //   showRecent: bool       list Recent Sources first (source apps)
-//   chosenTarget(var target)      single choice: the target in its configuration shape ({"custom": "slack.desktop"})
+//   chosenTarget(var target)      single choice: the target in its configuration shape ({"custom": "slack.desktop"}); the app is
+//                                 handed to SettingsBackend.rememberChosen first, so its row can show its name and icon
 //   chosenTargets(var targets)    multiple choice: the targets of the checked rows
 //   open() / closed()      as any popup
 // Used by "Other…" of every target menu (TGT-06), "+" of the shown browsers sheet (SHOWN-05) and "+" under Source Apps.
@@ -34,6 +35,8 @@ WyeSheet {
         if (target === "") {
             return;
         }
+        // Before the answer: the row saves on it and must already have the app's name and icon (TGT-06).
+        SettingsBackend.rememberChosen(backend.chosenInfo(id));
         chooser.chosenTarget(JSON.parse(target));
         chooser.close();
     }
@@ -98,6 +101,7 @@ WyeSheet {
             if (chooser.multiple) {
                 chooser.chosenTargets([JSON.parse(target)]);
             } else {
+                SettingsBackend.rememberChosen(backend.browseInfo(path));
                 chooser.chosenTarget(JSON.parse(target));
             }
             chooser.close();
@@ -109,6 +113,8 @@ WyeSheet {
 
         Layout.fillWidth: true
         Layout.margins: Kirigami.Units.largeSpacing
+        // Enter chooses the first match (DLG-APP-01); typing must not, and the field accepts on every change by default.
+        autoAccept: false
         placeholderText: qsTr("Search apps")
         Accessible.name: qsTr("Search apps")
 

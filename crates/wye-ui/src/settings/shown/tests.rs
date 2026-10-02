@@ -58,7 +58,7 @@ fn names(rows: &[Row]) -> Vec<(&str, bool)> {
 fn checked_rows_come_first_in_the_users_order_then_candidates() {
     // SHOWN-02, SHOWN-03
     let shown = [entry("firefox.desktop", Some("a"))];
-    let rows = rows(&inventory(), &shown, &foreign());
+    let rows = rows(&inventory(), &shown, &foreign(), &[]);
     assert_eq!(
         names(&rows),
         [
@@ -74,7 +74,7 @@ fn checked_rows_come_first_in_the_users_order_then_candidates() {
 #[test]
 fn a_service_app_and_the_picker_are_not_candidates() {
     // SHOWN-02: browsers, profiles, added apps, private windows only
-    let rows = rows(&inventory(), &[], &foreign());
+    let rows = rows(&inventory(), &[], &foreign(), &[]);
     assert!(
         rows.iter()
             .all(|row| row.name != "Discord" && row.name != "Picker")
@@ -84,7 +84,7 @@ fn a_service_app_and_the_picker_are_not_candidates() {
 #[test]
 fn only_an_added_app_can_be_removed() {
     // SHOWN-08
-    let rows = rows(&inventory(), &[], &foreign());
+    let rows = rows(&inventory(), &[], &foreign(), &[]);
     let removable: Vec<_> = rows
         .iter()
         .filter(|row| row.removable)
@@ -100,8 +100,32 @@ fn a_configured_target_whose_app_is_gone_is_still_listed_as_missing() {
     let mut gone = app("gone.desktop", "gone.desktop");
     gone.missing = true;
     inventory.targets.push(gone);
-    let rows = rows(&inventory, &[entry("gone.desktop", None)], &foreign());
+    let rows = rows(&inventory, &[entry("gone.desktop", None)], &foreign(), &[]);
     assert!(rows[0].missing && rows[0].checked);
+}
+
+#[test]
+fn a_just_added_app_shows_from_the_chosen_ones_until_the_service_lists_it() {
+    // SHOWN-05, TGT-06: checked, but not in the inventory yet
+    let target = json!({"custom": "figma.desktop"});
+    let shown = [Entry {
+        target: target.clone(),
+        hotkey: None,
+    }];
+    let chosen = [info(&target, TargetKind::Custom, "Figma")];
+    let hidden = rows(&inventory(), &shown, &foreign(), &[]);
+    assert!(hidden.iter().all(|row| row.name != "Figma"));
+    let rows = rows(&inventory(), &shown, &foreign(), &chosen);
+    assert_eq!(rows[0].name, "Figma");
+    assert!(rows[0].checked && rows[0].removable && !rows[0].missing);
+    assert_eq!(rows[0].icon, "x");
+    // candidates stay the inventory's: an unchecked chosen app is not one
+    let unchecked = rows_without(&chosen);
+    assert!(unchecked.iter().all(|row| row.name != "Figma"));
+}
+
+fn rows_without(chosen: &[TargetInfo]) -> Vec<Row> {
+    rows(&inventory(), &[], &foreign(), chosen)
 }
 
 #[test]
@@ -215,6 +239,7 @@ fn scheme_hotkeys_replace_the_shown_key_of_checked_rows_only() {
         &inventory(),
         &[entry("firefox.desktop", Some("a"))],
         &foreign(),
+        &[],
     );
     let labels = [Some("1".to_owned())];
     let rows = with_scheme_hotkeys(rows, &labels);

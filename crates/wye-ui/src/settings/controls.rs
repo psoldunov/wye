@@ -13,6 +13,7 @@ use core::pin::Pin;
 use cxx_qt::Threading as _;
 use cxx_qt_lib::QString;
 use serde_json::Value;
+use wye_api::targets::TargetInfo;
 
 use crate::bridge::settings::qobject::SettingsBackend;
 use crate::picker::keys::QtKey;
@@ -214,6 +215,21 @@ impl SettingsBackend {
     pub fn dismiss_callout(self: Pin<&mut Self>, id: &QString) {
         let dismissed = self.snapshot().status.ui_state.dismissed_callouts.clone();
         self.push_ui_state(&patch::dismiss_callout(&dismissed, &id.to_string()));
+    }
+
+    /// See the bridge declaration.
+    pub fn remember_chosen(mut self: Pin<&mut Self>, info_json: &QString) {
+        let text = info_json.to_string();
+        if text.is_empty() {
+            return;
+        }
+        match serde_json::from_str::<TargetInfo>(&text) {
+            Ok(info) => {
+                let next = self.snapshot().with_chosen(info);
+                self.as_mut().show(next);
+            }
+            Err(error) => tracing::warn!(%error, "ignored an unreadable chosen app"),
+        }
     }
 
     /// See the bridge declaration.

@@ -73,6 +73,7 @@ impl Fixture {
                 .services
                 .clone()
                 .unwrap_or_else(|| base.services.clone()),
+            chosen: base.chosen.clone(),
         }
         .with_service_targets()
     }

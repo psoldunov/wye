@@ -119,6 +119,7 @@ fn polling_reads_only_what_moved() {
         Known {
             config: 3,
             inventory: 7,
+            inventory_config: 3,
         },
     ))
     .expect("poll");
@@ -127,6 +128,30 @@ fn polling_reads_only_what_moved() {
     let all = block_on(poll(&api, Known::default())).expect("poll");
     assert_eq!(all.config.as_ref().map(|(_, r)| *r), Some(3));
     assert_eq!(all.inventory.as_ref().map(|i| i.revision), Some(7));
+    assert_eq!(all.inventory.as_ref().map(|i| i.config_revision), Some(3));
+}
+
+#[test]
+fn a_config_move_alone_reads_the_inventory_again() {
+    // TGT-06, APP-10: the targets name the configuration's custom apps, which
+    // the inventory revision does not count
+    let api = Fake::with(4, 7);
+    let delta = block_on(poll(
+        &api,
+        Known {
+            config: 3,
+            inventory: 7,
+            inventory_config: 3,
+        },
+    ))
+    .expect("poll");
+    assert_eq!(delta.config.as_ref().map(|(_, r)| *r), Some(4));
+    let inventory = delta.inventory.expect("targets and services read");
+    assert_eq!((inventory.revision, inventory.config_revision), (7, 4));
+    assert_eq!(
+        api.calls(),
+        ["status", "get-config", "get-targets", "get-services"]
+    );
 }
 
 #[test]
@@ -139,11 +164,31 @@ fn a_delta_knows_the_revisions_it_brought() {
     assert_eq!(
         delta.known(Known {
             config: 1,
-            inventory: 4
+            inventory: 4,
+            inventory_config: 1,
         }),
         Known {
             config: 9,
-            inventory: 4
+            inventory: 4,
+            inventory_config: 1,
+        }
+    );
+    let with_inventory = Delta {
+        status: "{}".into(),
+        config: None,
+        inventory: Some(Inventory {
+            targets: "{}".into(),
+            services: "{}".into(),
+            revision: 5,
+            config_revision: 9,
+        }),
+    };
+    assert_eq!(
+        with_inventory.known(Known::default()),
+        Known {
+            config: 0,
+            inventory: 5,
+            inventory_config: 9,
         }
     );
 }
@@ -158,6 +203,7 @@ fn rescan_reads_the_new_inventory() {
         Known {
             config: 3,
             inventory: 7,
+            inventory_config: 3,
         },
     ))
     .expect("run");
@@ -174,6 +220,7 @@ fn make_default_then_reads_the_status() {
         Known {
             config: 3,
             inventory: 7,
+            inventory_config: 3,
         },
     ))
     .expect("run");
@@ -219,6 +266,7 @@ fn a_delta_applies_to_a_snapshot() {
             targets: r#"{"targets":[]}"#.into(),
             services: r#"{"services":[]}"#.into(),
             revision: 5,
+            config_revision: 2,
         }),
     };
     let next = delta.apply(&Snapshot::default()).expect("applies");

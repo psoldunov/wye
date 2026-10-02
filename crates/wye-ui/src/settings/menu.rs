@@ -131,6 +131,10 @@ pub struct Request<'a> {
     pub services: &'a [ServiceInfo],
     /// The primary browser's name, for the Default item (TGT-02 a).
     pub primary_name: &'a str,
+    /// Apps just picked in the app chooser (TGT-06). `describe` labels a
+    /// current value the inventory does not know from these; menus list only
+    /// what the service lists.
+    pub chosen: &'a [TargetInfo],
 }
 
 /// The menu's rows, top to bottom.
@@ -182,6 +186,20 @@ pub fn describe(inventory: &TargetInventory, request: &Request<'_>) -> Row {
     {
         let icon = icon::source(app.icon.as_deref());
         return Row::item(&app.name, icon, request.current.clone(), request.current);
+    }
+    // The service lists a picked app only after the save, and a rule being
+    // edited not until it is saved (TGT-01, TGT-06).
+    if let Some(info) = request
+        .chosen
+        .iter()
+        .find(|info| info.target == *request.current)
+    {
+        return Row::of(
+            info,
+            &info.name,
+            icon::source(info.icon.as_deref()),
+            request.current,
+        );
     }
     Row {
         missing: true,

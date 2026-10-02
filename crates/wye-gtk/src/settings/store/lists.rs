@@ -33,7 +33,7 @@ impl SettingsStore {
         let entries = self.shown_entries();
         self.with_snapshot(|s| {
             let foreign = menu::foreign_app_ids(&s.services.services);
-            let rows = shown::rows(&s.targets, &entries, &foreign);
+            let rows = shown::rows(&s.targets, &entries, &foreign, &s.chosen);
             let labels = hotkeys::scheme_labels(&s.typed_config(), &rows);
             if labels.is_empty() {
                 rows

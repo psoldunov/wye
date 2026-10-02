@@ -8,7 +8,7 @@ use wye_api::apps::AppList;
 use wye_api::json;
 use wye_api::services::{ServiceInfo, ServiceList};
 use wye_api::status::Status;
-use wye_api::targets::TargetInventory;
+use wye_api::targets::{TargetInfo, TargetInventory};
 use wye_core::Config;
 use wye_core::merge_patch;
 
@@ -25,6 +25,9 @@ pub struct Snapshot {
     pub targets: TargetInventory,
     /// `GetServices`.
     pub services: ServiceList,
+    /// Apps the user picked in the app chooser, for labels the service cannot
+    /// give yet (a rule being edited, a save on its way).
+    pub chosen: Vec<TargetInfo>,
 }
 
 impl Snapshot {
@@ -66,6 +69,24 @@ impl Snapshot {
             ..self.clone()
         }
         .with_service_targets())
+    }
+
+    /// Remember an app the user just picked (TGT-01, TGT-06): its label is
+    /// known before the service lists it. A second pick of the same target
+    /// replaces the first.
+    #[must_use]
+    pub fn with_chosen(&self, info: TargetInfo) -> Self {
+        let mut chosen: Vec<TargetInfo> = self
+            .chosen
+            .iter()
+            .filter(|known| known.target != info.target)
+            .cloned()
+            .collect();
+        chosen.push(info);
+        Self {
+            chosen,
+            ..self.clone()
+        }
     }
 
     /// The configuration after `patch`, with the revision the service
@@ -200,7 +221,9 @@ pub fn decode_apps(text: &str) -> Result<AppList, Error> {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use wye_api::TargetCapabilities;
     use wye_api::status::ConfigStatus;
+    use wye_api::targets::TargetKind;
 
     use super::*;
 
@@ -343,6 +366,46 @@ mod tests {
         );
         let loaded = early.with_config("{}", 1).expect("config");
         assert_eq!(loaded.services.services[0].target, json!({"default": true}));
+    }
+
+    fn chosen(name: &str) -> TargetInfo {
+        TargetInfo {
+            target: json!({"custom": "/usr/bin/figma"}),
+            kind: TargetKind::Custom,
+            name: name.to_owned(),
+            short_name: None,
+            icon: None,
+            badge: None,
+            browser: None,
+            capabilities: TargetCapabilities::default(),
+            packaging: None,
+            missing: false,
+        }
+    }
+
+    #[test]
+    fn a_chosen_app_survives_what_the_service_sends() {
+        // TGT-06: the label stays while the inventory is read again
+        let next = snapshot()
+            .with_chosen(chosen("Figma"))
+            .with_inventory(r#"{"targets": []}"#, r#"{"services": []}"#)
+            .expect("inventory")
+            .with_config("{}", 4)
+            .expect("config")
+            .with_patch(&json!({}), 5);
+        assert_eq!(next.chosen.len(), 1);
+        assert_eq!(next.chosen[0].name, "Figma");
+    }
+
+    #[test]
+    fn choosing_the_same_target_again_replaces_it() {
+        let base = snapshot();
+        let first = base.with_chosen(chosen("Figma"));
+        let again = first.with_chosen(chosen("Figma Linux"));
+        assert!(base.chosen.is_empty());
+        assert_eq!(first.chosen[0].name, "Figma");
+        assert_eq!(again.chosen.len(), 1);
+        assert_eq!(again.chosen[0].name, "Figma Linux");
     }
 
     #[test]

@@ -48,6 +48,18 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "browseTarget"]
         fn browse_target(self: &Self, path: &QString) -> QString;
+
+        /// The `TargetInfo` (JSON) the app `id` becomes when chosen, to name
+        /// it before the service lists it (TGT-06); empty for an unknown ID.
+        #[qinvokable]
+        #[cxx_name = "chosenInfo"]
+        fn chosen_info(self: &Self, id: &QString) -> QString;
+
+        /// The same for a file picked with "Browse…" (DLG-APP-04); empty for
+        /// a path that names nothing.
+        #[qinvokable]
+        #[cxx_name = "browseInfo"]
+        fn browse_info(self: &Self, path: &QString) -> QString;
     }
 
     impl cxx_qt::Threading for AppChooserBackend {}
@@ -58,6 +70,7 @@ use core::pin::Pin;
 use cxx_qt::{CxxQtType as _, Threading as _};
 use cxx_qt_lib::QString;
 use wye_api::apps::AppList;
+use wye_api::targets::TargetInfo;
 
 use crate::service;
 use crate::settings::{chooser, snapshot};
@@ -75,6 +88,10 @@ pub struct AppChooserBackendRust {
 
 fn q(text: &str) -> QString {
     QString::from(text)
+}
+
+fn info_json(info: &TargetInfo) -> QString {
+    serde_json::to_string(info).map_or_else(|_| QString::default(), |text| q(&text))
 }
 
 impl qobject::AppChooserBackend {
@@ -140,6 +157,24 @@ impl qobject::AppChooserBackend {
             .find(|app| app.id == id)
             .map(chooser::target_for)
             .map_or_else(QString::default, |target| q(&target.to_string()))
+    }
+
+    /// See the bridge declaration.
+    pub fn chosen_info(&self, id: &QString) -> QString {
+        let id = id.to_string();
+        self.rust()
+            .list
+            .apps
+            .iter()
+            .find(|app| app.id == id)
+            .map(chooser::chosen_info)
+            .map_or_else(QString::default, |info| info_json(&info))
+    }
+
+    /// See the bridge declaration.
+    pub fn browse_info(&self, path: &QString) -> QString {
+        chooser::browse_info(&path.to_string(), &self.rust().list)
+            .map_or_else(QString::default, |info| info_json(&info))
     }
 
     /// See the bridge declaration.

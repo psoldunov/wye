@@ -340,6 +340,21 @@ Kirigami.ApplicationWindow {
         ]
     }
 
+    // SET-02, SET-03: the wheel never switches pages, only a click or a shortcut does. NavigationTabBar flips to the previous or
+    // next tab on a wheel notch, and a target menu that opened over the bar leaves the pointer there, so the next notch sent the
+    // window to General. It is parented to the bar here rather than declared in it: the bar treats its children as tab buttons.
+    // No buttons are accepted, so clicks, hover and tooltips still reach the tabs.
+    MouseArea {
+        id: tabsWheelGuard
+
+        acceptedButtons: Qt.NoButton
+        anchors.fill: parent
+        parent: tabs
+        z: 1
+
+        onWheel: wheel => wheel.accepted = true
+    }
+
     pageStack.globalToolBar.style: Kirigami.ApplicationHeaderStyle.None
     pageStack.initialPage: Kirigami.Page {
         id: frame

@@ -1,5 +1,6 @@
 //! Talking to the service for the history window, without Qt: reloading
-//! when `HistoryRevision` moves (DLG-HIS-01) and the actions of DLG-HIS-01,
+//! when `HistoryRevision` moves (DLG-HIS-01), or `ConfigRevision` (history
+//! switched off or on, DLG-HIS-04), and the actions of DLG-HIS-01,
 //! DLG-HIS-03 and DLG-HIS-04. The bridge runs these on the D-Bus thread
 //! through `service::request`; tests run them against a fake [`Api`].
 
@@ -22,6 +23,7 @@ fn turn_on_patch() -> serde_json::Value {
 /// [`crate::settings::save`].
 pub trait Api: ConfigApi {
     fn history_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
+    fn config_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
     fn inventory_revision(&self) -> impl Future<Output = Result<u64, Error>> + Send;
     fn get_history(&self) -> impl Future<Output = Result<String, Error>> + Send;
     fn get_targets(&self) -> impl Future<Output = Result<String, Error>> + Send;
@@ -42,6 +44,10 @@ pub trait Api: ConfigApi {
 impl Api for Wye1Proxy<'_> {
     async fn history_revision(&self) -> Result<u64, Error> {
         Ok(Wye1Proxy::history_revision(self).await?)
+    }
+
+    async fn config_revision(&self) -> Result<u64, Error> {
+        Ok(Wye1Proxy::config_revision(self).await?)
     }
 
     async fn inventory_revision(&self) -> Result<u64, Error> {
@@ -79,6 +85,10 @@ impl Api for Wye1Proxy<'_> {
 pub struct Known {
     pub history: u64,
     pub inventory: u64,
+    /// `ConfigRevision`: switching history off does not move
+    /// `HistoryRevision`, yet the window must say "History Is Off"
+    /// (DLG-HIS-04).
+    pub config: u64,
 }
 
 /// What the window shows.
@@ -92,7 +102,9 @@ pub struct Snapshot {
 /// What changed on the service since [`Known`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct Update {
-    pub history: Option<(History, u64)>,
+    /// The history with the history and configuration revisions it was
+    /// read at.
+    pub history: Option<(History, u64, u64)>,
     pub targets: Option<(TargetInventory, u64)>,
 }
 
@@ -101,9 +113,10 @@ impl Update {
     #[must_use]
     pub fn apply(self, snapshot: &Snapshot) -> Snapshot {
         let mut next = snapshot.clone();
-        if let Some((history, revision)) = self.history {
+        if let Some((history, revision, config)) = self.history {
             next.history = history;
             next.known.history = revision;
+            next.known.config = config;
         }
         if let Some((targets, revision)) = self.targets {
             next.targets = targets;
@@ -113,19 +126,25 @@ impl Update {
     }
 }
 
-/// Read what changed since `known`: nothing when both revisions are still
-/// the same (DLG-HIS-01, live refresh).
+/// Read what changed since `known`: nothing when the revisions are still
+/// the same (DLG-HIS-01, live refresh). A configuration change reads the
+/// history again, for whether it is on (DLG-HIS-04).
 ///
 /// # Errors
 ///
 /// The service's error, or a reply that is not the expected JSON.
 pub async fn poll<A: Api>(api: &A, known: Known) -> Result<Option<Update>, Error> {
     let history_revision = api.history_revision().await?;
-    let history = if history_revision == known.history {
+    let config_revision = api.config_revision().await?;
+    let history = if history_revision == known.history && config_revision == known.config {
         None
     } else {
         let text = api.get_history().await?;
-        Some((json::decode::<History>("history", &text)?, history_revision))
+        Some((
+            json::decode::<History>("history", &text)?,
+            history_revision,
+            config_revision,
+        ))
     };
     let inventory_revision = api.inventory_revision().await?;
     let targets = if inventory_revision == known.inventory {

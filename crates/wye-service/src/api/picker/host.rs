@@ -56,6 +56,18 @@ pub(super) async fn configured_frontend(ctx: &ServiceContext) -> Frontend {
     })
 }
 
+/// DLG-ABT-02: the picker frontend for the troubleshooting report: the
+/// setting, the hosts tried in order, and the first of them running now.
+pub(crate) async fn describe(ctx: &ServiceContext) -> String {
+    let frontend = configured_frontend(ctx).await;
+    let order = frontend::picker_hosts(frontend, is_gnome(ctx).await);
+    let running = match ctx.connection() {
+        Some(connection) => running_hosts(connection).await,
+        None => Vec::new(),
+    };
+    frontend::describe(frontend, order, &running)
+}
+
 async fn picker_hosts(ctx: &ServiceContext) -> &'static [Host] {
     frontend::picker_hosts(configured_frontend(ctx).await, is_gnome(ctx).await)
 }

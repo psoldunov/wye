@@ -232,10 +232,14 @@ export class MenuPages {
         });
     }
 
-    /** Back to the root page, drawn again. */
-    reset() {
+    /**
+     * Back to the root page, drawn again.
+     *
+     * @param {string|null} [focus] as for `render`
+     */
+    reset(focus = null) {
         this._stack = this._stack.slice(0, 1);
-        this.render();
+        this.render(focus);
     }
 
     /**

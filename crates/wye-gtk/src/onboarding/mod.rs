@@ -54,7 +54,7 @@ use serde_json::Value;
 use wye_api::Error;
 
 use crate::app::Presenter;
-use crate::service;
+use crate::service::{self, Subscription};
 use crate::settings::fixture::Fixture;
 use crate::settings::snapshot::Snapshot;
 use desktop::Desktop;
@@ -64,6 +64,10 @@ use pages::{Context, Intent, Steps};
 use shell::ShellState;
 use sync::Action;
 use view::View;
+
+/// The service properties whose change the dialog shows: the default
+/// browser (ONB-02), the configuration and the installed browsers (ONB-03).
+const WATCHED: &[&str] = &["Status", "ConfigRevision", "InventoryRevision"];
 
 /// ONB-06: the dialog's size; the browsers step's list scrolls inside.
 const SIZE: (i32, i32) = (560, 600);
@@ -128,6 +132,8 @@ struct Controller {
     /// choice already shown.
     pending: Cell<u32>,
     finished: Cell<bool>,
+    /// The service's change signals, followed while the dialog is open.
+    subscription: RefCell<Option<Subscription>>,
     /// Set while code moves the navigation view, so its signals are not
     /// taken as the user's.
     navigating: Cell<bool>,
@@ -172,6 +178,7 @@ impl Controller {
                 offline: Cell::new(false),
                 pending: Cell::new(0),
                 finished: Cell::new(false),
+                subscription: RefCell::default(),
                 navigating: Cell::new(false),
             }
         });
@@ -223,6 +230,7 @@ impl Controller {
         self.publish();
         self.reset_navigation();
         if !self.offline.get() {
+            self.follow();
             self.reload();
             self.query_shell();
         }
@@ -344,6 +352,7 @@ impl Controller {
         if self.finished.replace(true) {
             return;
         }
+        self.subscription.take();
         self.apply(Action::Finish);
         self.dialog.close();
     }
@@ -351,9 +360,12 @@ impl Controller {
     fn on_intent(&self, intent: Intent) {
         match intent {
             Intent::MakeDefault => self.apply(Action::MakeDefault),
-            Intent::SetPrimary(target) => {
-                self.apply(Action::Patch(choices::primary_patch(&target)));
-            }
+            Intent::SetPrimary(target) => match choices::primary_patch(&target) {
+                Ok(patch) => self.apply(Action::Patch(patch)),
+                Err(error) => {
+                    self.show_error(&crate::error_text::ErrorText::plain(error.to_string()));
+                }
+            },
             Intent::Toggle(key, checked) => self.toggle(&key, checked),
             Intent::Move(from, to) => self.reorder(from, to),
             Intent::LaunchAtLogin(on) => {
@@ -431,6 +443,17 @@ impl Controller {
                 }
             },
         );
+    }
+
+    /// Follow the service while the dialog is open: the default browser can
+    /// change meanwhile (ONB-02). No polling.
+    fn follow(&self) {
+        if self.subscription.borrow().is_some() {
+            return;
+        }
+        let reload = self.with(Self::reload);
+        let subscription = service::watch(WATCHED, move |_change| reload());
+        self.subscription.replace(Some(subscription));
     }
 
     /// Read everything from the service.

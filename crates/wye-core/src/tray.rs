@@ -176,7 +176,8 @@ pub struct TrayStatus {
     /// TRAY-10: the clipboard holds a URL. The service refreshes it each
     /// time the menu opens.
     pub clipboard_has_url: bool,
-    /// TRAY-18: Wye is the default browser.
+    /// TRAY-18: Wye is the default browser, or the user kept the app that is
+    /// (ONB-11). False shows the warning and "Make Wye Default Browser".
     pub wye_is_default: bool,
     /// The newest history entries, newest first. Only used while history is
     /// on (TRAY-15).

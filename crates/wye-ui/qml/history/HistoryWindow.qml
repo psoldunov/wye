@@ -240,8 +240,11 @@ Kirigami.ApplicationWindow {
                 type: Kirigami.MessageType.Error
                 visible: backend.error !== ""
 
+                // The close button sets `visible` outright, which ends the binding: put it back, or the next
+                // error would never show.
                 onVisibleChanged: if (!visible) {
-                    backend.clearError()
+                    backend.clearError();
+                    visible = Qt.binding(() => backend.error !== "");
                 }
             }
         }

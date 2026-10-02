@@ -51,6 +51,8 @@ trait Notifications {
         expire_timeout: i32,
     ) -> zbus::Result<u32>;
 
+    fn close_notification(&self, id: u32) -> zbus::Result<()>;
+
     #[zbus(signal)]
     fn action_invoked(&self, id: u32, action_key: String) -> zbus::Result<()>;
 }
@@ -133,6 +135,14 @@ impl Notifier for DesktopNotifier {
             .map_err(|error| failed(&error))
     }
 
+    async fn close(&self, id: u32) -> Result<(), PlatformError> {
+        self.proxy()
+            .await?
+            .close_notification(id)
+            .await
+            .map_err(|error| failed(&error))
+    }
+
     fn actions(&self) -> broadcast::Receiver<NotificationAction> {
         self.actions.subscribe()
     }
@@ -170,6 +180,11 @@ impl Notifier for NoNotifier {
         Err(PlatformError::Unavailable(
             "no notification server".to_owned(),
         ))
+    }
+
+    async fn close(&self, _id: u32) -> Result<(), PlatformError> {
+        // Nothing was shown, so nothing is left to withdraw.
+        Ok(())
     }
 
     fn actions(&self) -> broadcast::Receiver<NotificationAction> {

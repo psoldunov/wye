@@ -116,6 +116,10 @@ use crate::settings::fixture::Fixture;
 use crate::settings::snapshot::Snapshot;
 
 /// The properties' values and the window's state.
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "one field per boolean Q_PROPERTY QML binds to, whether the walk-through ended and whether the service is followed"
+)]
 pub struct OnboardingBackendRust {
     view_json: QString,
     error: QString,
@@ -128,6 +132,8 @@ pub struct OnboardingBackendRust {
     snapshot: Snapshot,
     desktop: Desktop,
     finished: bool,
+    /// The service's change signals are followed (`service::watch`).
+    watching: bool,
 }
 
 impl Default for OnboardingBackendRust {
@@ -144,9 +150,13 @@ impl Default for OnboardingBackendRust {
             snapshot: Snapshot::default(),
             desktop: Desktop::detect(),
             finished: false,
+            watching: false,
         }
     }
 }
+
+/// The service properties whose change the window shows (ONB-02, ONB-03).
+const WATCHED: &[&str] = &["Status", "ConfigRevision", "InventoryRevision"];
 
 fn q(text: &str) -> QString {
     QString::from(text)
@@ -185,8 +195,10 @@ impl qobject::OnboardingBackend {
         self.as_mut().set_pending(next);
     }
 
-    /// Read everything from the service.
-    fn reload(mut self: Pin<&mut Self>) {
+    /// Read everything from the service. `settles` says whether a good
+    /// answer clears the message bar: the read after a refused choice must
+    /// leave the reason on screen (ONB-03).
+    fn reload(mut self: Pin<&mut Self>, settles: bool) {
         if *self.offline() {
             return;
         }
@@ -194,30 +206,32 @@ impl qobject::OnboardingBackend {
         service::request(
             self.qt_thread(),
             |proxy| async move { sync::load(&proxy).await },
-            |mut backend, result| {
+            move |mut backend, result| {
                 backend.as_mut().add_pending(-1);
-                backend.received(result);
+                backend.received(result, settles);
             },
         );
     }
 
     /// An answer from the service. While another call is in flight the
     /// answer is dropped: it would undo the choice already shown.
-    fn received(mut self: Pin<&mut Self>, result: Result<Snapshot, Error>) {
+    fn received(mut self: Pin<&mut Self>, result: Result<Snapshot, Error>, settles: bool) {
         if *self.offline() {
             // An answer that was on its way when a fixture took over.
             return;
         }
         match result {
             Ok(snapshot) if *self.pending() == 0 => {
-                self.as_mut().show_error(&ErrorText::default());
+                if settles {
+                    self.as_mut().show_error(&ErrorText::default());
+                }
                 self.show(snapshot);
             }
             Ok(_) => {}
             Err(error) => {
                 self.as_mut().fail(&error);
                 // Show what the service holds, not the choice it refused.
-                self.reload();
+                self.reload(false);
             }
         }
     }
@@ -241,7 +255,7 @@ impl qobject::OnboardingBackend {
             move |proxy| async move { sync::run(&proxy, action, &before).await },
             |mut backend, result| {
                 backend.as_mut().add_pending(-1);
-                backend.received(result);
+                backend.received(result, true);
             },
         );
     }
@@ -281,7 +295,24 @@ impl qobject::OnboardingBackend {
             rust.finished = false;
         }
         self.as_mut().publish();
-        self.reload();
+        self.as_mut().watch_service();
+        self.reload(true);
+    }
+
+    /// Follow what the window shows, once: the default browser can change
+    /// while it is open (ONB-02), and so can the configuration and the
+    /// installed browsers (ONB-03). No polling; nothing is read once the
+    /// walk-through is over.
+    fn watch_service(mut self: Pin<&mut Self>) {
+        if *self.offline() || self.rust().watching {
+            return;
+        }
+        self.as_mut().rust_mut().get_mut().watching = true;
+        service::watch(self.qt_thread(), WATCHED, |backend, _change| {
+            if !backend.rust().finished {
+                backend.reload(false);
+            }
+        });
     }
 
     /// See the bridge declaration.
@@ -321,8 +352,10 @@ impl qobject::OnboardingBackend {
 
     /// See the bridge declaration.
     pub fn set_primary(mut self: Pin<&mut Self>, target_json: &QString) {
-        match serde_json::from_str::<Value>(&target_json.to_string()) {
-            Ok(target) => self.patch(choices::primary_patch(&target)),
+        let patch = serde_json::from_str::<Value>(&target_json.to_string())
+            .and_then(|target| choices::primary_patch(&target));
+        match patch {
+            Ok(patch) => self.patch(patch),
             Err(error) => self
                 .as_mut()
                 .show_error(&ErrorText::plain(error.to_string())),

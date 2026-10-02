@@ -86,9 +86,41 @@ pub(crate) const fn window_hosts(frontend: Frontend, gnome_session: bool) -> &'s
     }
 }
 
+/// DLG-ABT-02: `frontend` as the troubleshooting report shows it, with the
+/// picker hosts in `order` and the first of them among `running`.
+pub(crate) fn describe(frontend: Frontend, order: &[Host], running: &[Host]) -> String {
+    let setting = match frontend {
+        Frontend::Auto => "auto",
+        Frontend::Kde => "kde",
+        Frontend::Gnome => "gnome",
+    };
+    let tried: Vec<&str> = order.iter().map(|host| host.label()).collect();
+    let active = order
+        .iter()
+        .find(|host| running.contains(host))
+        .map_or_else(
+            || "none running".to_owned(),
+            |host| format!("{} running", host.label()),
+        );
+    format!("{setting} ({}); {active}", tried.join(", then "))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn dlg_abt_02_the_report_names_the_active_frontend() {
+        let order = picker_hosts(Frontend::Auto, true);
+        assert_eq!(
+            describe(Frontend::Auto, order, &[Host::Qt, Host::Gtk]),
+            "auto (GNOME Shell, then GTK, then Qt); GTK running"
+        );
+        assert_eq!(
+            describe(Frontend::Kde, picker_hosts(Frontend::Kde, false), &[]),
+            "kde (Qt, then GNOME Shell, then GTK); none running"
+        );
+    }
 
     #[test]
     fn adv12_auto_keeps_the_desktops_own_frontend() {

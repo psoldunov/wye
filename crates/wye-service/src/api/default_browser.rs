@@ -15,7 +15,7 @@ use wye_desktop::Inventory;
 use super::Result;
 use crate::bus::Property;
 use crate::context::{ServiceContext, blocking};
-use crate::platform::Platform;
+use crate::platform::{Notification, Platform};
 
 /// What this topic keeps between calls.
 #[derive(Debug, Default)]
@@ -59,7 +59,10 @@ pub async fn make_default(ctx: &ServiceContext) -> Result<()> {
         })
     })
     .await?;
-    registration_changed(ctx);
+    takeover::withdraw(ctx).await;
+    // DEF-03: look at the registration now rather than after the watcher's
+    // quiet time, so a takeover right after this call is still noticed.
+    check_takeover(ctx).await;
     Ok(())
 }
 
@@ -107,6 +110,35 @@ pub async fn keep_current_default(ctx: &ServiceContext) -> Result<()> {
     keep(ctx, found.current).await
 }
 
+/// DEF-07: `general.open-local-html` changed to `include_html`. While Wye is
+/// the default browser, `mimeapps.list` follows it at once; otherwise
+/// nothing changes until the next `MakeDefault`.
+pub(crate) async fn html_setting_changed(ctx: &ServiceContext, include_html: bool) {
+    let Ok(environment) = ctx.environment() else {
+        return;
+    };
+    let xdg = environment.xdg.clone();
+    let previous = if include_html {
+        None
+    } else {
+        super::state::load(ctx)
+            .await
+            .ok()
+            .and_then(|state| state.previous_default_browser)
+    };
+    let followed =
+        blocking(move || change::follow_html(&xdg, include_html, previous.as_ref())).await;
+    match followed {
+        Ok(Ok(true)) => {
+            tracing::info!(include_html, "HTML files follow the new setting");
+            registration_changed(ctx);
+        }
+        Ok(Ok(false)) => {}
+        Ok(Err(error)) => tracing::warn!(%error, "cannot update the HTML file association"),
+        Err(error) => tracing::warn!(%error, "cannot update the HTML file association"),
+    }
+}
+
 /// Remember `app` as the default the user keeps (ONB-11).
 async fn keep(ctx: &ServiceContext, app: Option<DesktopId>) -> Result<()> {
     super::state::update(ctx, |state| {
@@ -116,6 +148,7 @@ async fn keep(ctx: &ServiceContext, app: Option<DesktopId>) -> Result<()> {
         })
     })
     .await?;
+    takeover::withdraw(ctx).await;
     registration_changed(ctx);
     Ok(())
 }
@@ -170,6 +203,10 @@ pub(crate) async fn check_takeover(ctx: &ServiceContext) {
         return;
     };
     registration_changed(ctx);
+    if found.is_default {
+        // ONB-11: fixed, by Wye or by hand.
+        takeover::withdraw(ctx).await;
+    }
     let Some(takeover::TookOver { app: Some(app) }) = ctx.default_browser().takeover.saw(found)
     else {
         return;
@@ -185,12 +222,13 @@ pub(crate) async fn check_takeover(ctx: &ServiceContext) {
         Ok(scan) => app_ref(&scan.inventory, &environment.xdg.locale, &app).name,
         Err(_) => app.to_string(),
     };
-    match ctx
-        .platform()
-        .notifier
-        .notify(&takeover::notification(&name))
-        .await
-    {
+    let notification = Notification {
+        // One takeover notification at a time: a newer one replaces it. The
+        // old one is forgotten only once the new one is shown (`shown`).
+        replaces: ctx.default_browser().takeover.on_screen(),
+        ..takeover::notification(&name)
+    };
+    match ctx.platform().notifier.notify(&notification).await {
         Ok(id) => ctx.default_browser().takeover.shown(id, app),
         Err(error) => tracing::warn!(%error, "cannot show the takeover notification"),
     }

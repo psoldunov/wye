@@ -33,6 +33,8 @@ WyeRow {
         model: row.choices.map(choice => choice.label)
         // Scrolling the page over the box must not change the setting.
         wheelEnabled: false
+        // The desktop style sizes the list to its longest choice: short choices ("Wye") left it narrower than the box.
+        popup.width: Math.max(combo.width, combo.popup.implicitWidth)
 
         onActivated: index => {
             const value = row.choices[index].value;
@@ -44,22 +46,8 @@ WyeRow {
         }
 
         // While the menu is open, Escape closes it and not the window (SET-07).
-        Connections {
-            function onOpened() {
-                SettingsBackend.popupOpened();
-            }
-
-            function onClosed() {
-                SettingsBackend.popupClosed();
-            }
-
-            target: combo.popup
-        }
-
-        Component.onDestruction: {
-            if (combo.popup.opened) {
-                SettingsBackend.popupClosed();
-            }
+        WyePopupTracker {
+            popup: combo.popup
         }
     }
 }

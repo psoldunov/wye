@@ -7,6 +7,7 @@ struct Fake {
     calls: Mutex<Vec<String>>,
     history_revision: u64,
     inventory_revision: u64,
+    config_revision: u64,
     read_only: bool,
 }
 
@@ -16,6 +17,7 @@ impl Fake {
             calls: Mutex::default(),
             history_revision,
             inventory_revision,
+            config_revision: 9,
             read_only: false,
         }
     }
@@ -54,6 +56,10 @@ impl ConfigApi for Fake {
 impl Api for Fake {
     async fn history_revision(&self) -> Result<u64, Error> {
         Ok(self.history_revision)
+    }
+
+    async fn config_revision(&self) -> Result<u64, Error> {
+        Ok(self.config_revision)
     }
 
     async fn inventory_revision(&self) -> Result<u64, Error> {
@@ -105,6 +111,7 @@ fn nothing_is_read_while_both_revisions_are_known() {
     let known = Known {
         history: 3,
         inventory: 2,
+        config: 9,
     };
     assert_eq!(block_on(poll(&fake, known)).expect("poll"), None);
     assert!(fake.calls().is_empty());
@@ -116,6 +123,7 @@ fn a_new_history_revision_reads_the_history_only() {
     let known = Known {
         history: 3,
         inventory: 2,
+        config: 9,
     };
     let update = block_on(poll(&fake, known)).expect("poll").expect("update");
     assert_eq!(fake.calls(), ["get-history"]);
@@ -123,6 +131,23 @@ fn a_new_history_revision_reads_the_history_only() {
     assert_eq!(next.history.entries.len(), 1);
     assert_eq!(next.known.history, 4);
     assert_eq!(next.known.inventory, 0);
+}
+
+#[test]
+fn a_configuration_change_reads_the_history_again() {
+    // DLG-HIS-04: switching history off moves `ConfigRevision` only, and
+    // the window must turn to "History Is Off".
+    let fake = Fake::at(3, 2);
+    let known = Known {
+        history: 3,
+        inventory: 2,
+        config: 8,
+    };
+    let update = block_on(poll(&fake, known)).expect("poll").expect("update");
+    assert_eq!(fake.calls(), ["get-history"]);
+    let next = update.apply(&Snapshot::default());
+    assert_eq!(next.known.config, 9);
+    assert_eq!(next.known.history, 3);
 }
 
 #[test]
@@ -137,7 +162,8 @@ fn the_first_poll_reads_everything() {
         next.known,
         Known {
             history: 1,
-            inventory: 1
+            inventory: 1,
+            config: 9,
         }
     );
 }
@@ -152,6 +178,7 @@ fn an_update_keeps_what_it_does_not_name() {
         known: Known {
             history: 1,
             inventory: 5,
+            config: 9,
         },
         ..Snapshot::default()
     };
@@ -171,6 +198,7 @@ fn the_actions_call_the_service_and_reload() {
     let known = Known {
         history: 3,
         inventory: 2,
+        config: 9,
     };
     for (action, first) in [
         (Action::Clear, "clear"),
@@ -195,6 +223,7 @@ fn turning_history_on_patches_the_configuration_and_reads_everything() {
     let known = Known {
         history: 1,
         inventory: 1,
+        config: 9,
     };
     block_on(run(&fake, Action::TurnOn, known)).expect("run");
     assert_eq!(

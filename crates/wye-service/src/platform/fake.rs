@@ -337,6 +337,7 @@ impl LockMonitor for FakeLock {
 #[derive(Debug)]
 pub struct FakeNotifier {
     shown: Mutex<Vec<Notification>>,
+    closed: Mutex<Vec<u32>>,
     actions: broadcast::Sender<NotificationAction>,
 }
 
@@ -345,6 +346,12 @@ impl FakeNotifier {
     #[must_use]
     pub fn shown(&self) -> Vec<Notification> {
         lock(&self.shown).clone()
+    }
+
+    /// The IDs of every notification withdrawn so far, oldest first.
+    #[must_use]
+    pub fn closed(&self) -> Vec<u32> {
+        lock(&self.closed).clone()
     }
 
     /// Press `action` on notification `id` (IDs start at 1).
@@ -361,6 +368,7 @@ impl Default for FakeNotifier {
     fn default() -> Self {
         Self {
             shown: Mutex::default(),
+            closed: Mutex::default(),
             actions: broadcast::Sender::new(BUFFER),
         }
     }
@@ -370,6 +378,11 @@ impl Default for FakeNotifier {
 impl Notifier for FakeNotifier {
     async fn notify(&self, notification: &Notification) -> Result<u32, PlatformError> {
         record(&self.shown, notification)
+    }
+
+    async fn close(&self, id: u32) -> Result<(), PlatformError> {
+        lock(&self.closed).push(id);
+        Ok(())
     }
 
     fn actions(&self) -> broadcast::Receiver<NotificationAction> {

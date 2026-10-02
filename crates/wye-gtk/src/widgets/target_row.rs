@@ -298,26 +298,32 @@ fn picked(row: &adw::ComboRow, state: &Rc<State>) {
         }
         RowKind::Item => {
             state.current.set(selected);
-            let chosen = state.chosen.borrow().clone();
-            if let Some(chosen) = chosen {
-                chosen(&entry.row.target);
-            }
-            describe_pick(row, state, entry.row.target);
+            commit_pick(row, state, entry.row.target);
         }
         RowKind::Header | RowKind::Separator => {}
     }
 }
 
-/// TGT-01: after a pick the closed row names the target in full, as for a
-/// value from the configuration. Rebuilt once the drop-down has finished
-/// with the selection; a store change for the pick has then done it already.
-fn describe_pick(row: &adw::ComboRow, state: &Rc<State>, target: Value) {
-    let Some(source) = state.source.borrow().clone() else {
-        return;
-    };
+/// Hand a pick on (SET-06) and name it in full (TGT-01), once the drop-down
+/// has finished with the selection. The selection changes inside the menu
+/// list's activation, and a bound row's save emits the store's `changed`
+/// at once, which rebuilds the menu: a new model while GTK is still
+/// activating the item frees the selection it is notifying, a crash. After
+/// the store change the rebuild for the pick finds the menu unchanged.
+fn commit_pick(row: &adw::ComboRow, state: &Rc<State>, target: Value) {
     let (row, state) = (row.downgrade(), Rc::clone(state));
     glib::idle_add_local_once(move || {
-        if let (Some(row), Some(store)) = (row.upgrade(), source.store.upgrade()) {
+        let Some(row) = row.upgrade() else {
+            return;
+        };
+        let chosen = state.chosen.borrow().clone();
+        if let Some(chosen) = chosen {
+            chosen(&target);
+        }
+        let Some(source) = state.source.borrow().clone() else {
+            return;
+        };
+        if let Some(store) = source.store.upgrade() {
             refresh(
                 &row,
                 source.surface,

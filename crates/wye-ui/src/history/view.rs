@@ -88,8 +88,17 @@ pub struct View {
 
 impl View {
     /// The window's list for `history`, narrowed by `query` (DLG-HIS-01).
+    /// While history is off the window says so and lists nothing, though the
+    /// service keeps what it had (DLG-HIS-04).
     #[must_use]
     pub fn build(history: &History, inventory: &TargetInventory, query: &str) -> Self {
+        if !history.enabled {
+            return Self {
+                enabled: false,
+                total: 0,
+                rows: Vec::new(),
+            };
+        }
         let mut entries: Vec<&HistoryEntry> = filter::matching(&history.entries, query);
         // The service sends newest first; a stable sort keeps that for equal times.
         entries.sort_by_key(|entry| std::cmp::Reverse(entry.time));
@@ -130,7 +139,12 @@ impl Row {
             source: entry.source.clone(),
             source_name: entry.source_name.clone(),
             target_name: entry.target_name.clone(),
-            icon: match info.and_then(|info| info.icon.as_deref()) {
+            // The service names an installed app's icon itself when the
+            // inventory does not list the app (DLG-HIS-02).
+            icon: match info
+                .and_then(|info| info.icon.as_deref())
+                .or(entry.target_icon.as_deref())
+            {
                 Some(name) => icon::source(Some(name)),
                 None if is_picker => icon::PICKER_ICON.to_owned(),
                 None => FALLBACK_ICON.to_owned(),

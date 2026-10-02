@@ -97,6 +97,8 @@ FormCard.AbstractFormDelegate {
             // As wide as the widest kind, so every row's entry starts at the same place.
             implicitContentWidthPolicy: QQC2.ComboBox.WidestText
             currentIndex: Math.max(0, row.kinds.findIndex(kind => kind.value === row.kind))
+            // Scrolling the sheet over the box must not change the matcher's kind.
+            wheelEnabled: false
             Accessible.name: qsTr("Kind")
             onActivated: row.edited(currentValue, row.pattern)
         }

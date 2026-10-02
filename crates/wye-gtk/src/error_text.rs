@@ -79,7 +79,11 @@ impl ErrorText {
             Kind::ChangedElsewhere => "This list changed elsewhere, so Wye did not save your change. It now shows the list as it is; try again.".to_owned(),
             Kind::Refused => format!("The service refused the change: {}", self.detail),
             Kind::Unavailable => format!("Not available in this session: {}", self.detail),
-            Kind::Unreachable => format!("Cannot reach the Wye service: {}", self.detail),
+            // The detail is the bus's own error ("org.freedesktop.DBus.Error.
+            // NoReply: …"), which says nothing to a reader; the log has it.
+            Kind::Unreachable => {
+                "Cannot reach the Wye service. Try again in a moment.".to_owned()
+            }
             Kind::EntryGone => "That entry is gone.".to_owned(),
         }
     }
@@ -151,5 +155,19 @@ mod tests {
         );
         assert!(ErrorText::default().is_empty());
         assert!(!ErrorText::plain("x").is_empty());
+    }
+
+    #[test]
+    fn set_06_an_unreachable_service_is_a_sentence_not_the_bus_error() {
+        let bus = zbus::Error::Failure(
+            "org.freedesktop.DBus.Error.NoReply: Message recipient disconnected".into(),
+        );
+        let text = describe(&Error::Bus(bus));
+        assert_eq!(text.kind, Kind::Unreachable);
+        assert!(text.detail.contains("NoReply"), "kept for the log");
+        assert_eq!(
+            text.sentence(),
+            "Cannot reach the Wye service. Try again in a moment."
+        );
     }
 }

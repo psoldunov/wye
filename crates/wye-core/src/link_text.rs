@@ -10,7 +10,8 @@ pub const ELLIPSIS: char = '…';
 /// A link split for display: the host first, then the rest.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LinkParts {
-    /// The host (without a leading `www.`), emphasised in the interface.
+    /// The host (without a leading `www.`, with a non-default port),
+    /// emphasised in the interface.
     pub host: String,
     /// Path, query and fragment, dimmed in the interface. Empty for a bare
     /// host.
@@ -29,6 +30,12 @@ impl LinkParts {
             };
         };
         let host = host.strip_prefix("www.").unwrap_or(host);
+        // PICK-09, TRAY-15: a non-default port belongs to the host, or every
+        // local server reads as the same "localhost".
+        let host = match url.port() {
+            Some(port) => format!("{host}:{port}"),
+            None => host.to_owned(),
+        };
         let mut rest = url.path().to_owned();
         if rest == "/" {
             rest.clear();
@@ -41,10 +48,7 @@ impl LinkParts {
             rest.push('#');
             rest.push_str(fragment);
         }
-        Self {
-            host: host.to_owned(),
-            rest,
-        }
+        Self { host, rest }
     }
 
     /// `host` and `rest` together.
@@ -127,6 +131,25 @@ mod tests {
     fn a_bare_host_has_no_rest() {
         assert_eq!(parts("https://example.com/").rest, "");
         assert_eq!(parts("https://example.com").text(), "example.com");
+    }
+
+    #[test]
+    fn a_port_stays_with_the_host() {
+        // PICK-09, TRAY-15: two servers on one host differ only in the port.
+        let p = parts("http://localhost:41977/");
+        assert_eq!(p.host, "localhost:41977");
+        assert_eq!(p.rest, "");
+        assert_eq!(
+            parts("https://www.example.com:8443/a?b").text(),
+            "example.com:8443/a?b"
+        );
+        assert_eq!(parts("http://[::1]:8080/x").text(), "[::1]:8080/x");
+        // A scheme's default port is not written.
+        assert_eq!(parts("https://example.com:443/").text(), "example.com");
+        assert_eq!(
+            host_and_path("http://127.0.0.1:3000/docs", 40),
+            "127.0.0.1:3000/docs"
+        );
     }
 
     #[test]

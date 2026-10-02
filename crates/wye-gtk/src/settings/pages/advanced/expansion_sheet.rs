@@ -35,6 +35,10 @@ const TIMEOUT_STEP_S: f64 = 0.5;
 /// The entry row's title while it shows no error.
 const DOMAIN_TITLE: &str = "Short-link domain";
 
+/// Room kept between the revealed entry and the edge of the page, so its
+/// focus ring clears the sheet's rounded corners.
+const REVEAL_MARGIN: f64 = 12.0;
+
 /// The URL Expansion sheet. Built once per window and presented again each
 /// time; it follows the store while closed.
 #[derive(Debug, Clone)]
@@ -311,7 +315,7 @@ fn connect_adding(store: &SettingsStore, lists: &Rc<Lists>) {
         entry,
         move |_| {
             entry.set_visible(true);
-            entry.grab_focus();
+            focus_when_laid_out(&entry);
         }
     ));
     entry.connect_changed(|entry| show_error(entry, ""));
@@ -337,6 +341,52 @@ fn connect_adding(store: &SettingsStore, lists: &Rc<Lists>) {
             }
         }
     ));
+}
+
+/// DLG-EXP-02: scroll the entry just shown fully into view and focus it,
+/// once it has its place. Focused at once, the page scrolls to an entry not
+/// laid out yet, and only to its text field, so half the row stays hidden.
+/// The first frame lays it out, the second focuses it (the page scrolls to
+/// the text field), the third shows the rest of the row. Each step reads
+/// the layout the frame before made, so the scrolls do not add up.
+fn focus_when_laid_out(entry: &adw::EntryRow) {
+    let frame = Cell::new(0_u8);
+    entry.add_tick_callback(move |entry, _| {
+        frame.set(frame.get() + 1);
+        match frame.get() {
+            1 => glib::ControlFlow::Continue,
+            2 => {
+                entry.grab_focus();
+                glib::ControlFlow::Continue
+            }
+            _ => {
+                reveal(entry);
+                glib::ControlFlow::Break
+            }
+        }
+    });
+}
+
+/// Scroll the page the least that shows all of `widget`.
+fn reveal(widget: &impl IsA<gtk::Widget>) {
+    let Some(scrolled) = widget
+        .ancestor(gtk::ScrolledWindow::static_type())
+        .and_downcast::<gtk::ScrolledWindow>()
+    else {
+        return;
+    };
+    let Some(bounds) = widget.compute_bounds(&scrolled) else {
+        return;
+    };
+    let adjustment = scrolled.vadjustment();
+    let top = f64::from(bounds.y()) - REVEAL_MARGIN;
+    let bottom = f64::from(bounds.y() + bounds.height()) + REVEAL_MARGIN;
+    let shift = if bottom > adjustment.page_size() {
+        bottom - adjustment.page_size()
+    } else {
+        top.min(0.0)
+    };
+    adjustment.set_value(adjustment.value() + shift);
 }
 
 /// Show `message` in the entry's title in the error colour; empty restores

@@ -176,15 +176,9 @@ WyeRow {
                 combo.currentIndex = rows.findIndex(entry => entry.kind === "item" && entry.checked);
             }
 
-            // While the menu is open, Escape closes it and not the window (SET-07).
-            function onOpened() {
-                SettingsBackend.popupOpened();
-            }
-
             // The rows go with the menu, so a letter typed on the closed box cannot choose a target from a stale list
             // (TGT-02). Later, so `onActivated` still reads the row that was chosen.
             function onClosed() {
-                SettingsBackend.popupClosed();
                 Qt.callLater(() => {
                     if (!combo.popup.visible) {
                         combo.model = [];
@@ -202,10 +196,9 @@ WyeRow {
             text: row.shown.label
         }
 
-        Component.onDestruction: {
-            if (combo.popup.opened) {
-                SettingsBackend.popupClosed();
-            }
+        // While the menu is open, Escape closes it and not the window (SET-07).
+        WyePopupTracker {
+            popup: combo.popup
         }
 
         Loader {

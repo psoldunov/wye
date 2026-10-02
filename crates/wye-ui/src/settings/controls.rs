@@ -280,4 +280,16 @@ impl SettingsBackend {
         let popups = (*self.popups() - 1).max(0);
         self.set_popups(popups);
     }
+
+    /// See the bridge declaration.
+    pub fn popup_settling(self: Pin<&mut Self>) {
+        let settling = self.settling().saturating_add(1);
+        self.set_settling(settling);
+    }
+
+    /// See the bridge declaration.
+    pub fn popup_settled(self: Pin<&mut Self>) {
+        let settling = (*self.settling() - 1).max(0);
+        self.set_settling(settling);
+    }
 }

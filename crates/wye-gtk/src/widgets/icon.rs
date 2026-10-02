@@ -7,6 +7,9 @@
 //!   empty source gives an empty image of the same size, so rows line up.
 //! - [`target_icon`]`(source, badge, size)`: the image with the badge over
 //!   it, as the target menu draws a profile.
+//! - [`picker_icon`]`(source, badge, size, badge_size)`: the same with the
+//!   picker's own badge size (PICK-06, PICK-11), overlapping the icon's
+//!   lower-start corner by [`picker_badge_overhang`].
 
 use std::cell::RefCell;
 use std::collections::BTreeSet;
@@ -60,8 +63,45 @@ fn themed(name: &str) -> &str {
 /// overhangs it a little instead of growing it.
 #[must_use]
 pub fn target_icon(source: &str, badge: Option<&Value>, size: i32) -> gtk::Widget {
-    let base = image(source, size);
     let badge_size = badge_size(size);
+    badged(source, badge, size, badge_size, badge_size / 8)
+}
+
+/// A picker tile's icon (PICK-06): `source` at `size` with `badge` at the
+/// picker's `badge_size` (PICK-11's metrics, 24 px on a 40 px icon), over
+/// the icon's lower-start corner and reaching [`picker_badge_overhang`]
+/// past it on both sides, as the Shell extension and the KDE picker draw
+/// it. The widget stays `size` square; the tile keeps room for the part
+/// below.
+#[must_use]
+pub fn picker_icon(source: &str, badge: Option<&Value>, size: i32, badge_size: i32) -> gtk::Widget {
+    badged(
+        source,
+        badge,
+        size,
+        badge_size,
+        picker_badge_overhang(badge_size),
+    )
+}
+
+/// How far a picker badge of `badge_size` reaches past the icon's start
+/// and bottom edges: a quarter of it, rounded (picker-view.js, KDE's
+/// `PickerTile.qml`).
+#[must_use]
+pub const fn picker_badge_overhang(badge_size: i32) -> i32 {
+    (badge_size + 2) / 4
+}
+
+/// `source` with `badge` of `badge_size` reaching `overhang` past the
+/// lower-start corner.
+fn badged(
+    source: &str,
+    badge: Option<&Value>,
+    size: i32,
+    badge_size: i32,
+    overhang: i32,
+) -> gtk::Widget {
+    let base = image(source, size);
     let Some(badge) = badge.and_then(|badge| badge_widget(badge, badge_size)) else {
         return base.upcast();
     };
@@ -70,11 +110,10 @@ pub fn target_icon(source: &str, badge: Option<&Value>, size: i32) -> gtk::Widge
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
-    let overhang = -(badge_size / 8);
     badge.set_halign(gtk::Align::Start);
     badge.set_valign(gtk::Align::End);
-    badge.set_margin_start(overhang);
-    badge.set_margin_bottom(overhang);
+    badge.set_margin_start(-overhang);
+    badge.set_margin_bottom(-overhang);
     overlay.add_overlay(&badge);
     overlay.upcast()
 }
@@ -311,6 +350,18 @@ mod tests {
         assert_eq!(ring_width(11), 1);
         assert_eq!(ring_width(18), 1);
         assert_eq!(ring_width(32), 2);
+    }
+
+    #[test]
+    fn picker_badges_overlap_the_icon_by_a_quarter() {
+        // PICK-06, PICK-11: the badges of the three picker sizes reach a
+        // quarter of their size past the icon, rounded as the Shell
+        // extension rounds it (`Math.round(badge / 4)`).
+        assert_eq!(picker_badge_overhang(14), 4);
+        assert_eq!(picker_badge_overhang(18), 5);
+        assert_eq!(picker_badge_overhang(24), 6);
+        // The ring of a large picker's badge, as KDE's `PickerBadge.qml`.
+        assert_eq!(ring_width(24), 2);
     }
 
     #[test]

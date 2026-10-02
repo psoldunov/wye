@@ -148,6 +148,8 @@ WyeSheet {
                 model: sheet.apps
                 textRole: "name"
                 valueRole: "id"
+                // Scrolling the sheet over the box must not change the source app.
+                wheelEnabled: false
                 Accessible.name: qsTr("Source app")
                 onActivated: {
                     sheet.sourceApp = currentValue;
@@ -250,7 +252,8 @@ WyeSheet {
                 implicitHeight: Kirigami.Units.iconSizes.medium
                 implicitWidth: Kirigami.Units.iconSizes.medium
                 visible: sheet.decision !== "rejected"
-                source: sheet.decision === "picker" ? "view-list-icons-symbolic" : outcome.shown.icon !== "" ? outcome.shown.icon : "application-x-executable"
+                // The Picker's glyph, as its row in every target menu draws it (TGT-03).
+                source: sheet.decision === "picker" ? "view-list-text" : outcome.shown.icon !== "" ? outcome.shown.icon : "application-x-executable"
             }
             Kirigami.Icon {
                 Layout.alignment: Qt.AlignTop

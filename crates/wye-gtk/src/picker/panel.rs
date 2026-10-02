@@ -6,9 +6,10 @@
 //! radius 12 px, hotkey text 10 px.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use adw::prelude::*;
-use gtk::gdk;
+use gtk::{gdk, glib};
 use wye_core::link_text::middle_truncate;
 
 use super::model::{self, TileJson};
@@ -27,6 +28,9 @@ const URL_MIN_WIDTH: i32 = 280;
 const URL_REST_ALPHA: &str = "60%";
 /// The "⋯" glyph's size (PICK-08).
 const MORE_ICON: i32 = 16;
+/// How long the pointer's crossing events take to arrive once a menu's
+/// popup is gone, before [`hush_tooltip`] reads whether it is on the button.
+const TOOLTIP_SETTLE: Duration = Duration::from_millis(150);
 
 /// What the panel's widgets report. Coordinates are the panel's.
 pub struct Handlers {
@@ -67,7 +71,10 @@ pub fn build(panel: &gtk::Box, state: &PickerState, room: i32, handlers: &Rc<Han
                 .badge
                 .as_ref()
                 .and_then(|badge| serde_json::to_value(badge).ok());
-            tile::build(entry, badge.as_ref(), &layout)
+            let name = tile::cut_name(&entry.name, layout.width - 2 * tile::PADDING, |text| {
+                tile::name_width(panel, text)
+            });
+            tile::build(entry, &name, badge.as_ref(), &layout)
         })
         .collect();
     if tiles.is_empty() {
@@ -117,8 +124,16 @@ fn layout(panel: &gtk::Box, state: &PickerState, json: &[TileJson]) -> Layout {
         .map(|entry| tile::name_width(panel, &entry.name))
         .max()
         .unwrap_or(0);
+    let badge = i32::from(metrics.badge);
+    let badged = state.view.tiles.iter().any(|tile| tile.badge.is_some());
     Layout {
         icon: i32::from(metrics.icon),
+        badge,
+        badge_room: if badged {
+            icon::picker_badge_overhang(badge)
+        } else {
+            0
+        },
         width: tile::width(widest, i32::from(metrics.pitch), state.view.show_names),
         show_names: state.view.show_names,
         hotkey_row: json.iter().any(|entry| !entry.hotkey.is_empty()),
@@ -233,7 +248,30 @@ fn more_button(handlers: &Rc<Handlers>) -> gtk::Button {
     button.update_property(&[gtk::accessible::Property::Label("More targets")]);
     let more = Rc::clone(handlers);
     button.connect_clicked(move |_| (more.more)());
+    let motion = gtk::EventControllerMotion::new();
+    let weak = button.downgrade();
+    motion.connect_leave(move |_| {
+        if let Some(button) = weak.upgrade() {
+            button.set_has_tooltip(true);
+        }
+    });
+    button.add_controller(motion);
     button
+}
+
+/// PICK-08: keep `button`'s tooltip back while the pointer that closed its
+/// menu still rests on it; leaving the button brings the tooltip back, and
+/// so does a pointer that is elsewhere once the popup has gone.
+pub fn hush_tooltip(button: &gtk::Button) {
+    button.set_has_tooltip(false);
+    let weak = button.downgrade();
+    glib::timeout_add_local_once(TOOLTIP_SETTLE, move || {
+        if let Some(button) = weak.upgrade()
+            && !button.state_flags().contains(gtk::StateFlags::PRELIGHT)
+        {
+            button.set_has_tooltip(true);
+        }
+    });
 }
 
 /// PICK-08: the "⋯" button follows the last tile, centred on the icons: its

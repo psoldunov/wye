@@ -68,6 +68,25 @@ pub(crate) async fn icon_on_screen(ctx: &ServiceContext) -> bool {
     visible && (ctx.tray().hosts.any() || ctx.tray().sni_shown.load(Ordering::Relaxed))
 }
 
+/// DLG-ABT-02: how the tray icon is shown now, for the troubleshooting
+/// report.
+pub(crate) async fn mechanism(ctx: &ServiceContext) -> String {
+    let visible = super::config::current(ctx)
+        .await
+        .is_ok_and(|current| current.config.general.show_tray_icon);
+    if !visible {
+        return "hidden (the tray icon is turned off)".to_owned();
+    }
+    if ctx.tray().hosts.any() {
+        return "an external tray host (RegisterTray)".to_owned();
+    }
+    match ctx.platform().sni.mechanism() {
+        Some(sni) if ctx.tray().sni_shown.load(Ordering::Relaxed) => sni.to_owned(),
+        Some(sni) => format!("{sni}, not shown"),
+        None => "unavailable".to_owned(),
+    }
+}
+
 /// The `Tray` property as JSON.
 ///
 /// # Errors
@@ -85,7 +104,7 @@ async fn build(ctx: &ServiceContext) -> Result<TrayMenu> {
     let catalog = inventory.inventory.catalog(&environment.xdg.locale, &[]);
     let status = TrayStatus {
         clipboard_has_url: clipboard_has_url(ctx).await,
-        wye_is_default: wye_is_default(ctx).await,
+        wye_is_default: default_settled(ctx).await,
         recent: recent(ctx).await,
     };
     let menu = model::TrayMenu::build(&config.config, &catalog, &status);
@@ -100,12 +119,15 @@ async fn clipboard_has_url(ctx: &ServiceContext) -> bool {
         .unwrap_or(false)
 }
 
-/// TRAY-18: only the registration matters here, not the remembered
-/// browsers.
-async fn wye_is_default(ctx: &ServiceContext) -> bool {
-    super::default_browser::status(ctx, &wye_desktop::State::default())
+/// TRAY-18, ONB-11: Wye is the default, or the user chose to keep the app
+/// that is ("Keep <App>"); either way the tray has nothing to warn about.
+async fn default_settled(ctx: &ServiceContext) -> bool {
+    let state = super::state::load(ctx)
         .await
-        .is_default
+        .inspect_err(|error| tracing::debug!(%error, "no kept default for the tray"))
+        .unwrap_or_default();
+    let status = super::default_browser::status(ctx, &state).await;
+    status.is_default || status.kept_current
 }
 
 /// TRAY-15: the newest history entries, newest first.

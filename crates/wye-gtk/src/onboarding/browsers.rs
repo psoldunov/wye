@@ -50,7 +50,7 @@ impl BrowsersStep {
             .title("Primary browser")
             .subtitle("Choose the Picker to be asked each time.")
             .model(&names)
-            .factory(&choice_factory(&choices))
+            .factory(&choice_factory(&choices, &names))
             .build();
         let filling = Rc::new(Cell::new(false));
         primary.connect_selected_notify(glib::clone!(
@@ -154,7 +154,15 @@ fn item(row: &ListRow, targets: &TargetInventory) -> ChecklistItem {
 }
 
 /// The popup's rows and its button: the choice's icon and name.
-fn choice_factory(choices: &Rc<RefCell<Vec<PrimaryChoice>>>) -> gtk::SignalListItemFactory {
+///
+/// A row finds its choice by its item's place in `names`, not by
+/// `ListItem::position`: the button's item reports position 0 whatever is
+/// selected, so it showed the first choice (the replaced browser) even with
+/// the Picker chosen (ONB-03).
+fn choice_factory(
+    choices: &Rc<RefCell<Vec<PrimaryChoice>>>,
+    names: &gtk::StringList,
+) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -166,6 +174,7 @@ fn choice_factory(choices: &Rc<RefCell<Vec<PrimaryChoice>>>) -> gtk::SignalListI
         item.set_child(Some(&line));
     });
     let choices = Rc::clone(choices);
+    let names = names.downgrade();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -173,8 +182,13 @@ fn choice_factory(choices: &Rc<RefCell<Vec<PrimaryChoice>>>) -> gtk::SignalListI
         let Some(line) = item.child() else {
             return;
         };
-        let choice = usize::try_from(item.position())
-            .ok()
+        let choice = item
+            .item()
+            .zip(names.upgrade())
+            .and_then(|(object, names)| {
+                (0..names.n_items()).find(|&index| names.item(index).as_ref() == Some(&object))
+            })
+            .and_then(|index| usize::try_from(index).ok())
             .and_then(|index| choices.borrow().get(index).cloned());
         let Some(choice) = choice else {
             return;

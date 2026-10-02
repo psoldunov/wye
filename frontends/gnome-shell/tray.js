@@ -68,6 +68,12 @@ function itemIcon(name, dir) {
     return icon;
 }
 
+// Whether the keyboard is in `menu`.
+function hasKeyFocus(menu) {
+    const focus = global.stage.key_focus;
+    return focus !== null && (focus === menu.actor || menu.actor.contains(focus));
+}
+
 // Keeps a level's labels in one column when some of its items have icons.
 function iconSlot() {
     return new St.Widget({style_class: 'wye-menu-icon', width: ITEM_ICON_SIZE});
@@ -243,8 +249,13 @@ export class Tray {
             if (this._destroyed)
                 return;
             if (menu.isOpen && json && json !== before) {
+                // TRAY-08: the rows the keyboard was on are rebuilt; the
+                // keyboard stays in the menu. The model `ShowMenu` sends is
+                // not the `Tray` property's text, so this runs right after
+                // an opening from the shortcut or `wye menu`.
+                const keyboard = hasKeyFocus(menu);
                 this.update(json);
-                this._fill(menu);
+                this._fill(menu, keyboard ? 'first' : null);
             }
         } catch (error) {
             if (!this._destroyed)
@@ -288,9 +299,10 @@ export class Tray {
         return Clutter.EVENT_STOP;
     }
 
-    // The menu from the model, back at its root page.
-    _fill(menu) {
-        this._pages.get(menu).reset();
+    // The menu from the model, back at its root page; `focus` as for
+    // `MenuPages.render`.
+    _fill(menu, focus = null) {
+        this._pages.get(menu).reset(focus);
     }
 
     _fillRoot(menu, section) {

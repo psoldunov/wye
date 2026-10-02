@@ -57,12 +57,8 @@ QQC2.Dialog {
     closePolicy: QQC2.Popup.CloseOnEscape
 
     // While a sheet is open, Escape closes it and not the window behind (SET-07).
-    onOpened: SettingsBackend.popupOpened()
-    onClosed: SettingsBackend.popupClosed()
-    Component.onDestruction: {
-        if (opened) {
-            SettingsBackend.popupClosed();
-        }
+    WyePopupTracker {
+        popup: sheet
     }
 
     header: ColumnLayout {

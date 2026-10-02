@@ -2,8 +2,9 @@
 //! newest first and grouped by day, with a search, **Clear History…**, a
 //! menu per row (Open in Picker, Open in \<target\> Again, Copy Link, Copy
 //! Original Link, Create Rule…, Delete Entry) and the empty states. While
-//! the window is open it follows `HistoryRevision` and `InventoryRevision`
-//! (`service::watch`), so links opened meanwhile appear without polling.
+//! the window is open it follows `HistoryRevision`, `InventoryRevision` and
+//! `ConfigRevision` (`service::watch`), so links opened meanwhile appear,
+//! and history switched off shows, without polling.
 //!
 //! One instance (SET-04): showing it again raises it.
 //!
@@ -54,8 +55,9 @@ use sync::{Action, Known, Snapshot, Update};
 use view::View;
 use window::{Frame, page};
 
-/// The service properties the window follows (DLG-HIS-01).
-const WATCHED: &[&str] = &["HistoryRevision", "InventoryRevision"];
+/// The service properties the window follows (DLG-HIS-01); the
+/// configuration's, for history switched off (DLG-HIS-04).
+const WATCHED: &[&str] = &["HistoryRevision", "InventoryRevision", "ConfigRevision"];
 
 /// How long the self-test lets the window map before it opens a menu.
 const MENU_DELAY: Duration = Duration::from_millis(250);

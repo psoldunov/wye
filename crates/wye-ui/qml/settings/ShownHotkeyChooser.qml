@@ -55,22 +55,8 @@ QQC2.ComboBox {
     }
 
     // While the list is open, Escape closes it and not the sheet (SET-07).
-    Connections {
-        function onOpened() {
-            SettingsBackend.popupOpened();
-        }
-
-        function onClosed() {
-            SettingsBackend.popupClosed();
-        }
-
-        target: combo.popup
-    }
-
-    Component.onDestruction: {
-        if (combo.popup.opened) {
-            SettingsBackend.popupClosed();
-        }
+    WyePopupTracker {
+        popup: combo.popup
     }
 
     // "Other Key…": press any single key.
@@ -88,11 +74,13 @@ QQC2.ComboBox {
 
         onAboutToShow: problem = ""
         onOpened: {
-            SettingsBackend.popupOpened();
             capture.recording = true;
             capture.forceActiveFocus();
         }
-        onClosed: SettingsBackend.popupClosed()
+
+        WyePopupTracker {
+            popup: recorder
+        }
 
         contentItem: ColumnLayout {
             spacing: Kirigami.Units.smallSpacing

@@ -184,8 +184,8 @@ impl qobject::HistoryBackend {
         self.reload(sync::Known::default());
     }
 
-    /// Follow `HistoryRevision` and `InventoryRevision`, once (DLG-HIS-01):
-    /// no polling.
+    /// Follow `HistoryRevision`, `InventoryRevision` and `ConfigRevision`
+    /// (history switched off, DLG-HIS-04), once (DLG-HIS-01): no polling.
     fn watch_service(mut self: Pin<&mut Self>) {
         if *self.offline() || self.rust().watching {
             return;
@@ -193,7 +193,7 @@ impl qobject::HistoryBackend {
         self.as_mut().rust_mut().get_mut().watching = true;
         service::watch(
             self.qt_thread(),
-            &["HistoryRevision", "InventoryRevision"],
+            &["HistoryRevision", "InventoryRevision", "ConfigRevision"],
             |mut backend, change| {
                 if change == Change::Restarted {
                     // A new service counts its revisions from 1 again.

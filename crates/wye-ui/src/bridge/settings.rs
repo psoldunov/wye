@@ -50,6 +50,7 @@ pub mod qobject {
         #[qproperty(i32, pending)]
         #[qproperty(i32, generation)]
         #[qproperty(i32, popups)]
+        #[qproperty(i32, settling)]
         #[qproperty(bool, clipboard_watch_available, cxx_name = "clipboardWatchAvailable")]
         #[qproperty(bool, expansion_loaded, cxx_name = "expansionLoaded")]
         #[qproperty(QString, shortcuts_json, cxx_name = "shortcutsJson")]
@@ -220,7 +221,8 @@ pub mod qobject {
         fn open_link(self: Pin<&mut Self>, url: &QString);
 
         /// A popup or sheet opened: while any is open, Escape closes it and
-        /// not the window (SET-07). Components call this from `onOpened`.
+        /// not the window (SET-07). Components do not call this themselves:
+        /// a `WyePopupTracker` pairs it with `popupClosed` exactly once.
         #[qinvokable]
         #[cxx_name = "popupOpened"]
         fn popup_opened(self: Pin<&mut Self>);
@@ -229,6 +231,20 @@ pub mod qobject {
         #[qinvokable]
         #[cxx_name = "popupClosed"]
         fn popup_closed(self: Pin<&mut Self>);
+
+        /// A popup started its enter or exit transition: it is on screen
+        /// but not settled. On Wayland a popup window opened meanwhile
+        /// becomes the child of a fading one and goes with it, so a help
+        /// popover waits for `settling` to be 0 (BLK-08). Paired by
+        /// `WyePopupTracker`, as `popupOpened`.
+        #[qinvokable]
+        #[cxx_name = "popupSettling"]
+        fn popup_settling(self: Pin<&mut Self>);
+
+        /// A popup finished its transition.
+        #[qinvokable]
+        #[cxx_name = "popupSettled"]
+        fn popup_settled(self: Pin<&mut Self>);
 
         /// Ask the window to open a sheet by name (`shown-browsers`, and
         /// U11's rule editor and tester). The page that owns it listens to
@@ -262,10 +278,12 @@ pub mod qobject {
         /// Open the script editor for `scope` (`global`, `rule:<id>`) when
         /// that script does not exist yet: turning a transform on with no
         /// script opens the editor (SCR-09). Does nothing when the service
-        /// cannot say.
+        /// cannot say. `rule_name` is the rule's name for the title, which
+        /// the service cannot know for a rule not saved yet (SCR-01); empty
+        /// for the global script.
         #[qinvokable]
         #[cxx_name = "openScriptIfMissing"]
-        fn open_script_if_missing(self: Pin<&mut Self>, scope: &QString);
+        fn open_script_if_missing(self: Pin<&mut Self>, scope: &QString, rule_name: &QString);
 
         /// Show the picker with a sample link (PKS-06).
         #[qinvokable]
@@ -406,6 +424,7 @@ pub struct SettingsBackendRust {
     pending: i32,
     generation: i32,
     popups: i32,
+    settling: i32,
     clipboard_watch_available: bool,
     expansion_loaded: bool,
     shortcuts_json: QString,

@@ -465,7 +465,7 @@ WyeSheet {
                 sheet.changed();
                 // SCR-09: turning it on for a script that is still empty opens the editor.
                 if (on) {
-                    SettingsBackend.openScriptIfMissing("rule:" + sheet.ruleId);
+                    SettingsBackend.openScriptIfMissing("rule:" + sheet.ruleId, sheet.name);
                 }
             }
             onActivated: SettingsBackend.showWindow("script-editor", JSON.stringify({

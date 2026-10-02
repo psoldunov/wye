@@ -10,7 +10,7 @@ use wye_core::DesktopId;
 
 mod added;
 
-pub use self::added::remove_html_association;
+pub use self::added::{release_html, remove_html_association};
 use crate::discovery::find_entry;
 use crate::launch::WYE_DESKTOP_ID;
 use crate::xdg::XdgDirs;

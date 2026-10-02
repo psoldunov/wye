@@ -3,6 +3,7 @@
 
 use wye_api::Error;
 use wye_core::DesktopId;
+use wye_desktop::default_browser::release_html;
 use wye_desktop::kdeglobals::{self, Applied};
 use wye_desktop::{
     DefaultBrowserError, WYE_DESKTOP_ID, XdgDirs, current_default, find_entry, forwards_links,
@@ -57,6 +58,11 @@ pub(crate) fn make_default(xdg: &XdgDirs, include_html: bool) -> Result<Made, Er
     }
     let previous = current_default(xdg).filter(|id| rememberable(xdg, id, &wye));
     set_default(xdg, &wye, include_html).map_err(explain)?;
+    // DEF-07: with the switch off, HTML files Wye still claims from an
+    // earlier "on" go to the browser it replaced.
+    if !include_html && let Err(error) = release_html(xdg, &wye, previous.as_ref()) {
+        tracing::warn!(%error, "cannot hand Wye's HTML types back");
+    }
     let kdeglobals = match kdeglobals::set_browser(xdg, &wye) {
         Ok(Applied::Set { previous }) => Kdeglobals::Replaced(previous),
         Ok(Applied::NotKde | Applied::AlreadySet) => Kdeglobals::Untouched,
@@ -118,6 +124,36 @@ pub(crate) fn stop_being_default(
         tracing::warn!(%error, "cannot restore Plasma's default browser");
     }
     Ok(Some(previous.clone()))
+}
+
+/// DEF-07: "Also open local HTML files" changed to `include_html`. While Wye
+/// is the default browser in `mimeapps.list` (whatever Plasma's own setting
+/// names, which says nothing about HTML files), the HTML types follow at
+/// once: Wye registers for them, or hands them to `previous` (the browser
+/// it replaced) when that is still a browser to give links back to, else
+/// drops its own keys. Returns false, changing nothing, while Wye is not
+/// the default.
+///
+/// # Errors
+///
+/// `Failed` when a file cannot be written, `ReadOnly` when `mimeapps.list`
+/// is managed elsewhere.
+pub(crate) fn follow_html(
+    xdg: &XdgDirs,
+    include_html: bool,
+    previous: Option<&DesktopId>,
+) -> Result<bool, Error> {
+    let wye = wye_id()?;
+    if listed_default(xdg).as_ref() != Some(&wye) {
+        return Ok(false);
+    }
+    if include_html {
+        set_default(xdg, &wye, true).map_err(explain)?;
+    } else {
+        let to = previous.filter(|id| find_entry(xdg, id).is_some() && rememberable(xdg, id, &wye));
+        release_html(xdg, &wye, to).map_err(explain)?;
+    }
+    Ok(true)
 }
 
 /// True when `id` may be remembered as the browser to give links back to:

@@ -27,9 +27,14 @@ fn q(text: &str) -> QString {
     QString::from(text)
 }
 
-/// The argument of `ShowWindow("script-editor", …)` for `scope`.
-fn script_argument(scope: &str) -> String {
-    serde_json::json!({ "scope": scope }).to_string()
+/// The argument of `ShowWindow("script-editor", …)` for `scope`, with the
+/// rule's name when there is one (SCR-01).
+fn script_argument(scope: &str, rule_name: &str) -> String {
+    if rule_name.is_empty() {
+        serde_json::json!({ "scope": scope }).to_string()
+    } else {
+        serde_json::json!({ "scope": scope, "ruleName": rule_name }).to_string()
+    }
 }
 
 fn names(names_json: &QString) -> Vec<String> {
@@ -69,11 +74,12 @@ impl SettingsBackend {
     }
 
     /// See the bridge declaration.
-    pub fn open_script_if_missing(self: Pin<&mut Self>, scope: &QString) {
+    pub fn open_script_if_missing(self: Pin<&mut Self>, scope: &QString, rule_name: &QString) {
         if *self.offline() {
             return;
         }
         let scope = scope.to_string();
+        let argument = script_argument(&scope, &rule_name.to_string());
         service::request(
             self.qt_thread(),
             {
@@ -81,7 +87,7 @@ impl SettingsBackend {
                 move |proxy| async move { proxy.script_exists(&scope).await }
             },
             move |backend, result| match result {
-                Ok(false) => backend.show_window(&q("script-editor"), &q(&script_argument(&scope))),
+                Ok(false) => backend.show_window(&q("script-editor"), &q(&argument)),
                 Ok(true) => {}
                 // The service cannot say (not implemented yet): leave the editor closed.
                 Err(error) => tracing::debug!(%error, "cannot tell whether the script exists"),
@@ -348,8 +354,13 @@ mod tests {
     #[test]
     fn the_editor_is_asked_for_by_scope() {
         // SCR-09, ADV-04
-        assert_eq!(script_argument("global"), r#"{"scope":"global"}"#);
-        assert_eq!(script_argument("rule:7"), r#"{"scope":"rule:7"}"#);
+        assert_eq!(script_argument("global", ""), r#"{"scope":"global"}"#);
+        assert_eq!(script_argument("rule:7", ""), r#"{"scope":"rule:7"}"#);
+        // SCR-01: a rule not saved yet carries its name for the title.
+        assert_eq!(
+            script_argument("rule:7", "GitHub"),
+            r#"{"ruleName":"GitHub","scope":"rule:7"}"#
+        );
     }
 
     #[test]

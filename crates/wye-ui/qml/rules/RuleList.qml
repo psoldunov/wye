@@ -22,12 +22,21 @@ Item {
     property var rows: []
     property bool editable: true
     property int dragStart: -1
+    // The row that takes the keyboard focus once the rows next change: the copy Duplicate makes (RUL-04), with the
+    // focus reason to give it (a keyboard one shows the focus frame, as the original had).
+    property int focusAfterSync: -1
+    property int focusReason: Qt.MouseFocusReason
+    // The copy's row, waiting for the row menu to go: a closing menu hands the focus back to where it was.
+    property int focusTarget: -1
+    property bool menuShown: false
 
     signal editRequested(int index)
     signal toggled(int index, bool on)
     signal deleteRequested(int index)
     signal duplicateRequested(int index)
     signal moved(int from, int to)
+    // The row at `at` takes the keyboard focus (the delegates listen).
+    signal rowFocusRequested(int at, int reason)
 
     implicitHeight: list.contentHeight
     implicitWidth: list.implicitWidth
@@ -47,6 +56,8 @@ Item {
     // row, switch or button that had the keyboard focus with it (RUL-04, RUL-05).
     function sync() {
         const list = root.rows || [];
+        // Only a list the copy joined: a refused Duplicate leaves the rows as they were.
+        const grew = list.length > listModel.count;
         list.forEach((row, at) => {
             if (at < listModel.count) {
                 listModel.set(at, root.flat(row));
@@ -56,6 +67,21 @@ Item {
         });
         if (listModel.count > list.length) {
             listModel.remove(list.length, listModel.count - list.length);
+        }
+        const at = root.focusAfterSync;
+        root.focusAfterSync = -1;
+        if (grew && at >= 0 && at < listModel.count) {
+            root.focusTarget = at;
+            root.focusPending();
+        }
+    }
+
+    function focusPending() {
+        if (!root.menuShown && root.focusTarget >= 0) {
+            const at = root.focusTarget;
+            root.focusTarget = -1;
+            // Once the view has laid out the new row and the menu has handed the focus back.
+            Qt.callLater(() => root.rowFocusRequested(at, root.focusReason));
         }
     }
 
@@ -114,6 +140,17 @@ Item {
             width: list.width
             height: rowItem.implicitHeight
 
+            Connections {
+                function onRowFocusRequested(at: int, reason: int) {
+                    if (at === holder.index) {
+                        rowItem.quietFocus = reason === Qt.MouseFocusReason;
+                        rowItem.forceActiveFocus(reason);
+                    }
+                }
+
+                target: root
+            }
+
             // The inset hairline between rows, as between the rows of a card (BLK-01).
             Kirigami.Separator {
                 anchors {
@@ -129,6 +166,11 @@ Item {
             QQC2.ItemDelegate {
                 id: rowItem
 
+                // The focus a click or a mouse-chosen Duplicate gave (RUL-04) draws no frame, as before it was given. A
+                // closing sheet or menu hands the focus back with Qt.OtherFocusReason, which the desktop style frames like
+                // keyboard focus, so it reads as the mouse focus it was; a key or a Tab ends this.
+                property bool quietFocus: false
+
                 width: holder.width
                 leftPadding: Kirigami.Units.smallSpacing
                 rightPadding: Kirigami.Units.largeSpacing
@@ -139,14 +181,30 @@ Item {
                 Accessible.name: holder.ruleOn ? holder.name : qsTr("%1 (off)").arg(holder.name)
                 Accessible.description: holder.summary
 
-                onClicked: root.editRequested(holder.ruleIndex)
+                onFocusReasonChanged: {
+                    if (focusReason === Qt.TabFocusReason || focusReason === Qt.BacktabFocusReason) {
+                        rowItem.quietFocus = false;
+                    } else if (rowItem.quietFocus && focusReason === Qt.OtherFocusReason) {
+                        rowItem.focusReason = Qt.MouseFocusReason;
+                    }
+                }
+                // A clicked row keeps the keyboard focus, so Alt+Up and Alt+Down move it once the editor closes (RUL-04).
+                onClicked: {
+                    rowItem.quietFocus = true;
+                    rowItem.forceActiveFocus(Qt.MouseFocusReason);
+                    root.editRequested(holder.ruleIndex);
+                }
                 Keys.onDeletePressed: {
                     if (root.editable) {
                         root.deleteRequested(holder.ruleIndex);
                     }
                 }
-                Keys.onMenuPressed: rowMenu.popup(rowItem, Kirigami.Units.gridUnit, rowItem.height)
+                Keys.onMenuPressed: {
+                    rowMenu.byKeyboard = rowItem.visualFocus;
+                    rowMenu.popup(rowItem, Kirigami.Units.gridUnit, rowItem.height);
+                }
                 Keys.onPressed: event => {
+                    rowItem.quietFocus = false;
                     if (event.modifiers & Qt.AltModifier && (event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
                         root.shift(holder.ruleIndex, event.key === Qt.Key_Up ? -1 : 1);
                         event.accepted = true;
@@ -155,11 +213,22 @@ Item {
 
                 TapHandler {
                     acceptedButtons: Qt.RightButton
-                    onTapped: rowMenu.popup()
+                    onTapped: {
+                        rowMenu.byKeyboard = false;
+                        rowMenu.popup();
+                    }
                 }
 
                 QQC2.Menu {
                     id: rowMenu
+
+                    // Opened with the Menu key on a row that showed its focus frame.
+                    property bool byKeyboard
+
+                    onVisibleChanged: {
+                        root.menuShown = visible;
+                        root.focusPending();
+                    }
 
                     QQC2.MenuItem {
                         icon.name: "document-edit-symbolic"
@@ -170,7 +239,12 @@ Item {
                         enabled: root.editable
                         icon.name: "edit-copy-symbolic"
                         text: qsTr("Duplicate")
-                        onTriggered: root.duplicateRequested(holder.ruleIndex)
+                        // The copy sits below the original and takes the focus, so it can be moved at once (RUL-04).
+                        onTriggered: {
+                            root.focusReason = rowMenu.byKeyboard ? Qt.TabFocusReason : Qt.MouseFocusReason;
+                            root.focusAfterSync = holder.index + 1;
+                            root.duplicateRequested(holder.ruleIndex);
+                        }
                     }
                     QQC2.MenuSeparator {}
                     QQC2.MenuItem {

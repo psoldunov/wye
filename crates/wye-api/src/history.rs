@@ -39,6 +39,11 @@ pub struct HistoryEntry {
     pub target: TargetSpec,
     /// Display name of the target.
     pub target_name: String,
+    /// Icon name or path of the target's app, for a target `GetTargets`
+    /// does not list, such as an installed app the configuration no longer
+    /// names.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_icon: Option<String>,
     /// Why: the matched rule or web app mapping, or the picker.
     pub reason: String,
     /// Tracking parameters were removed.

@@ -1,5 +1,6 @@
 //! What follows a configuration change: telling clients, one notification
-//! when the file breaks (risk 16), and the autostart entry (GEN-01).
+//! when the file breaks (risk 16), the autostart entry (GEN-01) and the HTML
+//! file association (DEF-07).
 
 use std::path::PathBuf;
 
@@ -34,6 +35,10 @@ pub(crate) async fn announce(
     let first_managed = before.is_none() && ctx.login_managed().is_some();
     if saved || login_changed || first_managed {
         sync_autostart(ctx, after).await;
+    }
+    let html = after.config.general.open_local_html;
+    if before.is_some_and(|before| before.config.general.open_local_html != html) {
+        crate::api::default_browser::html_setting_changed(ctx, html).await;
     }
     crate::api::clipboard::config_changed(ctx, &after.config);
     // Decision 2: the picker just became reachable; start the UI host now.

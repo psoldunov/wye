@@ -126,10 +126,9 @@ async fn def03_a_takeover_is_notified_once_with_both_answers() {
     let desktop = &service.desktop;
     desktop.install_wye();
     let wye = service.wye().await;
+    // `MakeDefault` records Wye as the default before it returns, so the
+    // takeover right after it counts without waiting for the watcher.
     wye.make_default().await.expect("DEF-02");
-    // Let the watcher see Wye as the default before the takeover.
-    tokio::time::sleep(std::time::Duration::from_millis(800)).await;
-
     desktop.replace(MIMEAPPS, &listing(ONE));
     eventually("the takeover notification", || async {
         !service.fakes.notifier.shown().is_empty()
@@ -149,12 +148,184 @@ async fn def03_a_takeover_is_notified_once_with_both_answers() {
         .collect();
     assert_eq!(actions, ["Make Wye Default", "Keep Fake One"]);
 
-    // ONB-11: "Keep Fake One" stops the warning.
+    // TRAY-18: until answered, the tray warns and offers to fix it.
+    let menu = tray(&service.wye().await).await;
+    assert!(menu.overlay.is_some());
+    assert_eq!(menu.items[0].id, "make-default");
+
+    // ONB-11: "Keep Fake One" stops the warning, in the tray too.
     service.fakes.notifier.press(1, "wye-keep-default");
     eventually("the kept default", || async {
         service.status().await.default_browser.kept_current
     })
     .await;
+    // A fresh proxy: the long-lived one caches `Tray` until its signal.
+    let menu = tray(&service.wye().await).await;
+    assert_eq!(menu.overlay, None, "ONB-11: dismissed with Keep");
+    assert!(
+        menu.items.iter().all(|item| item.id != "make-default"),
+        "{:?}",
+        menu.items
+    );
+}
+
+/// DEF-03, ONB-11: a takeover fixed another way (here the tray's "Make Wye
+/// Default Browser") withdraws its notification, and its stale "Keep"
+/// button no longer records a kept default.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn def03_a_fixed_takeover_withdraws_its_notification() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let desktop = &service.desktop;
+    desktop.install_wye();
+    let wye = service.wye().await;
+    wye.make_default().await.expect("DEF-02");
+    desktop.replace(MIMEAPPS, &listing(ONE));
+    eventually("the takeover notification", || async {
+        !service.fakes.notifier.shown().is_empty()
+    })
+    .await;
+
+    wye.activate_tray_item("make-default")
+        .await
+        .expect("TRAY-18");
+    assert!(service.status().await.default_browser.is_default);
+    eventually("the notification withdrawn", || async {
+        service.fakes.notifier.closed() == [1]
+    })
+    .await;
+
+    service.fakes.notifier.press(1, "wye-keep-default");
+    assert!(service.status().await.default_browser.is_default);
+    // The same app taking over again is notified again, which a kept
+    // default would have silenced: the stale press recorded nothing. The
+    // button is answered at once, the watcher only after its quiet time.
+    desktop.replace(MIMEAPPS, &listing(ONE));
+    eventually("a second takeover notification", || async {
+        service.fakes.notifier.shown().len() == 2
+    })
+    .await;
+    let state = desktop.read(STATE);
+    assert!(!state.contains("kept-default"), "{state}");
+}
+
+/// DEF-07: while Wye is the default browser, "Also open local HTML files"
+/// changes `mimeapps.list` at once; while it is not, nothing changes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn def07_the_html_switch_follows_while_wye_is_the_default() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let desktop = &service.desktop;
+    desktop.install_wye();
+    desktop.write(MIMEAPPS, &listing(ONE));
+    let wye = service.wye().await;
+    let html = |on: bool| format!(r#"{{"general": {{"open-local-html": {on}}}}}"#);
+
+    wye.update_config(&html(true), 0).await.expect("saved");
+    assert_eq!(desktop.read(MIMEAPPS), listing(ONE), "not the default");
+    wye.update_config(&html(false), 0).await.expect("saved");
+
+    wye.make_default().await.expect("DEF-02");
+    assert!(!desktop.read(MIMEAPPS).contains("text/html"));
+    wye.update_config(&html(true), 0).await.expect("saved");
+    let text = desktop.read(MIMEAPPS);
+    assert!(text.contains(&format!("text/html={WYE}\n")), "{text}");
+    assert!(
+        text.contains(&format!("application/xhtml+xml={WYE}\n")),
+        "{text}"
+    );
+
+    // Off again: HTML files go back to the browser Wye replaced.
+    wye.update_config(&html(false), 0).await.expect("saved");
+    let text = desktop.read(MIMEAPPS);
+    assert!(text.contains(&format!("text/html={ONE}\n")), "{text}");
+    assert!(!text.contains(&format!("{WYE};")), "{text}");
+    assert!(
+        text.contains(&format!("x-scheme-handler/https={WYE}")),
+        "{text}"
+    );
+}
+
+fn html_switch(on: bool) -> String {
+    format!(r#"{{"general": {{"open-local-html": {on}}}}}"#)
+}
+
+/// DEF-07: HTML files left with Wye by an earlier "on" go back when Wye is
+/// made the default again with the switch off.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn def07_make_default_with_the_switch_off_releases_old_html_keys() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let desktop = &service.desktop;
+    desktop.install_wye();
+    desktop.write(MIMEAPPS, &listing(ONE));
+    let wye = service.wye().await;
+    wye.make_default().await.expect("DEF-02");
+    wye.update_config(&html_switch(true), 0)
+        .await
+        .expect("saved");
+    assert!(
+        desktop
+            .read(MIMEAPPS)
+            .contains(&format!("text/html={WYE}\n"))
+    );
+
+    // Another browser takes the links but not the HTML types.
+    let taken = desktop.read(MIMEAPPS).replace(
+        &format!("x-scheme-handler/http={WYE}\nx-scheme-handler/https={WYE}\n"),
+        &format!("x-scheme-handler/http={ONE}\nx-scheme-handler/https={ONE}\n"),
+    );
+    assert!(taken.contains(&format!("https={ONE}")), "{taken}");
+    desktop.replace(MIMEAPPS, &taken);
+    wye.update_config(&html_switch(false), 0)
+        .await
+        .expect("saved");
+    assert_eq!(desktop.read(MIMEAPPS), taken, "not the default: unchanged");
+
+    wye.make_default().await.expect("DEF-02");
+    let text = desktop.read(MIMEAPPS);
+    assert!(text.contains(&format!("text/html={ONE}\n")), "{text}");
+    assert!(
+        text.contains(&format!("application/xhtml+xml={ONE}\n")),
+        "{text}"
+    );
+    assert!(!text.contains(&format!("{WYE};")), "{text}");
+    assert!(
+        text.contains(&format!("x-scheme-handler/https={WYE}")),
+        "{text}"
+    );
+}
+
+/// DEF-07: on KDE the switch follows `mimeapps.list`, even while Plasma's
+/// own setting (which says nothing about HTML files) names another browser.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn def07_the_html_switch_follows_mimeapps_on_kde() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    let desktop = &service.desktop;
+    desktop.install_wye();
+    desktop.write(MIMEAPPS, &listing(WYE));
+    desktop.write(
+        KDEGLOBALS,
+        "[General]\nBrowserApplication=fake-one.desktop\n",
+    );
+    service.ctx.set_environment(desktop.environment_on("KDE"));
+    let wye = service.wye().await;
+
+    wye.update_config(&html_switch(true), 0)
+        .await
+        .expect("saved");
+    let text = desktop.read(MIMEAPPS);
+    assert!(text.contains(&format!("text/html={WYE}\n")), "{text}");
+}
+
+async fn tray(wye: &wye_api::proxy::Wye1Proxy<'_>) -> wye_api::tray::TrayMenu {
+    let text = wye.tray().await.expect("the Tray property");
+    serde_json::from_str(&text).expect("Tray is JSON")
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

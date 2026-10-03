@@ -159,7 +159,11 @@ temporary file, then `mv`), in about 20 ms:
 - `~/.local/share/dbus-1/services/dev.soldunov.wye{,.Ui,.Gtk}.service`: `Exec` runs the
   AppImage with `service`, `wye-ui` or `wye-gtk`. They have no `SystemdService=`: the
   AppImage installs no systemd user units, and dbus-broker would otherwise ask systemd for
-  one that does not exist. The bus starts the service and the windows by activation.
+  one that does not exist. The bus starts the service and the windows by activation. When
+  one of them changed, the AppImage asks the bus to reload (`ReloadConfig`, through
+  `busctl`, `dbus-send` or `gdbus`, whichever the host has) and waits for it: dbus-broker
+  picks up a new service file only some time after it changed, so the first
+  `AppImage settings` would otherwise fail with "The name is not activatable".
 - `~/.local/share/icons/hicolor/*/apps/dev.soldunov.wye*.svg`.
 - `~/.local/share/gnome-shell/extensions/wye@dev.soldunov`, installed and not enabled, as
   the packages do.
@@ -173,22 +177,42 @@ temporary file, then `mv`), in about 20 ms:
 Each file the AppImage writes carries a marker (an `X-Wye-AppImage=true` key, a comment, a
 `.x-wye-appimage` stamp in the extension), and it rewrites a file only when the file is
 missing or carries that marker, or for the links, when the link points at an AppImage.
-Anything else, such as the symlinks into `/nix/store` that a home-manager install puts at
-the same paths, stays as it is, with one warning on stderr per start. A read-only or
-missing `HOME` only produces a warning.
+Anything else at those paths stays as it is, with one warning on stderr per start.
+
+When another Wye installation is visible to the session, the AppImage integrates nothing
+and says so on stderr. That is the case when `dev.soldunov.wye.service` (D-Bus) or
+`dev.soldunov.wye.desktop` exists in `$XDG_DATA_HOME` without the marker (home-manager
+links the D-Bus files there), or in any directory of `$XDG_DATA_DIRS`, `/usr/local/share`
+or `/usr/share` (a `.deb`, an `.rpm`, NixOS, a Nix profile). The AppImage still runs, but
+the menu entry, D-Bus activation and `wye` on `PATH` stay that installation's: files under
+`~/.local` would shadow it, and break it once the AppImage is deleted. When an earlier
+AppImage start already integrated one, the warning says to run `--remove-integration`.
+
+Integration is skipped, with a warning, when `HOME` is unset or belongs to another user
+(`sudo -E` keeps the user's `HOME`, and root would leave root-owned directories in it). A
+relative `XDG_DATA_HOME` is ignored, as the XDG Base Directory Specification asks. A
+read-only `HOME` only produces a warning. Two starts at once (a link click starts `open` and
+then, by D-Bus activation, the service) take turns through `flock` on
+`$XDG_RUNTIME_DIR/wye-appimage.lock`, and the GNOME Shell extension is copied next to
+`extensions/` and renamed into place, so neither ever sees half a copy. The AppImage runtime's
+`APPIMAGE` and `OWD` variables are unset before the program starts: every browser and app
+Wye launches would inherit them, and an Electron app's updater takes `APPIMAGE` as the file
+to replace.
 
 The AppImage is a multicall binary. Through a link, the link's name picks the program
 (`wye`, `wye-native-host`, `wye-ui`, `wye-gtk`); otherwise a first argument `wye-ui`,
 `wye-gtk` or `wye-native-host` does; everything else goes to `wye`.
 
-To undo the integration, switch off launch at login in Settings and run
-`wye extension remove` if you installed the browser manifests, then:
+To undo the integration, make another browser the default (the desktop's default-browser
+setting otherwise names a menu entry that no longer exists), switch off launch at login in
+Settings and run `wye extension remove` if you installed the browser manifests, then:
 
 ```sh
 ./Wye-<version>-<arch>.AppImage --remove-integration
 ```
 
-It deletes exactly the marked files and links and nothing else.
+It deletes exactly the marked files and links and nothing else. Do this before deleting
+the AppImage or switching to a `.deb`, an `.rpm` or home-manager.
 
 ### Running it on a desktop
 
@@ -224,7 +248,13 @@ mode the smoke test:
   Wye D-Bus service file exists, so the live session activates `wye-ui` and `wye-gtk`
   through the integrated ones;
 - runs `--remove-integration` with the planted files back in place and checks that it
-  removed the eleven files and links it wrote and nothing else.
+  removed the eleven files and links it wrote and nothing else;
+- launches it once with a package's desktop entry in a directory on `XDG_DATA_DIRS` and
+  once with a home-manager-style D-Bus service link in `XDG_DATA_HOME`, and checks that it
+  wrote nothing either time and said which installation it found.
+
+The live session uses `dbus-run-session`, which is dbus-daemon, so the reload for
+dbus-broker is not exercised here.
 
 Screenshots go to `dist/screenshots/appimage-<distro>-wye-{ui,gtk}-settings.png` (e.g.
 `appimage-debian-12-…`), logs to `dist/smoke-logs/appimage-<distro>/`.

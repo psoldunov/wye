@@ -487,6 +487,41 @@ check_appimage_removal() {
   fi
 }
 
+# AppImage f. With another Wye installation visible to the session, the
+# AppImage integrates nothing and says why: a package's desktop entry in a
+# system data directory, then home-manager's D-Bus service link in
+# $XDG_DATA_HOME. Runs after check_appimage_removal, on a clean session.
+check_appimage_other_installation() {
+  local name planted log file written=() system=$scratch/other-installation/share
+  for name in package home-manager; do
+    log=$logs/other-installation-$name.txt
+    if [ "$name" = package ]; then
+      planted=$system/applications/dev.soldunov.wye.desktop
+      mkdir -p "${planted%/*}"
+      echo '[Desktop Entry]' >"$planted"
+      XDG_DATA_DIRS=$system:${XDG_DATA_DIRS:-/usr/local/share:/usr/share} \
+        "$appimage" --version >/dev/null 2>"$log"
+    else
+      planted=$XDG_DATA_HOME/dbus-1/services/dev.soldunov.wye.service
+      mkdir -p "${planted%/*}" "${foreign_link_target%/*}"
+      ln -sfn "${foreign_link_target%/*}/dev.soldunov.wye.service" "$planted"
+      "$appimage" --version >/dev/null 2>"$log"
+    fi
+    written=()
+    while IFS= read -r file; do
+      if [ "$file" != "$planted" ] && { [ -e "$file" ] || [ -L "$file" ]; }; then written+=("$file"); fi
+    done < <(integrated_files)
+    if [ "${#written[@]}" -ne 0 ]; then
+      fail "with a $name installation the AppImage still wrote ${written[*]}"
+    elif ! grep -qF "another Wye installation provides $planted" "$log"; then
+      fail "with a $name installation the AppImage did not say why it did not integrate ($(tail -n 1 "$log"))"
+    else
+      pass "with a $name installation ($planted) the AppImage integrates nothing, with a warning"
+    fi
+    rm -f "$planted"
+  done
+}
+
 if [ -n "$appimage" ]; then
   check_appimage_launch
   check_appimage_libraries
@@ -495,6 +530,7 @@ if [ -n "$appimage" ]; then
   check_self_tests
   check_live
   check_appimage_removal
+  check_appimage_other_installation
 else
   check_libraries
   check_cli

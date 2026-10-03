@@ -16,10 +16,12 @@
 # A file is rewritten only when it is missing or carries the AppImage's
 # marker (the text X-Wye-AppImage, or for the extension a .x-wye-appimage
 # file in it; a link counts as ours when it points at an AppImage). Anything
-# else (a home-manager symlink into /nix/store, a package's file) is left
-# alone with one warning on stderr. Nothing is ever written to stdout: the
-# browsers read wye-native-host's stdout. Failures (a read-only or missing
-# HOME) are warnings; Wye runs regardless.
+# else (a home-manager symlink into /nix/store, a file of the user's) is left
+# alone with one warning on stderr. When another Wye installation (a package,
+# home-manager, NixOS) provides the D-Bus service or the desktop entry,
+# nothing is integrated at all: that installation keeps the session. Nothing
+# is ever written to stdout: the browsers read wye-native-host's stdout.
+# Failures (a read-only or missing HOME) are warnings; Wye runs regardless.
 #
 #   Wye.AppImage [ARGS]                     wye ARGS
 #   Wye.AppImage wye-ui|wye-gtk|wye-native-host [ARGS]
@@ -187,7 +189,9 @@ link_bin() {
 }
 
 # Copy the GNOME Shell extension when it is missing or an older copy of ours
-# (its .x-wye-appimage stamp differs).
+# (its .x-wye-appimage stamp differs). The copy is staged next to the
+# extensions directory, where GNOME Shell never looks, and renamed into
+# place; an older copy is renamed away first.
 install_extension() {
   source=$templates/gnome-shell/extensions/$ext_uuid
   target=$data_home/gnome-shell/extensions/$ext_uuid
@@ -198,18 +202,106 @@ install_extension() {
     fi
     if same "$source/.x-wye-appimage" "$target/.x-wye-appimage"; then return 0; fi
   fi
-  staging="$target.wye-appimage.$$"
+  staging=
   if ! { mkdir -p "${target%/*}" 2>/dev/null &&
-    cp -R "$source" "$staging" 2>/dev/null &&
-    chmod -R u+w "$staging"; }; then
-    rm -rf "$staging"
+    staging=$(mktemp -d "$data_home/gnome-shell/.wye-appimage.XXXXXX" 2>/dev/null) &&
+    cp -R "$source" "$staging/$ext_uuid" 2>/dev/null &&
+    chmod -R u+w "$staging/$ext_uuid"; }; then
+    rm -rf "${staging:-}"
     note_failed "$target"
     return 0
   fi
-  if [ -d "$target" ]; then
-    mv "$target" "$target.old.$$" && mv "$staging" "$target" && rm -rf "$target.old.$$"
+  # Another start may be doing the same: a copy with this stamp that it put
+  # in place stays, and when its rename lands between the test and this one,
+  # `mv` (without -T, which is not POSIX) moves this copy inside it, to be
+  # removed again.
+  if [ -d "$target" ] && ! same "$source/.x-wye-appimage" "$target/.x-wye-appimage"; then
+    mv "$target" "$staging/old" 2>/dev/null
+  fi
+  if [ ! -e "$target" ]; then
+    mv "$staging/$ext_uuid" "$target" 2>/dev/null
+  fi
+  if [ -d "$target/$ext_uuid" ] && [ ! -L "$target/$ext_uuid" ]; then
+    rm -rf "${target:?}/$ext_uuid"
+  fi
+  if ! same "$source/.x-wye-appimage" "$target/.x-wye-appimage"; then
+    note_failed "$target"
+  fi
+  rm -rf "$staging"
+}
+
+# Whether the D-Bus service or the desktop entry of another Wye installation
+# is visible to the session: in $data_home and not written by an AppImage
+# (home-manager links the D-Bus files there), or in a system data directory
+# (a package, NixOS, a Nix profile). The AppDir's own share/, which sharun
+# puts first in XDG_DATA_DIRS, does not count. Prints the first one found.
+other_installation() {
+  for file in "$data_home/dbus-1/services/dev.soldunov.wye.service" \
+    "$data_home/applications/$desktop_id"; do
+    if ! ours "$file"; then
+      printf '%s\n' "$file"
+      return 0
+    fi
+  done
+  old_ifs=$IFS
+  IFS=:
+  # shellcheck disable=SC2086 # split on IFS=:
+  set -- ${XDG_DATA_DIRS-} /usr/local/share /usr/share
+  IFS=$old_ifs
+  for dir; do
+    case $dir in
+      '' | "$APPDIR" | "$APPDIR"/* | "$data_home") continue ;;
+    esac
+    for file in "$dir/dbus-1/services/dev.soldunov.wye.service" "$dir/applications/$desktop_id"; do
+      if [ -e "$file" ]; then
+        printf '%s\n' "$file"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+# Ask the session bus to read its service directories again, and wait for
+# it. dbus-daemon also rescans them when asked for a name it does not know,
+# but dbus-broker only reloads a moment after it notices the change, which
+# loses the race against the program about to start (`settings` would fail
+# with ServiceUnknown on the first start). Silent: stdout belongs to the
+# native host, and a host without any of these tools still gets the
+# directories reloaded by the bus itself, later.
+reload_bus() {
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS-}" ] && [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
+    return 0
+  fi
+  if command -v busctl >/dev/null 2>&1 &&
+    busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus \
+      ReloadConfig >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v dbus-send >/dev/null 2>&1 &&
+    dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+      org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v gdbus >/dev/null 2>&1; then
+    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+      --method org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1 || :
+  fi
+}
+
+# integrate, holding a lock in XDG_RUNTIME_DIR when flock(1) exists: one link
+# click starts the AppImage twice at once (`open`, then the service by D-Bus
+# activation), and two starts must not interleave their renames.
+integrate_locked() {
+  lock=${XDG_RUNTIME_DIR-}/wye-appimage.lock
+  if [ -n "${XDG_RUNTIME_DIR-}" ] && command -v flock >/dev/null 2>&1 &&
+    (: 9>>"$lock") 2>/dev/null; then
+    (
+      flock -w 10 9 2>/dev/null || warn "another start holds $lock; integrating anyway"
+      integrate
+    ) 9>>"$lock"
   else
-    mv "$staging" "$target"
+    integrate
   fi
 }
 
@@ -221,6 +313,14 @@ integrate() {
       return 0
       ;;
   esac
+  if other=$(other_installation); then
+    warn "another Wye installation provides $other; not integrating the AppImage (its menu entry, D-Bus activation and links stay that installation's)"
+    if { [ -f "$data_home/applications/$desktop_id" ] && ours "$data_home/applications/$desktop_id"; } ||
+      { [ -L "$bin_home/wye" ] && is_appimage "$(readlink "$bin_home/wye")"; }; then
+      warn "an earlier Wye AppImage's integration under $data_home shadows it: run the AppImage once with --remove-integration"
+    fi
+    return 0
+  fi
   if ! work=$(mktemp -d "${TMPDIR:-/tmp}/wye-appimage.XXXXXX" 2>/dev/null); then
     warn "cannot create a temporary directory; not integrating the AppImage"
     return 0
@@ -235,14 +335,22 @@ integrate() {
   fi
 
   WYE_EXEC=$(dbus_exec_quote "$APPIMAGE")
+  changed=0
   for template in "$templates"/dbus-1/services/*.service.in; do
     name=${template##*/}
     render "$template" "$data_home/dbus-1/services/${name%.in}" dbus_filter
   done
+  if [ "$changed" = 1 ]; then reload_bus; fi
 
+  changed=0
   for icon in "$templates"/icons/hicolor/*/apps/*.svg; do
     render "$icon" "$data_home/icons/hicolor/${icon#"$templates"/icons/hicolor/}" icon_filter
   done
+  # GTK trusts an icon cache as long as it is newer than the theme
+  # directory, which a new file in a subdirectory does not change.
+  if [ "$changed" = 1 ] && [ -f "$data_home/icons/hicolor/icon-theme.cache" ]; then
+    touch "$data_home/icons/hicolor" 2>/dev/null || :
+  fi
 
   install_extension
   link_bin "$bin_home/wye"
@@ -301,17 +409,26 @@ case $name in
     ;;
 esac
 
-if [ -n "${HOME-}" ]; then
-  data_home=${XDG_DATA_HOME:-$HOME/.local/share}
-  bin_home=$HOME/.local/bin
+# No integration without a HOME of one's own: under `sudo -E` HOME is still
+# the user's, and root would leave root-owned directories in it. A relative
+# XDG_DATA_HOME is invalid (XDG Base Directory Specification) and ignored.
+data_home='' bin_home='' no_home=''
+# shellcheck disable=SC3067 # -O is not POSIX, but dash, bash and busybox sh have it
+if [ -z "${HOME-}" ]; then
+  no_home="HOME is not set"
+elif [ ! -O "$HOME" ]; then
+  no_home="HOME ($HOME) belongs to another user"
 else
-  data_home=${XDG_DATA_HOME-}
-  bin_home=
+  case ${XDG_DATA_HOME-} in
+    /*) data_home=$XDG_DATA_HOME ;;
+    *) data_home=$HOME/.local/share ;;
+  esac
+  bin_home=$HOME/.local/bin
 fi
 
 if [ "$program" = wye ] && [ "${1-}" = --remove-integration ]; then
-  if [ -z "$data_home" ] || [ -z "$bin_home" ]; then
-    warn "HOME is not set; nothing to remove"
+  if [ -n "$no_home" ]; then
+    warn "$no_home; nothing to remove"
     exit 1
   fi
   remove_integration
@@ -319,17 +436,17 @@ if [ "$program" = wye ] && [ "${1-}" = --remove-integration ]; then
 fi
 
 if [ -n "${APPIMAGE-}" ]; then
-  if [ -z "$data_home" ] || [ -z "$bin_home" ]; then
-    warn "HOME is not set; not integrating the AppImage"
+  if [ -n "$no_home" ]; then
+    warn "$no_home; not integrating the AppImage"
   else
-    integrate
+    integrate_locked
   fi
 fi
 
 if [ -n "$bin_home" ]; then
-  case :$PATH: in
+  case :${PATH-}: in
     *:"$bin_home":*) ;;
-    *) PATH=$bin_home:$PATH ;;
+    *) PATH=$bin_home${PATH:+:$PATH} ;;
   esac
   export PATH
 fi
@@ -344,6 +461,11 @@ if [ -f "$APPDIR/AppRun.lib" ]; then
     [ -e "$hook" ] && . "$hook"
   done
 fi
+
+# The runtime's APPIMAGE and OWD would otherwise reach every browser and app
+# Wye launches; an Electron app's updater takes APPIMAGE for its own file and
+# would replace this AppImage. Nothing in Wye reads them.
+unset APPIMAGE OWD
 
 # The programs live in libexec/, not bin/: sharun puts AppDir/bin first on
 # PATH, where the service would find this mount's `wye` before ~/.local/bin's.

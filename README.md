@@ -203,7 +203,8 @@ unit: the service starts on the first link, and at login once "Launch at login" 
 Settings. Older Debian and Fedora releases lack the GTK 4.22 and libadwaita 1.9 that
 `wye-gtk` needs; use the AppImage there. The AppImage bundles every library it uses and,
 each time it starts, sets up its menu entry, D-Bus files, icons and `~/.local/bin/wye`
-under `~/.local`, so keep the file where it is; `--remove-integration` undoes that.
+under `~/.local` (unless another Wye installation is present), so keep the file where it
+is; run it with `--remove-integration` before deleting it.
 [packaging/README.md](packaging/README.md) has the details, and builds any of the three
 from a checkout with Docker.
 

@@ -14,8 +14,23 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   package = self.packages.${system}.default;
 
-  # The flake records no release yet, so the release channel is exercised with
-  # a stand-in package and a made-up release.json.
+  # Neither case reads nix/release.json, so the checks mean the same before
+  # and after a release is recorded there: the release channel is exercised
+  # with a stand-in package and a made-up release, everything else with no
+  # release at all (the `git` channel, the flake's own package).
+  noRelease = {
+    version = null;
+    rev = null;
+    narHash = null;
+  };
+  unreleasedHomeModule = import ../hm-module.nix {
+    inherit self;
+    release = noRelease;
+  };
+  unreleasedNixosModule = import ../nixos-module.nix {
+    inherit self;
+    release = noRelease;
+  };
   fakeRelease = {
     version = "0.1.0";
     rev = "0000000000000000000000000000000000000000";
@@ -57,7 +72,7 @@ let
         }
       ];
     };
-  homeConfig = homeConfigWith self.homeManagerModules.default;
+  homeConfig = homeConfigWith unreleasedHomeModule;
 
   nixosConfigWith =
     module: programs:
@@ -76,7 +91,7 @@ let
         }
       ];
     };
-  nixosConfig = nixosConfigWith self.nixosModules.default;
+  nixosConfig = nixosConfigWith unreleasedNixosModule;
 
   failedAssertions = config: map (a: a.message) (lib.filter (a: !a.assertion) config.assertions);
 
@@ -154,11 +169,7 @@ let
           lib.filter (a: !a.assertion) (
             (import ../channel.nix {
               inherit self lib pkgs;
-              release = {
-                version = null;
-                rev = null;
-                narHash = null;
-              };
+              release = noRelease;
             } { channel = "release"; }).assertions
           )
         );

@@ -1,0 +1,100 @@
+name: Packages
+
+# Builds the .deb, the .rpm and the AppImage for x86_64 and aarch64, each on
+# a runner of its own architecture (the scripts build natively, never under
+# emulation), and smoke-tests each one in clean containers: see
+# packaging/README.md. The release workflow calls this one and attaches the
+# packages to the GitHub release; a pull request that touches the packaging
+# runs it too, and so can anyone with write access, from the Actions tab.
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packaging/**"
+      - "data/**"
+      - ".github/workflows/packages.yml"
+
+permissions:
+  contents: read
+
+# A pull request's newer push replaces the run of its older one; a release's
+# run is never cancelled.
+concurrency:
+  group: packages-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  package:
+    name: ${{ matrix.format }} (${{ matrix.arch }})
+    strategy:
+      # One format or architecture failing says nothing about the others.
+      fail-fast: false
+      matrix:
+        format: [deb, rpm, appimage]
+        arch: [x86_64, aarch64]
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    # A cold build takes 10 to 25 minutes, the AppImage's four smoke tests
+    # about 10 more.
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      FORMAT: ${{ matrix.format }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The build image, the cargo target directory and the test containers
+      # need about 15 GB; the x86_64 image's preinstalled SDKs take more than
+      # that. The arm64 image has none of them.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup \
+            /usr/share/swift /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Build
+        run: packaging/"$FORMAT"/build.sh
+
+      - name: Smoke test
+        run: packaging/"$FORMAT"/test.sh
+
+      # What a user downloads: the binary package alone, not the source rpm
+      # or the debug information.
+      - name: Collect the package
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          case $FORMAT in
+            deb) mv dist/wye_*.deb out/ ;;
+            rpm) find dist -maxdepth 1 -name 'wye-[0-9]*.rpm' ! -name '*.src.rpm' -exec mv {} out/ \; ;;
+            appimage) mv dist/Wye-*.AppImage out/ ;;
+          esac
+          ls -l out
+          test "$(find out -type f | wc -l)" = 1
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-${{ matrix.format }}-${{ matrix.arch }}
+          path: out/
+          if-no-files-found: error
+          # Already compressed (xz, zstd, DwarFS).
+          compression-level: 0
+
+      # The screenshots, the smoke test's logs and the lint reports, also
+      # when a step failed.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: smoke-${{ matrix.format }}-${{ matrix.arch }}
+          path: |
+            dist/screenshots/
+            dist/smoke-logs/
+            dist/lintian.txt
+            dist/rpmlint.txt
+          if-no-files-found: ignore

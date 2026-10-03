@@ -1,6 +1,6 @@
 # Wye feature specification
 
-Wye is a planned native Linux browser picker written in Rust. It lives in the system
+Wye is a native Linux browser picker written in Rust. It lives in the system
 tray and decides where each link opens: a specific browser, a browser profile, a private
 window, a desktop app, or a small picker that asks the user.
 

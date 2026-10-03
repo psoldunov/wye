@@ -48,12 +48,14 @@ as well: an applet added nothing the item's `DBusMenu` cannot show, and its conf
 dialog had nothing to configure. Wye has the same needs (tray presence, a
 floating surface, native settings) and additional ones that only the GNOME Shell
 extension can meet on GNOME (picker at the pointer, modifier state, clipboard watching).
-The split between daemon and frontends is an open decision ([14](14-open-questions.md)).
+Wye took the same split: a Rust service plus one frontend per desktop
+([14](14-open-questions.md), decision 1).
 
 ## Packaging
 
 A Flatpak sandbox gets in the way of almost everything Wye does: reading other apps'
 desktop entries and profile folders, launching host apps, inspecting `/proc` and cgroups
-for source apps, and installing native-messaging manifests into browsers. Proposed:
-ship native packages first (Nix flake with a home-manager module, and an AppImage, as
-Token Station does), and treat Flatpak as a later, reduced build.
+for source apps, and installing native-messaging manifests into browsers. So Wye ships
+native packages first, as Token Station does: the Nix flake with home-manager and NixOS
+modules, and on each release a `.deb`, an `.rpm` and an AppImage for x86_64 and aarch64
+([packaging/README.md](../../packaging/README.md)). Flatpak would be a later, reduced build.

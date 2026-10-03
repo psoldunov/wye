@@ -3,5 +3,7 @@
 /target
 /result
 /result-*
+# Distribution packages and smoke-test output (packaging/).
+/dist
 /.direnv
 __pycache__/

@@ -1,0 +1,472 @@
+#!/bin/sh
+# Entry point of the Wye AppImage: integrates the AppImage into the user's
+# session, then runs one of Wye's four programs.
+#
+# packaging/appimage/build.sh installs this file as AppDir/AppRun.sh; the
+# AppDir's AppRun is sharun, which runs it with the host's shell. Every start
+# from an AppImage ($APPIMAGE set by the runtime) first brings these files up
+# to date, writing only what changed (temporary file, then mv):
+#
+#   $XDG_DATA_HOME/applications/dev.soldunov.wye.desktop      Exec runs the AppImage
+#   $XDG_DATA_HOME/dbus-1/services/dev.soldunov.wye{,.Ui,.Gtk}.service
+#   $XDG_DATA_HOME/icons/hicolor/*/apps/dev.soldunov.wye*.svg
+#   $XDG_DATA_HOME/gnome-shell/extensions/wye@dev.soldunov    installed, not enabled
+#   ~/.local/bin/wye, ~/.local/bin/wye-native-host            symlinks to the AppImage
+#
+# A file is rewritten only when it is missing or carries the AppImage's
+# marker (the text X-Wye-AppImage, or for the extension a .x-wye-appimage
+# file in it; a link counts as ours when it points at an AppImage). Anything
+# else (a home-manager symlink into /nix/store, a file of the user's) is left
+# alone with one warning on stderr. When another Wye installation (a package,
+# home-manager, NixOS) provides the D-Bus service or the desktop entry,
+# nothing is integrated at all: that installation keeps the session. Nothing
+# is ever written to stdout: the browsers read wye-native-host's stdout.
+# Failures (a read-only or missing HOME) are warnings; Wye runs regardless.
+#
+#   Wye.AppImage [ARGS]                     wye ARGS
+#   Wye.AppImage wye-ui|wye-gtk|wye-native-host [ARGS]
+#   wye [ARGS], wye-native-host [ARGS]      through a symlink to the AppImage
+#   Wye.AppImage --remove-integration       delete the marked files, then exit
+#
+# The service writes the autostart entry with the `wye` it finds on PATH and
+# `wye extension install` names the `wye-native-host` it finds there, so the
+# programs started here get ~/.local/bin on PATH: the stable links, not the
+# AppImage's temporary mount point.
+
+marker=X-Wye-AppImage
+ext_uuid=wye@dev.soldunov
+desktop_id=dev.soldunov.wye.desktop
+APPDIR=${APPDIR:-$(cd "$(dirname "$0")" && pwd)}
+templates=$APPDIR/share/wye-appimage
+
+warn() {
+  printf 'wye AppImage: %s\n' "$*" >&2
+}
+
+# Whether files $1 and $2 have the same contents.
+same() {
+  [ -f "$2" ] || return 1
+  if command -v cmp >/dev/null 2>&1; then
+    cmp -s "$1" "$2"
+  else
+    [ "$(cat "$1")" = "$(cat "$2")" ]
+  fi
+}
+
+# Whether $1 may be written: it is missing, or a regular file with the marker.
+ours() {
+  if [ ! -e "$1" ] && [ ! -L "$1" ]; then return 0; fi
+  [ -f "$1" ] && [ ! -L "$1" ] && grep -q "$marker" "$1" 2>/dev/null
+}
+
+# Whether $1 names an AppImage: by its name or its magic bytes (AI 02 at
+# offset 8). A link to a deleted AppImage keeps its name.
+is_appimage() {
+  case $1 in
+    *.AppImage | *.appimage) return 0 ;;
+  esac
+  [ -f "$1" ] && [ "$(od -An -c -j 8 -N 3 "$1" 2>/dev/null | tr -d ' ')" = 'AI002' ]
+}
+
+# Paths left alone or not writable, each reported in one warning at the end.
+foreign=
+note_foreign() {
+  foreign="$foreign${foreign:+, }$1"
+}
+failed=
+note_failed() {
+  failed="$failed${failed:+, }$1"
+}
+
+changed=0
+# Move temporary file $1 over $2, atomically.
+place() {
+  if chmod 644 "$1" && mv -f "$1" "$2"; then
+    changed=1
+  else
+    rm -f "$1"
+    note_failed "$2"
+  fi
+}
+
+# Write the output of `$3...` (a command reading template $1) to target $2,
+# when $2 is ours. The output is compared in the private $work directory
+# first: an unchanged target's directory is never touched (dbus-daemon
+# reloads its configuration on every change in a services directory).
+render() {
+  template=$1 target=$2 tmp=
+  shift 2
+  if ! ours "$target"; then
+    note_foreign "$target"
+    return 0
+  fi
+  if ! "$@" <"$template" >"$work/rendered"; then
+    warn "cannot render $target"
+    return 0
+  fi
+  if same "$work/rendered" "$target"; then return 0; fi
+  if ! { mkdir -p "${target%/*}" 2>/dev/null &&
+    tmp=$(mktemp "${target%/*}/.wye-appimage.XXXXXX" 2>/dev/null) &&
+    cat "$work/rendered" >"$tmp"; }; then
+    rm -f "${tmp:-}"
+    note_failed "$target"
+    return 0
+  fi
+  place "$tmp" "$target"
+}
+
+# The AppImage path as one argument of a desktop entry's Exec key: quoted,
+# with " ` $ \ escaped, then escaped once more as a string value, and % as %%
+# (Desktop Entry Specification, "The Exec key").
+desktop_exec_quote() {
+  printf '"%s"' "$(printf '%s' "$1" | sed -e 's/[\\"`$]/\\&/g' -e 's/\\/\\\\/g' -e 's/%/%%/g')"
+}
+
+# The AppImage path as one argument of a D-Bus service's Exec key, which
+# dbus-daemon and dbus-broker split like a shell: single-quoted.
+dbus_exec_quote() {
+  printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+# The source desktop entry runs `wye ...`; the integrated one runs the
+# AppImage, and TryExec hides it once the AppImage is gone.
+desktop_filter() {
+  awk '
+    /^\[Desktop Entry\]$/ {
+      print
+      print "TryExec=" ENVIRON["WYE_TRYEXEC"]
+      print ENVIRON["WYE_MARKER"] "=true"
+      next
+    }
+    /^Exec=wye( |$)/ { print "Exec=" ENVIRON["WYE_EXEC"] substr($0, 9); next }
+    { print }
+  '
+}
+
+# A D-Bus service template (data/dbus/*.in) for the AppImage: Exec runs it
+# with the program as its first argument (`wye service` stays `service`), and
+# no SystemdService=, because no user unit comes with the AppImage.
+dbus_filter() {
+  printf '# %s: written by the Wye AppImage, which rewrites it on every start.\n' "$WYE_MARKER"
+  awk '
+    /^SystemdService=/ { next }
+    /^Exec=@bindir@\// {
+      command = substr($0, 15)
+      if (command ~ /^wye( |$)/) command = substr(command, 5)
+      print "Exec=" ENVIRON["WYE_EXEC"] " " command
+      next
+    }
+    { print }
+  '
+}
+
+# Append the marker to an SVG icon, as a comment after its root element.
+icon_filter() {
+  cat
+  printf '<!-- %s -->\n' "$WYE_MARKER"
+}
+
+# Point symlink $1 at the AppImage when it is ours.
+link_bin() {
+  link=$1
+  if [ -L "$link" ]; then
+    current=$(readlink "$link")
+    if [ "$current" = "$APPIMAGE" ]; then return 0; fi
+    if ! is_appimage "$current" || [ -d "$link" ]; then
+      note_foreign "$link"
+      return 0
+    fi
+  elif [ -e "$link" ]; then
+    note_foreign "$link"
+    return 0
+  fi
+  if ! { mkdir -p "${link%/*}" 2>/dev/null &&
+    ln -sf "$APPIMAGE" "$link.wye-appimage.$$" 2>/dev/null &&
+    mv -f "$link.wye-appimage.$$" "$link" 2>/dev/null; }; then
+    rm -f "$link.wye-appimage.$$"
+    note_failed "$link"
+  fi
+}
+
+# Copy the GNOME Shell extension when it is missing or an older copy of ours
+# (its .x-wye-appimage stamp differs). The copy is staged next to the
+# extensions directory, where GNOME Shell never looks, and renamed into
+# place; an older copy is renamed away first.
+install_extension() {
+  source=$templates/gnome-shell/extensions/$ext_uuid
+  target=$data_home/gnome-shell/extensions/$ext_uuid
+  if [ -e "$target" ] || [ -L "$target" ]; then
+    if [ -L "$target" ] || [ ! -f "$target/.x-wye-appimage" ]; then
+      note_foreign "$target"
+      return 0
+    fi
+    if same "$source/.x-wye-appimage" "$target/.x-wye-appimage"; then return 0; fi
+  fi
+  staging=
+  if ! { mkdir -p "${target%/*}" 2>/dev/null &&
+    staging=$(mktemp -d "$data_home/gnome-shell/.wye-appimage.XXXXXX" 2>/dev/null) &&
+    cp -R "$source" "$staging/$ext_uuid" 2>/dev/null &&
+    chmod -R u+w "$staging/$ext_uuid"; }; then
+    rm -rf "${staging:-}"
+    note_failed "$target"
+    return 0
+  fi
+  # Another start may be doing the same: a copy with this stamp that it put
+  # in place stays, and when its rename lands between the test and this one,
+  # `mv` (without -T, which is not POSIX) moves this copy inside it, to be
+  # removed again.
+  if [ -d "$target" ] && ! same "$source/.x-wye-appimage" "$target/.x-wye-appimage"; then
+    mv "$target" "$staging/old" 2>/dev/null
+  fi
+  if [ ! -e "$target" ]; then
+    mv "$staging/$ext_uuid" "$target" 2>/dev/null
+  fi
+  if [ -d "$target/$ext_uuid" ] && [ ! -L "$target/$ext_uuid" ]; then
+    rm -rf "${target:?}/$ext_uuid"
+  fi
+  if ! same "$source/.x-wye-appimage" "$target/.x-wye-appimage"; then
+    note_failed "$target"
+  fi
+  rm -rf "$staging"
+}
+
+# Whether the D-Bus service or the desktop entry of another Wye installation
+# is visible to the session: in $data_home and not written by an AppImage
+# (home-manager links the D-Bus files there), or in a system data directory
+# (a package, NixOS, a Nix profile). The AppDir's own share/, which sharun
+# puts first in XDG_DATA_DIRS, does not count. Prints the first one found.
+other_installation() {
+  for file in "$data_home/dbus-1/services/dev.soldunov.wye.service" \
+    "$data_home/applications/$desktop_id"; do
+    if ! ours "$file"; then
+      printf '%s\n' "$file"
+      return 0
+    fi
+  done
+  old_ifs=$IFS
+  IFS=:
+  # shellcheck disable=SC2086 # split on IFS=:
+  set -- ${XDG_DATA_DIRS-} /usr/local/share /usr/share
+  IFS=$old_ifs
+  for dir; do
+    case $dir in
+      '' | "$APPDIR" | "$APPDIR"/* | "$data_home") continue ;;
+    esac
+    for file in "$dir/dbus-1/services/dev.soldunov.wye.service" "$dir/applications/$desktop_id"; do
+      if [ -e "$file" ]; then
+        printf '%s\n' "$file"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+# Ask the session bus to read its service directories again, and wait for
+# it. dbus-daemon also rescans them when asked for a name it does not know,
+# but dbus-broker only reloads a moment after it notices the change, which
+# loses the race against the program about to start (`settings` would fail
+# with ServiceUnknown on the first start). Silent: stdout belongs to the
+# native host, and a host without any of these tools still gets the
+# directories reloaded by the bus itself, later.
+reload_bus() {
+  if [ -z "${DBUS_SESSION_BUS_ADDRESS-}" ] && [ ! -S "${XDG_RUNTIME_DIR:-/nonexistent}/bus" ]; then
+    return 0
+  fi
+  if command -v busctl >/dev/null 2>&1 &&
+    busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus \
+      ReloadConfig >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v dbus-send >/dev/null 2>&1 &&
+    dbus-send --session --print-reply --dest=org.freedesktop.DBus /org/freedesktop/DBus \
+      org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1; then
+    return 0
+  fi
+  if command -v gdbus >/dev/null 2>&1; then
+    gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
+      --method org.freedesktop.DBus.ReloadConfig >/dev/null 2>&1 || :
+  fi
+}
+
+# integrate, holding a lock in XDG_RUNTIME_DIR when flock(1) exists: one link
+# click starts the AppImage twice at once (`open`, then the service by D-Bus
+# activation), and two starts must not interleave their renames.
+integrate_locked() {
+  lock=${XDG_RUNTIME_DIR-}/wye-appimage.lock
+  if [ -n "${XDG_RUNTIME_DIR-}" ] && command -v flock >/dev/null 2>&1 &&
+    (: 9>>"$lock") 2>/dev/null; then
+    (
+      flock -w 10 9 2>/dev/null || warn "another start holds $lock; integrating anyway"
+      integrate
+    ) 9>>"$lock"
+  else
+    integrate
+  fi
+}
+
+integrate() {
+  case $APPIMAGE in
+    *'
+'*)
+      warn "the AppImage path contains a newline; not integrating it"
+      return 0
+      ;;
+  esac
+  if other=$(other_installation); then
+    warn "another Wye installation provides $other; not integrating the AppImage (its menu entry, D-Bus activation and links stay that installation's)"
+    if { [ -f "$data_home/applications/$desktop_id" ] && ours "$data_home/applications/$desktop_id"; } ||
+      { [ -L "$bin_home/wye" ] && is_appimage "$(readlink "$bin_home/wye")"; }; then
+      warn "an earlier Wye AppImage's integration under $data_home shadows it: run the AppImage once with --remove-integration"
+    fi
+    return 0
+  fi
+  if ! work=$(mktemp -d "${TMPDIR:-/tmp}/wye-appimage.XXXXXX" 2>/dev/null); then
+    warn "cannot create a temporary directory; not integrating the AppImage"
+    return 0
+  fi
+  WYE_MARKER=$marker
+  WYE_TRYEXEC=$(printf '%s' "$APPIMAGE" | sed 's/\\/\\\\/g')
+  WYE_EXEC=$(desktop_exec_quote "$APPIMAGE")
+  export WYE_MARKER WYE_TRYEXEC WYE_EXEC
+  render "$templates/applications/$desktop_id" "$data_home/applications/$desktop_id" desktop_filter
+  if [ "$changed" = 1 ] && command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q "$data_home/applications" >/dev/null 2>&1 || :
+  fi
+
+  WYE_EXEC=$(dbus_exec_quote "$APPIMAGE")
+  changed=0
+  for template in "$templates"/dbus-1/services/*.service.in; do
+    name=${template##*/}
+    render "$template" "$data_home/dbus-1/services/${name%.in}" dbus_filter
+  done
+  if [ "$changed" = 1 ]; then reload_bus; fi
+
+  changed=0
+  for icon in "$templates"/icons/hicolor/*/apps/*.svg; do
+    render "$icon" "$data_home/icons/hicolor/${icon#"$templates"/icons/hicolor/}" icon_filter
+  done
+  # GTK trusts an icon cache as long as it is newer than the theme
+  # directory, which a new file in a subdirectory does not change.
+  if [ "$changed" = 1 ] && [ -f "$data_home/icons/hicolor/icon-theme.cache" ]; then
+    touch "$data_home/icons/hicolor" 2>/dev/null || :
+  fi
+
+  install_extension
+  link_bin "$bin_home/wye"
+  link_bin "$bin_home/wye-native-host"
+  unset WYE_MARKER WYE_TRYEXEC WYE_EXEC
+  rm -rf "$work"
+
+  if [ -n "$foreign" ]; then
+    warn "left alone (not written by a Wye AppImage): $foreign"
+  fi
+  if [ -n "$failed" ]; then
+    warn "cannot write (Wye runs without them): $failed"
+  fi
+}
+
+# Delete what carries the marker; leave everything else.
+remove_integration() {
+  removed=0
+  for file in \
+    "$data_home/applications/$desktop_id" \
+    "$data_home"/dbus-1/services/dev.soldunov.wye*.service \
+    "$data_home"/icons/hicolor/*/apps/dev.soldunov.wye*.svg; do
+    if [ -f "$file" ] && [ ! -L "$file" ] && grep -q "$marker" "$file" 2>/dev/null; then
+      rm -f "$file" && echo "removed $file" && removed=1
+    fi
+  done
+  extension=$data_home/gnome-shell/extensions/$ext_uuid
+  if [ -d "$extension" ] && [ ! -L "$extension" ] && [ -f "$extension/.x-wye-appimage" ]; then
+    rm -rf "$extension" && echo "removed $extension"
+  fi
+  for link in "$bin_home/wye" "$bin_home/wye-native-host"; do
+    if [ -L "$link" ] && is_appimage "$(readlink "$link")"; then
+      rm -f "$link" && echo "removed $link"
+    fi
+  done
+  if [ "$removed" = 1 ] && command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q "$data_home/applications" >/dev/null 2>&1 || :
+  fi
+}
+
+# The program to run: by the name this was started as (a symlink named after
+# one of them), else by the first argument, else `wye`.
+name=${ARGV0:-$0}
+name=${name##*/}
+unset ARGV0
+case $name in
+  wye | wye-native-host | wye-ui | wye-gtk) program=$name ;;
+  *)
+    case ${1-} in
+      wye-ui | wye-gtk | wye-native-host)
+        program=$1
+        shift
+        ;;
+      *) program=wye ;;
+    esac
+    ;;
+esac
+
+# No integration without a HOME of one's own: under `sudo -E` HOME is still
+# the user's, and root would leave root-owned directories in it. A relative
+# XDG_DATA_HOME is invalid (XDG Base Directory Specification) and ignored.
+data_home='' bin_home='' no_home=''
+# shellcheck disable=SC3067 # -O is not POSIX, but dash, bash and busybox sh have it
+if [ -z "${HOME-}" ]; then
+  no_home="HOME is not set"
+elif [ ! -O "$HOME" ]; then
+  no_home="HOME ($HOME) belongs to another user"
+else
+  case ${XDG_DATA_HOME-} in
+    /*) data_home=$XDG_DATA_HOME ;;
+    *) data_home=$HOME/.local/share ;;
+  esac
+  bin_home=$HOME/.local/bin
+fi
+
+if [ "$program" = wye ] && [ "${1-}" = --remove-integration ]; then
+  if [ -n "$no_home" ]; then
+    warn "$no_home; nothing to remove"
+    exit 1
+  fi
+  remove_integration
+  exit 0
+fi
+
+if [ -n "${APPIMAGE-}" ]; then
+  if [ -n "$no_home" ]; then
+    warn "$no_home; not integrating the AppImage"
+  else
+    integrate_locked
+  fi
+fi
+
+if [ -n "$bin_home" ]; then
+  case :${PATH-}: in
+    *:"$bin_home":*) ;;
+    *) PATH=$bin_home${PATH:+:$PATH} ;;
+  esac
+  export PATH
+fi
+
+# quick-sharun's hook library and hooks (GSettings backend, cache directory
+# and the like), as its own AppRun.sh sources them.
+if [ -f "$APPDIR/AppRun.lib" ]; then
+  # shellcheck source=/dev/null
+  . "$APPDIR/AppRun.lib"
+  for hook in "$APPDIR"/bin/*.hook; do
+    # shellcheck source=/dev/null
+    [ -e "$hook" ] && . "$hook"
+  done
+fi
+
+# The runtime's APPIMAGE and OWD would otherwise reach every browser and app
+# Wye launches; an Electron app's updater takes APPIMAGE for its own file and
+# would replace this AppImage. Nothing in Wye reads them.
+unset APPIMAGE OWD
+
+# The programs live in libexec/, not bin/: sharun puts AppDir/bin first on
+# PATH, where the service would find this mount's `wye` before ~/.local/bin's.
+exec "$APPDIR/libexec/$program" "$@"

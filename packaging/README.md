@@ -251,8 +251,10 @@ Screenshots go to `dist/screenshots/appimage-<distro>-wye-{ui,gtk}-settings.png`
 an `ubuntu-24.04-arm` runner, six jobs in all. Each job uploads its package as the artifact
 `package-<format>-<arch>`, and the screenshots, smoke-test logs and lint reports as
 `smoke-<format>-<arch>`, also when it failed. It runs on every pull request that changes
-`packaging/` or `data/`, from the Actions tab (workflow dispatch), and as part of each
-release.
+`packaging/` or `data/` (GitHub matches those paths against the pull request's whole diff,
+so every later push to such a pull request runs it again, cancelling the older run), from
+the Actions tab (workflow dispatch), and as part of each release. Other pull requests run
+only `ci.yml` and `rust-doctor.yml`.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a pushed tag
 `vX.Y.Z`. It calls `packages.yml` and, once all six jobs passed, publishes the GitHub

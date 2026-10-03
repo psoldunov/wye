@@ -18,6 +18,12 @@ on:
 permissions:
   contents: read
 
+# A pull request's newer push replaces the run of its older one; a release's
+# run is never cancelled.
+concurrency:
+  group: packages-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   package:
     name: ${{ matrix.format }} (${{ matrix.arch }})

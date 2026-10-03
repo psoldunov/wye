@@ -1,0 +1,71 @@
+Source: wye
+Section: web
+Priority: optional
+Maintainer: Philipp Soldunov <69530789+psoldunov@users.noreply.github.com>
+# cxx-qt-build links with lld when it exists (GNU ld.bfd cannot link Qt
+# from Cargo); wye-gtk's build script runs glib-compile-resources.
+Build-Depends:
+ debhelper-compat (= 13),
+ cargo,
+ rustc (>= 1.88),
+ lld,
+ pkg-config,
+ qt6-base-dev,
+ qt6-base-dev-tools,
+ qt6-declarative-dev,
+ qt6-declarative-dev-tools,
+ libkf6windowsystem-dev,
+ libgl-dev,
+ libxkbcommon-dev,
+ libgtk-4-dev (>= 4.22),
+ libadwaita-1-dev (>= 1.9),
+ libgtksourceview-5-dev (>= 5.18),
+ libgtk4-layer-shell-dev,
+ libglib2.0-dev-bin,
+Standards-Version: 4.7.2
+Rules-Requires-Root: no
+Homepage: https://github.com/psoldunov/wye
+Vcs-Browser: https://github.com/psoldunov/wye
+Vcs-Git: https://github.com/psoldunov/wye.git
+
+Package: wye
+Architecture: any
+# wye-ui loads its QML modules, the desktop style and the Qt plugins at run
+# time, so dpkg-shlibdeps cannot see them: they are listed by hand (the
+# qt.runtimeInputs of nix/package.nix). wye-gtk names Adwaita icons.
+Depends:
+ ${shlibs:Depends},
+ ${misc:Depends},
+ default-dbus-session-bus | dbus-session-bus,
+ qml6-module-qtqml,
+ qml6-module-qtqml-workerscript,
+ qml6-module-qtquick,
+ qml6-module-qtquick-controls,
+ qml6-module-qtquick-dialogs,
+ qml6-module-qtquick-layouts,
+ qml6-module-qtquick-templates,
+ qml6-module-qtquick-window,
+ qml6-module-org-kde-kirigami,
+ qml6-module-org-kde-kirigamiaddons-components,
+ qml6-module-org-kde-kirigamiaddons-formcard,
+ qml6-module-org-kde-layershell,
+ qml6-module-org-kde-syntaxhighlighting,
+ qml6-module-org-kde-desktop,
+ qml6-module-org-kde-kquickcontrols,
+ qt6-svg-plugins,
+ qt6-wayland,
+ adwaita-icon-theme,
+ hicolor-icon-theme,
+# Spell checking in the desktop style's text fields; without a backend
+# Sonnet warns and checks nothing.
+Recommends:
+ sonnet6-plugins,
+Description: native Linux browser picker
+ Wye registers as the desktop's default web browser and sends every link to
+ the right browser, browser profile, private window or desktop app, or asks
+ with a small picker.
+ .
+ The package holds the command line and session service (wye), the browser
+ extension's native-messaging host (wye-native-host), the Qt/Kirigami
+ windows (wye-ui), the GTK 4/libadwaita windows (wye-gtk) and the GNOME Shell
+ extension wye@dev.soldunov, which is installed but not enabled.

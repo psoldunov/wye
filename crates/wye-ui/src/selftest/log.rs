@@ -38,6 +38,10 @@ const ALLOWED: &[(&str, &str)] = &[
         "QStandardPaths: runtime directory",
         "the Nix build sandbox's temporary runtime directory has loose permissions",
     ),
+    (
+        "Icon theme \"breeze-internal\" not found",
+        "Kirigami 6.30 as Debian and Fedora package it asks for Breeze's built-in fallback theme, which their breeze-icons does not register under offscreen; icons still come from the installed Breeze theme (packaging/smoke-test.sh)",
+    ),
 ];
 
 /// A Qt message type.

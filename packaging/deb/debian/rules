@@ -1,0 +1,50 @@
+#!/usr/bin/make -f
+# Debian build rules for Wye. packaging/deb/build.sh copies packaging/deb/debian
+# to debian/ in a copy of the source and runs dpkg-buildpackage there; see
+# that script.
+#
+# Cargo builds the four binaries, packaging/install.sh stages them with the
+# desktop entry, icons, GNOME Shell extension, D-Bus services and systemd
+# user units. Cargo fetches crates from crates.io (Cargo.lock pins them), so
+# the build needs the network.
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+include /usr/share/dpkg/buildflags.mk
+# cxx-qt-build and the -sys crates compile C and C++ with these.
+export CFLAGS CXXFLAGS CPPFLAGS
+
+# cxx-qt-build reads Qt's layout from `qmake -query`.
+export QMAKE ?= /usr/lib/qt6/bin/qmake
+export CARGO_TARGET_DIR ?= $(CURDIR)/target
+# Full RELRO, as dpkg-buildflags asks of C programs; rustc already builds PIE.
+export RUSTFLAGS += -C link-arg=-Wl,-z,relro,-z,now
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+	cargo build --release --locked \
+		--package wye --package wye-native-host --package wye-ui --package wye-gtk
+
+# The workspace tests need a session bus and a display; the smoke test
+# (packaging/smoke-test.sh) checks the installed package instead.
+override_dh_auto_test:
+
+override_dh_auto_install:
+	packaging/install.sh --destdir debian/wye --prefix /usr \
+		--target-dir $(CARGO_TARGET_DIR)/release
+
+# Launch at login is each user's choice (GEN-01: Settings writes or removes
+# an XDG autostart entry), so the package enables wye.service for nobody;
+# enabled globally it would start the service even with the switch off.
+override_dh_installsystemduser:
+	dh_installsystemduser --no-enable
+
+# The release profile strips the binaries already (strip = true), so there
+# is no debug information for a -dbgsym package or for dwz.
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym
+
+override_dh_dwz:

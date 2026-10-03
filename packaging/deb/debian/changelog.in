@@ -1,0 +1,5 @@
+wye (@VERSION@) unstable; urgency=medium
+
+  * Wye @VERSION@. Release notes: https://github.com/psoldunov/wye/releases
+
+ -- Philipp Soldunov <69530789+psoldunov@users.noreply.github.com>  @DATE@

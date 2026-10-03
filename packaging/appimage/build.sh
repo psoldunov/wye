@@ -9,9 +9,13 @@
 # icon theme; no media codecs, no /tmp path mapping) and packs it with the
 # uruntime AppImage runtime:
 #
-#   dist/Wye-VERSION-x86_64.AppImage
+#   dist/Wye-VERSION-ARCH.AppImage
 #
 #   packaging/appimage/build.sh
+#
+# ARCH is the machine's own architecture (`uname -m`), x86_64 or aarch64:
+# Docker builds natively, without emulation. On aarch64 the image starts
+# from Arch Linux ARM (see the Dockerfile).
 #
 # Run from anywhere; paths are resolved against the repository root. Nothing
 # in the worktree is written by the container, and the worktree's target/ is
@@ -25,6 +29,9 @@
 #   DOCKER_CONFIG       read by the docker CLI itself, e.g. an empty config
 #                       when stale Docker Hub credentials refuse pulls
 #   WYE_APPIMAGE_IMAGE  the build image tag (default: wye-appimage-build)
+#   WYE_APPIMAGE_BASE   the image's base (default: archlinux:latest on
+#                       x86_64, ghcr.io/pkgforge-dev/archlinux:aarch64 on
+#                       aarch64)
 set -euo pipefail
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
@@ -38,7 +45,16 @@ if [ -z "$version" ]; then
   echo "build.sh: no version in [workspace.package] of $root/Cargo.toml" >&2
   exit 1
 fi
-appimage=Wye-$version-x86_64.AppImage
+arch=$(uname -m)
+case $arch in
+  x86_64) base=${WYE_APPIMAGE_BASE:-archlinux:latest} ;;
+  aarch64) base=${WYE_APPIMAGE_BASE:-ghcr.io/pkgforge-dev/archlinux:aarch64} ;;
+  *)
+    echo "build.sh: no AppImage build for $arch; x86_64 and aarch64 only" >&2
+    exit 1
+    ;;
+esac
+appimage=Wye-$version-$arch.AppImage
 
 work=$(mktemp -d)
 container=
@@ -48,8 +64,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "build.sh: building the image $image"
-"$docker" build -t "$image" "$root/packaging/appimage"
+echo "build.sh: building the image $image from $base"
+"$docker" build -t "$image" --build-arg "BASE=$base" "$root/packaging/appimage"
 
 # Source tarball: what git would see in a commit of the working tree now
 # (tracked files that still exist plus untracked files that are not ignored),
@@ -123,7 +139,7 @@ build_in_container() {
   export DEPLOY_QT=1 DEPLOY_QML=1 DEPLOY_GTK=1 DEPLOY_OPENGL=1
   export TMPDIR=/build/tmp
   mkdir -p "$TMPDIR"
-  cp /opt/appimage-tools/sharun+helper-libs-x86_64.tar "$TMPDIR/"
+  cp "/opt/appimage-tools/sharun+helper-libs-$(uname -m).tar" "$TMPDIR/"
   quick-sharun /usr/bin/wye /usr/bin/wye-native-host /usr/bin/wye-ui /usr/bin/wye-gtk \
     "${extra[@]}"
 

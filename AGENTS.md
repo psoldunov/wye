@@ -22,8 +22,8 @@ window or desktop app, or asks with a small picker. The specification is in
 | `frontends/extension/` | The Firefox and Chromium extension (one set of files, one manifest per family). See its README. |
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`); `kwin/` the KWin query script. |
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
-| `packaging/` | Docker builds of the `.deb` (`deb/`, Debian testing), the `.rpm` (`rpm/`, Fedora 44) and the AppImage (`appimage/`, Arch base, sharun bundles every library including glibc; its `AppRun` integrates the AppImage into `~/.local` on every start), the shared `install.sh` (mirrors the `postInstall` of `nix/package.nix`) and `smoke-test.sh` (installs each in a clean container and launches both UI hosts). See its README. |
-| `.github/workflows/` | `ci.yml` (`nix flake check`, advisories), `rust-doctor.yml`, `release.yml` (tag build, GitHub release, pull request recording it in `nix/release.json`). |
+| `packaging/` | Docker builds of the `.deb` (`deb/`, Debian testing), the `.rpm` (`rpm/`, Fedora 44) and the AppImage (`appimage/`, Arch base, Arch Linux ARM on aarch64, sharun bundles every library including glibc; its `AppRun` integrates the AppImage into `~/.local` on every start), each for the machine's own architecture (x86_64 or aarch64), the shared `install.sh` (mirrors the `postInstall` of `nix/package.nix`) and `smoke-test.sh` (installs each in a clean container and launches both UI hosts). See its README. |
+| `.github/workflows/` | `ci.yml` (`nix flake check` on x86_64 and aarch64, advisories), `rust-doctor.yml`, `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; pull requests touching `packaging/` or `data/`, workflow dispatch, and each release), `release.yml` (tag check, Nix build of the tag on both architectures, `packages.yml`, GitHub release with the six packages and `SHA256SUMS`, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
 | `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session, `gnome/stage/` the GNOME ones in a headless GNOME Shell session (their READMEs). |
 
@@ -71,9 +71,12 @@ Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, 
 ## Releases
 
 Push a tag `vX.Y.Z` that equals the workspace `version` in `Cargo.toml`, on master.
-`.github/workflows/release.yml` builds it, creates the GitHub release with generated notes,
-and opens a pull request that writes the tag's commit and content hash to
-`nix/release.json`. Merging that pull request is what makes `programs.wye.channel =
+`.github/workflows/release.yml` builds the tagged flake for x86_64 and aarch64 (pushing it to
+Cachix), builds and smoke-tests the `.deb`, `.rpm` and AppImage for both through
+`packages.yml`, creates the GitHub release with those six packages, `SHA256SUMS` and
+generated notes, and opens a pull request that writes the tag's commit and content hash to
+`nix/release.json`. A package that fails its smoke test stops the release before anything
+is published. Merging that pull request is what makes `programs.wye.channel =
 "release"` the default. Never edit `nix/release.json` by hand. The workflow needs the
 repository setting "Allow GitHub Actions to create and approve pull requests".
 

@@ -4,6 +4,8 @@
 # AppImage tooling (quick-sharun, sharun, appimagetool with uruntime).
 #
 #   docker build -t wye-appimage-build packaging/appimage
+#   docker build -t wye-appimage-build \
+#     --build-arg BASE=ghcr.io/pkgforge-dev/archlinux:aarch64 packaging/appimage
 #
 # Arch, because it is the base the AnyLinux tooling documents and tests, and
 # it has every toolkit Wye needs (GTK 4.22, libadwaita 1.9, Qt 6.11, KF6 6.30).
@@ -11,7 +13,15 @@
 # comes from these packages, so the AppImage runs on distributions far older
 # than this image. The source goes in with `docker cp` at build time, and the
 # cargo registry and target directory live in Docker volumes (see build.sh).
-FROM archlinux:latest
+#
+# The image is built for the machine's own architecture, x86_64 or aarch64.
+# The official archlinux image is x86_64 only; on aarch64 build.sh passes
+# BASE, the Arch Linux ARM image of pkgforge-dev/docker-archlinux (the
+# project behind the AnyLinux tooling, which builds its aarch64 AppImages on
+# it). Arch Linux ARM builds Arch's own package recipes, so the package names
+# below are the same.
+ARG BASE=archlinux:latest
+FROM ${BASE}
 
 # - rust, lld: cxx-qt-build links Qt with -fuse-ld=lld when an `lld` command
 #   exists; GNU ld.bfd cannot link Qt from Cargo.
@@ -73,25 +83,35 @@ RUN pacman -Syu --noconfirm --needed \
 # appimagetool-full embeds the uruntime AppImage runtime it writes into the
 # AppImage (uruntime v0.8.1, appimage-dwarfs-lite, pinned with its digest in
 # appimagetool's src/pinned.rs) and mkdwarfs, so making the AppImage needs no
-# network either.
+# network either. sharun and appimagetool are per architecture, each with the
+# digest quick-sharun pins for it.
 ARG QUICK_SHARUN_COMMIT=ff9260f61b9953bd07dc76d6d8b204ed816e8731
 ARG QUICK_SHARUN_SHA256=8026711b271c0d67d37075cd7e8c50dbd9fa635c012f9edb92a2c0d41573664b
 ARG SHARUN_VERSION=3.5.0
-ARG SHARUN_SHA256=a84935e91826cc38834f35eee099269ab643f97a47d3aaf5c171d87fda3d3c1f
+ARG SHARUN_SHA256_X86_64=a84935e91826cc38834f35eee099269ab643f97a47d3aaf5c171d87fda3d3c1f
+ARG SHARUN_SHA256_AARCH64=71af83a5980aeb568e10479e9fe1e0f3ddcaea0be3c406015c53e83124389215
 ARG APPIMAGETOOL_VERSION=0.5.2
-ARG APPIMAGETOOL_SHA256=49999e2ba854fd826aa00cb872a6b7294137d32346aec6e21be63cae49bdc854
-RUN mkdir -p /opt/appimage-tools \
+ARG APPIMAGETOOL_SHA256_X86_64=49999e2ba854fd826aa00cb872a6b7294137d32346aec6e21be63cae49bdc854
+ARG APPIMAGETOOL_SHA256_AARCH64=f7fc30fa0aaed7e4d1652117d38b6945f2b2f02cb28e4aacf15b8300be11f0c4
+RUN set -eu \
+ && arch=$(uname -m) \
+ && case $arch in \
+      x86_64) sharun_sha256=$SHARUN_SHA256_X86_64 tool_sha256=$APPIMAGETOOL_SHA256_X86_64 ;; \
+      aarch64) sharun_sha256=$SHARUN_SHA256_AARCH64 tool_sha256=$APPIMAGETOOL_SHA256_AARCH64 ;; \
+      *) echo "no AppImage tooling pinned for $arch" >&2; exit 1 ;; \
+    esac \
+ && mkdir -p /opt/appimage-tools \
  && cd /opt/appimage-tools \
  && curl -fsSLo quick-sharun \
       "https://raw.githubusercontent.com/pkgforge-dev/Anylinux-AppImages/$QUICK_SHARUN_COMMIT/useful-tools/quick-sharun.sh" \
- && curl -fsSLo sharun+helper-libs-x86_64.tar \
-      "https://github.com/pkgforge-dev/Anylinux-sharun/releases/download/$SHARUN_VERSION/sharun+helper-libs-x86_64.tar" \
+ && curl -fsSLo "sharun+helper-libs-$arch.tar" \
+      "https://github.com/pkgforge-dev/Anylinux-sharun/releases/download/$SHARUN_VERSION/sharun+helper-libs-$arch.tar" \
  && curl -fsSLo appimagetool \
-      "https://github.com/pkgforge-dev/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-full-x86_64-linux" \
+      "https://github.com/pkgforge-dev/appimagetool/releases/download/$APPIMAGETOOL_VERSION/appimagetool-full-$arch-linux" \
  && printf '%s  %s\n' \
       "$QUICK_SHARUN_SHA256" quick-sharun \
-      "$SHARUN_SHA256" sharun+helper-libs-x86_64.tar \
-      "$APPIMAGETOOL_SHA256" appimagetool \
+      "$sharun_sha256" "sharun+helper-libs-$arch.tar" \
+      "$tool_sha256" appimagetool \
     | sha256sum -c - \
  && chmod 755 quick-sharun appimagetool
 

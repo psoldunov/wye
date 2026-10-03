@@ -392,9 +392,10 @@ check_appimage_libraries() {
     return
   fi
   appdir=$(dirname "$(find "$extract" -maxdepth 2 -name AppRun.sh -print -quit)")
-  loader=$(find "$appdir/lib" "$appdir/shared/lib" -maxdepth 1 -name 'ld-linux-x86-64.so.2' -print -quit 2>/dev/null)
+  # ld-linux-x86-64.so.2 or ld-linux-aarch64.so.1.
+  loader=$(find "$appdir/lib" "$appdir/shared/lib" -maxdepth 1 -name 'ld-linux-*.so.[0-9]' -print -quit 2>/dev/null)
   if [ -z "$loader" ]; then
-    fail "the AppImage has no ld-linux-x86-64.so.2 ($(head -n 1 "$logs/appimage-file.txt"))"
+    fail "the AppImage has no dynamic loader ld-linux-*.so ($(head -n 1 "$logs/appimage-file.txt"))"
     return
   fi
   libpath=$(dirname "$loader")

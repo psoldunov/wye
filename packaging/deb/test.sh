@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Install dist/wye_*_amd64.deb in a fresh Debian testing container and run
+# Install dist/wye_*_ARCH.deb in a fresh Debian testing container and run
 # packaging/smoke-test.sh against it.
 #
 #   packaging/deb/test.sh [DEB]
 #
-# DEB defaults to the newest dist/wye_*_amd64.deb (packaging/deb/build.sh
-# writes it). apt-get installs it with its Recommends, so its dependencies
+# DEB defaults to the newest dist/wye_*_ARCH.deb (packaging/deb/build.sh
+# writes it), ARCH being the machine's own Debian architecture (amd64 or
+# arm64), which the container runs too. apt-get installs it with its Recommends, so its dependencies
 # resolve from the archive exactly as on a user's machine; the test-only
 # tools (Xvfb, desktop-file-utils, dbus, ImageMagick) are installed next to
 # it, not by the package. Screenshots land in dist/screenshots/debian-*.png and the
@@ -20,9 +21,15 @@ docker=${DOCKER:-docker}
 image=${WYE_DEB_TEST_IMAGE:-debian:testing}
 dist=$root/dist
 
+case $(uname -m) in
+  x86_64) arch=amd64 ;;
+  aarch64) arch=arm64 ;;
+  *) arch=$(uname -m) ;;
+esac
+
 deb=${1:-}
 if [ -z "$deb" ]; then
-  deb=$(find "$dist" -maxdepth 1 -name 'wye_*_amd64.deb' -printf '%T@ %p\n' 2>/dev/null |
+  deb=$(find "$dist" -maxdepth 1 -name "wye_*_$arch.deb" -printf '%T@ %p\n' 2>/dev/null |
     sort -n | tail -n 1 | cut -d' ' -f2-)
 fi
 if [ -z "$deb" ] || [ ! -f "$deb" ]; then

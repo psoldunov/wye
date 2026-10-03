@@ -4,7 +4,7 @@
 # packaging/rpm/Dockerfile; by hand, from a tarball of the source tree named
 # wye-VERSION.tar.gz with a top directory wye-VERSION/:
 #
-#   rpmbuild -ba --define "wye_version 0.1.0" packaging/rpm/wye.spec
+#   rpmbuild -ba --define "wye_version 1.0.0" packaging/rpm/wye.spec
 #
 # The version is the workspace `version` of Cargo.toml, passed in as
 # wye_version, so nothing here changes per release. build.sh writes it as a
@@ -25,7 +25,8 @@ URL:            https://github.com/psoldunov/wye
 # A tag's GitHub archive has this name and top directory; build.sh makes the
 # same tarball from the working tree.
 Source0:        %{url}/archive/v%{version}/%{name}-%{version}.tar.gz
-ExclusiveArch:  x86_64
+# The architectures the release workflow builds and smoke-tests.
+ExclusiveArch:  x86_64 aarch64
 
 BuildRequires:  cargo >= 1.88
 BuildRequires:  rust >= 1.88

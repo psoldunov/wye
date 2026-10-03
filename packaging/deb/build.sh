@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Build the Wye .deb in Docker: dist/wye_<version>_amd64.deb and
-# dist/lintian.txt, owned by the calling user.
+# Build the Wye .deb in Docker: dist/wye_<version>_<arch>.deb and
+# dist/lintian.txt, owned by the calling user. <arch> is the machine's own
+# (amd64 or arm64): Docker builds natively, without emulation.
 #
 #   packaging/deb/build.sh
 #

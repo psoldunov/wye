@@ -2,8 +2,8 @@
 # Install the Wye .rpm in a fresh Fedora 44 container and smoke-test it.
 #
 # Starts a clean fedora:44 container (not the build image), installs
-# dist/wye-VERSION-1.fc44.x86_64.rpm with dnf so its dependencies resolve
-# from the Fedora repositories, adds the test-only tools, then runs
+# dist/wye-VERSION-1.fc44.ARCH.rpm (ARCH being the machine's own, x86_64 or
+# aarch64) with dnf so its dependencies resolve from the Fedora repositories, adds the test-only tools, then runs
 # packaging/smoke-test.sh from the repository mounted read-only. The
 # screenshots land in dist/screenshots/fedora-*.png and the logs in
 # dist/smoke-logs/fedora/, owned by the user running this script.
@@ -21,9 +21,10 @@ image=${WYE_RPM_TEST_IMAGE:-fedora:44}
 dist=$root/dist
 
 version=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml")
-rpm=$(find "$dist" -maxdepth 1 -name "wye-$version-1.fc*.x86_64.rpm" -print -quit 2>/dev/null)
+arch=$(uname -m)
+rpm=$(find "$dist" -maxdepth 1 -name "wye-$version-1.fc*.$arch.rpm" -print -quit 2>/dev/null)
 if [ -z "$rpm" ]; then
-  echo "test.sh: no dist/wye-$version-1.fc*.x86_64.rpm; run packaging/rpm/build.sh first" >&2
+  echo "test.sh: no dist/wye-$version-1.fc*.$arch.rpm; run packaging/rpm/build.sh first" >&2
   exit 1
 fi
 if [ ! -x "$root/packaging/smoke-test.sh" ]; then

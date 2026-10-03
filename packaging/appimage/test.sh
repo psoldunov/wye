@@ -15,8 +15,9 @@
 #
 #   packaging/appimage/test.sh [APPIMAGE]
 #
-# APPIMAGE defaults to dist/Wye-VERSION-x86_64.AppImage (build.sh writes
-# it). Screenshots land in dist/screenshots/appimage-DISTRO-*.png and the
+# APPIMAGE defaults to dist/Wye-VERSION-ARCH.AppImage for the machine's own
+# architecture (build.sh writes it); the containers run that architecture
+# too. Screenshots land in dist/screenshots/appimage-DISTRO-*.png and the
 # logs in dist/smoke-logs/appimage-DISTRO/ (DISTRO is the image tag with `:`
 # as `-`, e.g. debian-12), owned by the calling user. Exits 1 when any
 # distribution fails.
@@ -32,7 +33,7 @@ read -r -a images <<<"${WYE_APPIMAGE_TEST_IMAGES:-debian:12 debian:13 fedora:43 
 dist=$root/dist
 
 version=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\(.*\)"$/\1/p' "$root/Cargo.toml")
-appimage=${1:-$dist/Wye-$version-x86_64.AppImage}
+appimage=${1:-$dist/Wye-$version-$(uname -m).AppImage}
 if [ ! -f "$appimage" ]; then
   echo "test.sh: no $appimage; run packaging/appimage/build.sh first or pass one" >&2
   exit 1

@@ -72,16 +72,22 @@ tester, the transform script editor and the first run.
 
 ## Install
 
-Wye ships as a Nix flake with two channels:
+Wye runs on x86_64 and aarch64 (arm64). Each [GitHub
+release](https://github.com/psoldunov/wye/releases/latest) carries a `.deb`, an `.rpm` and
+an AppImage for both (see [Debian, Fedora and other
+distributions](#debian-fedora-and-other-distributions)). On NixOS, or with Nix on any
+distribution, Wye ships as a Nix flake with two channels:
 
 | Channel | What it builds | Use it when |
 |---------|----------------|-------------|
 | `release` | The latest tagged release, built by that release's own flake. | You want a version that was tagged and built in CI. This is the default once a release exists. |
 | `git` | The flake's own source, which is the latest master commit when the input tracks master. | You want the newest changes. |
 
-`nix/release.json` records the latest release. Until the first one is tagged, only the
-`git` channel exists and it is the default. Each channel is a package:
-`packages.<system>.wye-release` and `packages.<system>.wye-git` (`default` is `wye-git`).
+`nix/release.json` records the latest release: after each tag, the release workflow opens a
+pull request that writes the tag's commit and content hash there. While it records none,
+only the `git` channel exists and it is the default. Each channel is a package:
+`packages.<system>.wye-release` and `packages.<system>.wye-git` (`default` is `wye-git`),
+for `x86_64-linux` and `aarch64-linux`.
 
 Try it without installing:
 
@@ -104,7 +110,7 @@ nix run github:psoldunov/wye -- browsers
 
   outputs = { nixpkgs, home-manager, wye, ... }: {
     homeConfigurations.me = home-manager.lib.homeManagerConfiguration {
-      pkgs = nixpkgs.legacyPackages.x86_64-linux;
+      pkgs = nixpkgs.legacyPackages.x86_64-linux; # or aarch64-linux
       modules = [
         wye.homeManagerModules.default
         {
@@ -177,15 +183,31 @@ session (Wye then leaves the XDG autostart entry alone, as with home-manager). T
 module has no `settings` and does not register local HTML files (DEF-07): the
 configuration is per user, so set those in Wye's Settings window or with home-manager.
 
-### Other distributions
+### Debian, Fedora and other distributions
 
-For Debian testing and Fedora 44, build a `.deb` or `.rpm` from a checkout with Docker:
-`packaging/deb/build.sh` or `packaging/rpm/build.sh`. For any other x86_64 distribution,
-`packaging/appimage/build.sh` builds a self-contained AppImage, which sets up its desktop
-entry and D-Bus files under `~/.local` each time it starts (see
-[packaging/README.md](packaging/README.md)). There is no published package yet. With Nix
-installed, use the
-home-manager module above; it works on any distribution. `nix profile install
+Download the file for your distribution and architecture from the [latest
+release](https://github.com/psoldunov/wye/releases/latest):
+
+| Distribution | File | Install |
+|--------------|------|---------|
+| Debian testing (forky) and sid | `wye_<version>_amd64.deb`, `wye_<version>_arm64.deb` | `sudo apt install ./wye_<version>_amd64.deb` |
+| Fedora 44 | `wye-<version>-1.fc44.x86_64.rpm`, `wye-<version>-1.fc44.aarch64.rpm` | `sudo dnf install ./wye-<version>-1.fc44.x86_64.rpm` |
+| Any other | `Wye-<version>-x86_64.AppImage`, `Wye-<version>-aarch64.AppImage` | `chmod +x Wye-<version>-x86_64.AppImage`, then `./Wye-<version>-x86_64.AppImage settings` |
+
+Check a download against the release's `SHA256SUMS` with
+`sha256sum -c SHA256SUMS --ignore-missing`.
+
+The packages install the four programs, the desktop entry, the D-Bus files, the systemd
+user units and the GNOME Shell extension (installed, not enabled). They enable no user
+unit: the service starts on the first link, and at login once "Launch at login" is on in
+Settings. Older Debian and Fedora releases lack the GTK 4.22 and libadwaita 1.9 that
+`wye-gtk` needs; use the AppImage there. The AppImage bundles every library it uses and,
+each time it starts, sets up its menu entry, D-Bus files, icons and `~/.local/bin/wye`
+under `~/.local`, so keep the file where it is; `--remove-integration` undoes that.
+[packaging/README.md](packaging/README.md) has the details, and builds any of the three
+from a checkout with Docker.
+
+With Nix installed, the home-manager module above works on any distribution. `nix profile install
 github:psoldunov/wye` installs the binaries too, but systemd never looks for user units in
 a Nix profile, and the session bus finds the D-Bus files only when the profile's `share` is
 on `XDG_DATA_DIRS`. The D-Bus files name `SystemdService=`, so link the units yourself

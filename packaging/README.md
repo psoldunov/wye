@@ -1,13 +1,20 @@
 # Distribution packages
 
 Docker builds of a `.deb`, an `.rpm` and an AppImage from the checkout, and a smoke test
-that installs each one in a clean container and launches it.
+that installs each one in a clean container and launches it. Every
+[release](https://github.com/psoldunov/wye/releases) carries all three for x86_64 and
+aarch64, built and smoke-tested by GitHub Actions (see [CI and releases](#ci-and-releases)).
 
 | Package | Built on | Installs on |
 |---------|----------|-------------|
-| `dist/wye_<version>_amd64.deb` | `debian:testing` | Debian testing (forky) and sid |
-| `dist/wye-<version>-1.fc44.x86_64.rpm` | `fedora:44` | Fedora 44 |
-| `dist/Wye-<version>-x86_64.AppImage` | `archlinux:latest` | any x86_64 distribution; tested on Debian 12 and 13, Fedora 43 and 44 |
+| `dist/wye_<version>_{amd64,arm64}.deb` | `debian:testing` | Debian testing (forky) and sid |
+| `dist/wye-<version>-1.fc44.{x86_64,aarch64}.rpm` | `fedora:44` | Fedora 44 |
+| `dist/Wye-<version>-{x86_64,aarch64}.AppImage` | `archlinux:latest` (x86_64), Arch Linux ARM (aarch64) | any x86_64 or aarch64 distribution; tested on Debian 12 and 13, Fedora 43 and 44 |
+
+Each script builds for the architecture of the machine it runs on (`uname -m`, x86_64 or
+aarch64): Docker runs the build natively, without emulation, and the test containers run
+that architecture too. To build the other architecture, run the script on a machine of
+that architecture.
 
 Debian 13 (trixie) cannot build `wye-gtk`: it enables GTK 4.22 (`gnome_50`), libadwaita 1.9
 and GtkSourceView 5.18, and trixie has GTK 4.18, libadwaita 1.7 and GtkSourceView 5.16.
@@ -15,8 +22,8 @@ and GtkSourceView 5.18, and trixie has GTK 4.18, libadwaita 1.7 and GtkSourceVie
 ## Build
 
 ```sh
-packaging/deb/build.sh    # dist/wye_<version>_amd64.deb, dist/lintian.txt
-packaging/rpm/build.sh    # dist/wye-<version>-1.fc44.{x86_64,src}.rpm (+ debuginfo), dist/rpmlint.txt
+packaging/deb/build.sh    # dist/wye_<version>_<arch>.deb, dist/lintian.txt
+packaging/rpm/build.sh    # dist/wye-<version>-1.fc44.{<arch>,src}.rpm (+ debuginfo), dist/rpmlint.txt
 ```
 
 The version is the workspace `version` in `Cargo.toml`; nothing else changes per release.
@@ -80,11 +87,12 @@ to a new Qt release.
 ## AppImage
 
 ```sh
-packaging/appimage/build.sh   # dist/Wye-<version>-x86_64.AppImage
+packaging/appimage/build.sh   # dist/Wye-<version>-<arch>.AppImage
 packaging/appimage/test.sh    # fresh debian:12, debian:13, fedora:43, fedora:44
 ```
 
-One file that runs on any x86_64 distribution, built the
+One file that runs on any x86_64 (or, for the aarch64 build, any aarch64) distribution,
+built the
 [AnyLinux](https://github.com/pkgforge-dev/Anylinux-AppImages) way: `quick-sharun` bundles
 every library the four programs load, glibc and its dynamic loader included, plus Mesa (with
 llvmpipe, so both windows draw without the host's GL), the QML modules and Qt plugins
@@ -98,7 +106,12 @@ falls back to user namespaces without FUSE, and extracts to `TMPDIR` when neithe
 
 The build image is `archlinux:latest` ([`appimage/Dockerfile`](appimage/Dockerfile)), the
 base the AnyLinux tooling is made and tested on, with GTK 4.22, libadwaita 1.9, Qt 6.11 and
-KF6 6.30. The tools are pinned, each with its SHA-256 checked when the image is built:
+KF6 6.30. The official image is x86_64 only, so on aarch64 `build.sh` starts from
+`ghcr.io/pkgforge-dev/archlinux:aarch64` instead: Arch Linux ARM, packaged by the project
+behind the AnyLinux tooling, which builds its own aarch64 AppImages on it. Arch Linux ARM
+builds Arch's package recipes, so the package list is the same; `WYE_APPIMAGE_BASE`
+overrides the base. The tools are pinned per architecture, each with its SHA-256 checked
+when the image is built:
 `quick-sharun.sh` at a commit of pkgforge-dev/Anylinux-AppImages, `sharun` 3.5.0
 (pkgforge-dev/Anylinux-sharun, with the `anylinux.so` helper that keeps the bundle's
 environment away from the programs Wye launches) and `appimagetool` 0.5.2
@@ -112,8 +125,8 @@ registry and target directory live on the volumes `wye-appimage-cargo` and
 `wye-appimage-target`, and the AppImage comes out owned by you. A cold build takes about 9
 minutes once the image exists (cargo 4.5, quick-sharun 3, packing 1); a rebuild about 4.5,
 since quick-sharun always redeploys and runs each program under strace to find what it
-dlopens. Environment: `DOCKER`, `DOCKER_CONFIG`, `WYE_APPIMAGE_IMAGE`, and for the test
-`WYE_APPIMAGE_TEST_IMAGES`.
+dlopens. Environment: `DOCKER`, `DOCKER_CONFIG`, `WYE_APPIMAGE_IMAGE`, `WYE_APPIMAGE_BASE`,
+and for the test `WYE_APPIMAGE_TEST_IMAGES`.
 
 quick-sharun would also rewrite `/usr/lib` and `/usr/share` inside bundled binaries to
 `/tmp/<name>` paths fixed at build time, linked to the mount by a hook. Any local user could
@@ -130,7 +143,7 @@ about 35 more), Qt's GTK 3 platform theme (quick-sharun keeps it to load the hos
 into the bundled Qt), and plugins whose libraries the build system lacks. It then fails if
 any bundled file needs a library the AppDir lacks, or if a `/tmp` mapping hook appeared.
 
-The AppImage is about 160 MB (620 MB unpacked). Mesa's llvmpipe dominates (libLLVM 165 MB
+The x86_64 AppImage is about 160 MB (620 MB unpacked). Mesa's llvmpipe dominates (libLLVM 165 MB
 and libgallium 53 MB unpacked), then Qt and the KDE Frameworks, ICU (38 MB) and the Breeze
 icons compiled into `libKF6BreezeIcons` (25 MB). gnutls and p11-kit stay: GTK links
 `libcups`, which needs gnutls.
@@ -172,7 +185,7 @@ To undo the integration, switch off launch at login in Settings and run
 `wye extension remove` if you installed the browser manifests, then:
 
 ```sh
-./Wye-<version>-x86_64.AppImage --remove-integration
+./Wye-<version>-<arch>.AppImage --remove-integration
 ```
 
 It deletes exactly the marked files and links and nothing else.
@@ -180,8 +193,8 @@ It deletes exactly the marked files and links and nothing else.
 ### Running it on a desktop
 
 ```sh
-chmod +x Wye-<version>-x86_64.AppImage
-./Wye-<version>-x86_64.AppImage settings
+chmod +x Wye-<version>-<arch>.AppImage
+./Wye-<version>-<arch>.AppImage settings
 ```
 
 Keep the file where it is: the integration names its path, and a start from a new path
@@ -218,7 +231,9 @@ Screenshots go to `dist/screenshots/appimage-<distro>-wye-{ui,gtk}-settings.png`
 
 ### Limitations
 
-- The bundled Mesa drives Intel, AMD and the software llvmpipe renderer. Wayland compositors
+- The bundled Mesa drives the GPUs its distribution builds it for (Intel and AMD on x86_64,
+  plus the Arm drivers of Arch Linux ARM on aarch64) and the software llvmpipe renderer,
+  the only one the smoke tests use. Wayland compositors
   and X servers on the NVIDIA proprietary driver hand GL to NVIDIA's own libraries; sharun
   points GLVND at them when the `nvidia` kernel module is loaded, which is untested here.
   Software rendering always works and is enough for Wye's windows.
@@ -227,4 +242,20 @@ Screenshots go to `dist/screenshots/appimage-<distro>-wye-{ui,gtk}-settings.png`
 - Qt does not load the host's Plasma platform theme (`plasma-integration` is not bundled):
   colours and icons follow `kdeglobals` through Kirigami's desktop style, the font comes
   from fontconfig rather than from Plasma's font settings.
-- The AppImage is x86_64 only and carries no update information (zsync).
+- The AppImage carries no update information (zsync): download the next release's.
+
+## CI and releases
+
+[`.github/workflows/packages.yml`](../.github/workflows/packages.yml) runs each format's
+`build.sh` and then its `test.sh` for x86_64 on an `ubuntu-24.04` runner and for aarch64 on
+an `ubuntu-24.04-arm` runner, six jobs in all. Each job uploads its package as the artifact
+`package-<format>-<arch>`, and the screenshots, smoke-test logs and lint reports as
+`smoke-<format>-<arch>`, also when it failed. It runs on every pull request that changes
+`packaging/` or `data/`, from the Actions tab (workflow dispatch), and as part of each
+release.
+
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a pushed tag
+`vX.Y.Z`. It calls `packages.yml` and, once all six jobs passed, publishes the GitHub
+release with the six packages and their `SHA256SUMS`; a package that fails its smoke test
+is never published. A re-run of a release replaces the packages of the existing release
+and leaves its notes alone.

@@ -5,8 +5,11 @@
 # container (tracked and untracked-but-not-ignored files, as a tarball), runs
 # rpmbuild there and copies the packages out:
 #
-#   dist/wye-VERSION-1.fc44.x86_64.rpm   (and the -debuginfo/-debugsource rpms)
+#   dist/wye-VERSION-1.fc44.ARCH.rpm   (and the -debuginfo/-debugsource rpms)
 #   dist/wye-VERSION-1.fc44.src.rpm
+#
+# ARCH is the machine's own architecture, x86_64 or aarch64: Docker builds
+# natively, without emulation.
 #
 #   packaging/rpm/build.sh
 #

@@ -15,7 +15,7 @@ Each has a proposal in the spec; the proposal stands until someone decides other
 | 7 | Picker available in every target menu | Yes | [TGT-07](05-browsers.md#target-menu) |
 | 8 | Linux web app catalogue, and whether installing a desktop app changes its mapping | Verify the candidate list; opt-in only | [06](06-apps.md#service-catalogue), [APP-09](06-apps.md) |
 | 9 | Configuration format and location | TOML under `$XDG_CONFIG_HOME/wye/` | [12](12-data-model.md#storage) |
-| 10 | Packaging | Nix flake + home-manager module and AppImage first; Flatpak later and reduced | [13](13-linux-platform.md#packaging) |
+| 10 | Packaging | Native packages first, Flatpak later and reduced. Built: the Nix flake with home-manager and NixOS modules, and on each release a `.deb` (Debian testing), an `.rpm` (Fedora 44) and an AppImage, each for x86_64 and aarch64 | [13](13-linux-platform.md#packaging) |
 | 11 | Tracking-parameter dataset and licence | ClearURLs rules if the licence fits, plus a built-in list | [EXT-11](09-extras.md#behaviour) |
 | 12 | Local HTML files | Opt-in switch, default off | [DEF-07](11-url-pipeline.md#default-browser-registration) |
 | 13 | Clipboard shortcuts: full pipeline or straight to the browser | Full pipeline; the alternative variant behaves like the held key | [IN-03, IN-04](11-url-pipeline.md#entry-points) |

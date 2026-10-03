@@ -15,8 +15,8 @@
 | `crates/wye-gtk` | The GTK 4 / libadwaita host `wye-gtk` that owns `dev.soldunov.wye.Gtk` and serves `Windows1` (Settings, the script editor, the onboarding, about and history windows) and `PickerHost1` (the picker and the tray-menu popup, with gtk4-layer-shell on wlroots compositors and KDE, an undecorated window elsewhere). A D-Bus client of the service; holds no routing logic. Shares wye-ui's Qt-free models from source. |
 | `frontends/gnome-shell/` | The GNOME Shell extension `wye@dev.soldunov` (Shell 48+): owns `dev.soldunov.wye.Gnome`, serves `PickerHost1`, and draws the picker and the panel tray menu inside the Shell. |
 | `frontends/extension/` | The Firefox and Chromium browser extension: one set of files, a manifest per family. |
-| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user units (`data/systemd/wye.service.in`, `data/systemd/wye-ui.service.in`). |
-| `nix/`, `flake.nix` | Package (crane; `frontends.nix` adds the extension zips), the `programs.wye` modules for home-manager and NixOS (`hm-module.nix`, `nixos-module.nix`, shared `channel.nix`), the release record `release.json` and the checks: clippy, tests (including `crates/wye/tests/e2e.rs`), fmt, deny, machete, source and installed desktop entry, installed D-Bus files, qmllint, the UI self-test, the extension manifests, module evaluation for both channels and nixfmt. Also the dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
+| `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`), the desktop entry `dev.soldunov.wye.desktop`, the hicolor icon, and templates with `@bindir@` for the D-Bus service files (`data/dbus/`) and the systemd user units (`data/systemd/wye.service.in`, `data/systemd/wye-ui.service.in`, `data/systemd/wye-gtk.service.in`), and the KWin query script `data/kwin/wye-query.js`. |
+| `nix/`, `flake.nix` | Package (crane; `frontends.nix` adds the extension zips), the `programs.wye` modules for home-manager and NixOS (`hm-module.nix`, `nixos-module.nix`, shared `channel.nix`), the release record `release.json` and the checks: clippy, tests (including `crates/wye/tests/e2e.rs`), fmt, deny, machete, source and installed desktop entry, installed D-Bus files, qmllint, the UI self-test, the GTK self-test, the extension manifests, module evaluation for both channels and nixfmt. Also the dev shell. The package rewrites the installed desktop entry's `Exec` to its own absolute `bin/wye` and adds `TryExec`; the source entry in `data/` stays generic. |
 
 ## Design decisions
 
@@ -473,8 +473,6 @@ at run time by `wye-native-host --install`, not by Nix.
 - Focused window and pointer on Sway and Hyprland (compositor IPC); held keys there come
   from layer shell only
 - Global shortcuts by X11 key grabs; shortcuts need the `GlobalShortcuts` portal
-- An AppImage (decision 5); Nix is the only package, through the flake and the home-manager
-  and NixOS modules
 - The browser extension for Flatpak and Snap browsers: their sandbox cannot start
   `wye-native-host` (profile discovery does cover the Flatpak and Snap builds listed in
   `crates/wye-desktop/src/family.rs`)

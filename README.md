@@ -235,7 +235,7 @@ out and in, or remove the leftover applet by hand.
 
 ```sh
 wye open [--pick | --alternative] <url>...
-wye test <url> [--source <desktop-id-or-exe>] [--keys <Shift+Ctrl…>] [--entry handler|clipboard|extension|cli] [--locked]
+wye test <url> [--pick | --alternative] [--source <desktop-id-or-exe>] [--keys <Shift+Ctrl…>] [--entry handler|clipboard|extension|cli] [--locked]
 wye browsers
 wye default [status|set|unset]
 wye config [path|check]

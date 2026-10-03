@@ -3,7 +3,7 @@
 The Wye service (`wye service`) owns the session-bus name `dev.soldunov.wye` and exports
 one object. Every frontend talks to it only through this API: the UI host `wye-ui`, the
 StatusNotifierItem tray inside the service, the `wye` CLI, the browser extension's
-native-messaging host, and later a GNOME Shell extension.
+native-messaging host, and the GNOME Shell extension.
 
 - Bus name: `dev.soldunov.wye`
 - Object path: `/dev/soldunov/wye`

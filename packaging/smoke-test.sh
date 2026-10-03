@@ -1,17 +1,29 @@
 #!/usr/bin/env bash
-# Smoke-test an installed Wye package (.deb, .rpm) inside a clean container.
+# Smoke-test an installed Wye package (.deb, .rpm) or the Wye AppImage inside
+# a clean container.
 #
-# Distribution-agnostic: the wrapper (packaging/deb/test.sh, the .rpm one)
-# installs the package plus the test-only tools this script needs, then
-# runs it as root in the container:
+# Distribution-agnostic: the wrapper (packaging/deb/test.sh, the .rpm one,
+# packaging/appimage/test.sh) installs the package plus the test-only tools
+# this script needs, then runs it as root in the container:
 #
 #   packaging/smoke-test.sh [OUT_DIR]
+#   WYE_APPIMAGE=/path/to/Wye.AppImage packaging/smoke-test.sh [OUT_DIR]
 #
 # Test-only tools: Xvfb, desktop-file-validate, dbus-run-session, ldd and
 # one of ImageMagick's `import`, `scrot` or `xwd` + `convert` for the
 # screenshots. OUT_DIR (default $WYE_SMOKE_OUT, else /out) receives
 # screenshots/wye-ui-settings.png, screenshots/wye-gtk-settings.png and the
 # logs. PREFIX (default /usr) is where the package installed Wye.
+#
+# With WYE_APPIMAGE set, the programs run through the AppImage's multicall
+# (links named wye, wye-ui… pointing at it, its first argument, its own
+# name), the session files checked are the ones the AppImage writes under
+# this test's $XDG_DATA_HOME and ~/.local/bin on its first launch, and the
+# AppImage-only checks run too: files it did not write survive, a second
+# launch rewrites nothing, the live session activates the UI hosts through
+# the integrated D-Bus files, and --remove-integration removes exactly what
+# it wrote. The container needs no FUSE when APPIMAGE_EXTRACT_AND_RUN=1 is
+# exported.
 #
 # Every check prints PASS, FAIL or SKIP; the script exits 1 when any check
 # fails.
@@ -45,6 +57,15 @@ unset WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS LC_ALL
 export LANG=C.UTF-8
 
 binaries=(wye wye-native-host wye-ui wye-gtk)
+
+# AppImage mode: the programs are links named after them, as the AppImage
+# makes in ~/.local/bin, so each one runs through its multicall.
+appimage=${WYE_APPIMAGE:-}
+if [ -n "$appimage" ]; then
+  bindir=$scratch/programs
+  mkdir -p "$bindir"
+  for binary in "${binaries[@]}"; do ln -s "$appimage" "$bindir/$binary"; done
+fi
 
 # a. Every shared library of every binary resolves.
 check_libraries() {
@@ -280,11 +301,206 @@ check_live() {
   live_session gnome wye-gtk 92
 }
 
-check_libraries
-check_cli
-check_session_files
-check_self_tests
-check_live
+# AppImage a. The files the AppImage writes on its first launch.
+integrated_files() {
+  printf '%s\n' \
+    "$XDG_DATA_HOME/applications/dev.soldunov.wye.desktop" \
+    "$XDG_DATA_HOME/dbus-1/services/dev.soldunov.wye.service" \
+    "$XDG_DATA_HOME/dbus-1/services/dev.soldunov.wye.Ui.service" \
+    "$XDG_DATA_HOME/dbus-1/services/dev.soldunov.wye.Gtk.service" \
+    "$XDG_DATA_HOME/icons/hicolor/24x24/apps/dev.soldunov.wye.svg" \
+    "$XDG_DATA_HOME/icons/hicolor/32x32/apps/dev.soldunov.wye.svg" \
+    "$XDG_DATA_HOME/icons/hicolor/symbolic/apps/dev.soldunov.wye-symbolic.svg" \
+    "$XDG_DATA_HOME/icons/hicolor/symbolic/apps/dev.soldunov.wye-picker-symbolic.svg" \
+    "$XDG_DATA_HOME/gnome-shell/extensions/wye@dev.soldunov/metadata.json" \
+    "$HOME/.local/bin/wye" \
+    "$HOME/.local/bin/wye-native-host"
+}
+
+# Files planted where the AppImage would write: a symlink into a store, as
+# home-manager makes, and a plain file.
+foreign_link=$XDG_DATA_HOME/icons/hicolor/scalable/apps/dev.soldunov.wye.svg
+foreign_link_target=$scratch/nix/store/00000000000000000000000000000000-home-manager-files/dev.soldunov.wye.svg
+foreign_file=$XDG_DATA_HOME/icons/hicolor/16x16/apps/dev.soldunov.wye.svg
+foreign_content='<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"/>'
+
+plant_foreign() {
+  mkdir -p "${foreign_link%/*}" "${foreign_file%/*}" "${foreign_link_target%/*}"
+  echo "$foreign_content" >"$foreign_link_target"
+  rm -f "$foreign_link" "$foreign_file"
+  ln -s "$foreign_link_target" "$foreign_link"
+  echo "$foreign_content" >"$foreign_file"
+}
+
+# Whether both planted files are as they were planted.
+foreign_intact() {
+  [ "$(readlink "$foreign_link")" = "$foreign_link_target" ] &&
+    [ "$(cat "$foreign_file" 2>/dev/null)" = "$foreign_content" ]
+}
+
+# AppImage b. The first launch integrates the AppImage and leaves the planted
+# files alone; a second one rewrites nothing. The planted files go away
+# afterwards (the AppImage then writes its own icons there on its next
+# launch) so the other checks see a clean session, and come back for
+# check_appimage_removal.
+check_appimage_launch() {
+  local version file missing=() changed
+  plant_foreign
+
+  if version=$("$appimage" --version 2>"$logs/first-launch.txt"); then
+    pass "first launch, $appimage --version: $version"
+  else
+    fail "first launch, $appimage --version: $(tail -n 1 "$logs/first-launch.txt")"
+  fi
+  while IFS= read -r file; do
+    if [ ! -e "$file" ]; then missing+=("$file"); fi
+  done < <(integrated_files)
+  if [ "${#missing[@]}" -eq 0 ]; then
+    pass "first launch integrates the AppImage ($(integrated_files | wc -l) files and links)"
+  else
+    fail "first launch did not write ${missing[*]}"
+  fi
+  if foreign_intact && grep -qF "$foreign_link" "$logs/first-launch.txt" &&
+    grep -qF "$foreign_file" "$logs/first-launch.txt"; then
+    pass "files the AppImage did not write are left alone, with a warning: $(grep -m 1 'left alone' "$logs/first-launch.txt")"
+  else
+    fail "a planted file was changed or not reported ($(tail -n 1 "$logs/first-launch.txt"))"
+  fi
+
+  touch "$scratch/before-second-launch"
+  sleep 1.1
+  "$appimage" --version >/dev/null 2>"$logs/second-launch.txt"
+  changed=$(find "$XDG_DATA_HOME" "$HOME/.local/bin" \( -type f -o -type l \) \
+    -newer "$scratch/before-second-launch" 2>/dev/null)
+  if [ -z "$changed" ]; then
+    pass "second launch rewrites nothing"
+  else
+    fail "second launch rewrote $(echo "$changed" | tr '\n' ' ')"
+  fi
+  rm -f "$foreign_link" "$foreign_file"
+}
+
+# AppImage c. Every library of every program comes from the AppImage: its
+# own dynamic loader lists them, with the library path sharun gives it and
+# without the host's ld.so.cache.
+check_appimage_libraries() {
+  local extract=$scratch/extract appdir loader libpath binary listing outside
+  mkdir -p "$extract"
+  file -L "$appimage" >"$logs/appimage-file.txt" 2>&1
+  if ! (cd "$extract" && "$appimage" --appimage-extract >"$logs/appimage-extract.txt" 2>&1); then
+    fail "--appimage-extract: $(tail -n 1 "$logs/appimage-extract.txt")"
+    return
+  fi
+  appdir=$(dirname "$(find "$extract" -maxdepth 2 -name AppRun.sh -print -quit)")
+  loader=$(find "$appdir/lib" "$appdir/shared/lib" -maxdepth 1 -name 'ld-linux-x86-64.so.2' -print -quit 2>/dev/null)
+  if [ -z "$loader" ]; then
+    fail "the AppImage has no ld-linux-x86-64.so.2 ($(head -n 1 "$logs/appimage-file.txt"))"
+    return
+  fi
+  libpath=$(dirname "$loader")
+  # lib.path has no newline after its last entry.
+  while IFS= read -r dir || [ -n "$dir" ]; do
+    libpath=$libpath:$(dirname "$loader")/${dir#+}
+  done <"$(dirname "$loader")/lib.path"
+  for binary in "${binaries[@]}"; do
+    listing=$("$loader" --inhibit-cache --library-path "$libpath" --list "$appdir/shared/bin/$binary" 2>&1)
+    echo "$listing" >"$logs/libraries-$binary.txt"
+    outside=$(echo "$listing" | grep -E 'not found|=> /' | grep -vF "=> $appdir/")
+    if [ -n "$outside" ]; then
+      fail "libraries of $binary: $(echo "$outside" | head -n 1 | tr -s ' \t' ' ')"
+    else
+      pass "libraries of $binary: all $(echo "$listing" | grep -c '=>') from the AppImage"
+    fi
+  done
+}
+
+# AppImage d. The integrated desktop entry validates and runs the AppImage;
+# the D-Bus services run it without SystemdService=; the links point at it;
+# no other Wye D-Bus service file exists, so the live session can only
+# activate through these.
+check_appimage_session_files() {
+  local entry=$XDG_DATA_HOME/applications/dev.soldunov.wye.desktop file program exec link
+  if desktop-file-validate "$entry" >"$logs/desktop-file-validate.txt" 2>&1; then
+    pass "desktop-file-validate $entry"
+  else
+    fail "desktop-file-validate: $(head -n 1 "$logs/desktop-file-validate.txt")"
+  fi
+  local wrong=
+  for exec in "TryExec=$appimage" "Exec=\"$appimage\" open %U" \
+    "Exec=\"$appimage\" settings" "Exec=\"$appimage\" clipboard"; do
+    grep -qxF "$exec" "$entry" || wrong="$wrong${wrong:+, }no '$exec'"
+  done
+  if [ -z "$wrong" ]; then
+    pass "desktop entry: TryExec and the three Exec lines run \"$appimage\""
+  else
+    fail "desktop entry: $wrong"
+  fi
+  for file in dev.soldunov.wye.service:service dev.soldunov.wye.Ui.service:wye-ui dev.soldunov.wye.Gtk.service:wye-gtk; do
+    program=${file#*:}
+    file=$XDG_DATA_HOME/dbus-1/services/${file%:*}
+    exec=$(grep '^Exec=' "$file" 2>/dev/null)
+    if [ "$exec" != "Exec='$appimage' $program" ]; then
+      fail "$file: ${exec:-no Exec}"
+    elif grep -q '^SystemdService=' "$file"; then
+      fail "$file names a systemd unit: $(grep '^SystemdService=' "$file")"
+    else
+      pass "$file: $exec, no SystemdService="
+    fi
+  done
+  for link in "$HOME/.local/bin/wye" "$HOME/.local/bin/wye-native-host"; do
+    if [ "$(readlink "$link")" = "$appimage" ]; then
+      pass "$link -> $appimage"
+    else
+      fail "$link -> $(readlink "$link" || echo nothing)"
+    fi
+  done
+  local others
+  others=$(find /usr/share/dbus-1/services /usr/local/share/dbus-1/services \
+    -name 'dev.soldunov.wye*' 2>/dev/null)
+  if [ -z "$others" ]; then
+    pass "no Wye D-Bus service file outside \$XDG_DATA_HOME"
+  else
+    fail "Wye D-Bus service file outside \$XDG_DATA_HOME: $(echo "$others" | head -n 1)"
+  fi
+}
+
+# AppImage e. --remove-integration removes everything the AppImage wrote and
+# nothing else: the planted files are back where it wrote its own icons
+# (a user who installs Wye with home-manager later), and must survive.
+check_appimage_removal() {
+  local file left=()
+  plant_foreign
+  if ! "$appimage" --remove-integration >"$logs/remove-integration.txt" 2>&1; then
+    fail "--remove-integration: $(tail -n 1 "$logs/remove-integration.txt")"
+    return
+  fi
+  while IFS= read -r file; do
+    if [ -e "$file" ] || [ -L "$file" ]; then left+=("$file"); fi
+  done < <(integrated_files)
+  if [ "${#left[@]}" -ne 0 ]; then
+    fail "--remove-integration left ${left[*]}"
+  elif ! foreign_intact; then
+    fail "--remove-integration touched a file it did not write"
+  else
+    pass "--remove-integration removed the $(grep -c '^removed ' "$logs/remove-integration.txt") files it wrote, not the planted ones"
+  fi
+}
+
+if [ -n "$appimage" ]; then
+  check_appimage_launch
+  check_appimage_libraries
+  check_cli
+  check_appimage_session_files
+  check_self_tests
+  check_live
+  check_appimage_removal
+else
+  check_libraries
+  check_cli
+  check_session_files
+  check_self_tests
+  check_live
+fi
 
 if [ "$failures" -gt 0 ]; then
   echo "smoke-test: $failures check(s) failed; logs in $logs"

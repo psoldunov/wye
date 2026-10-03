@@ -180,9 +180,11 @@ configuration is per user, so set those in Wye's Settings window or with home-ma
 ### Other distributions
 
 For Debian testing and Fedora 44, build a `.deb` or `.rpm` from a checkout with Docker:
-`packaging/deb/build.sh` or `packaging/rpm/build.sh` (see
-[packaging/README.md](packaging/README.md)). There is no published package yet (an
-AppImage is planned). With Nix installed, use the
+`packaging/deb/build.sh` or `packaging/rpm/build.sh`. For any other x86_64 distribution,
+`packaging/appimage/build.sh` builds a self-contained AppImage, which sets up its desktop
+entry and D-Bus files under `~/.local` each time it starts (see
+[packaging/README.md](packaging/README.md)). There is no published package yet. With Nix
+installed, use the
 home-manager module above; it works on any distribution. `nix profile install
 github:psoldunov/wye` installs the binaries too, but systemd never looks for user units in
 a Nix profile, and the session bus finds the D-Bus files only when the profile's `share` is

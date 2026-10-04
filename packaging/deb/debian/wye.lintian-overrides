@@ -1,0 +1,5 @@
+# Wye never runs sensible-browser. The name is in the loop guard's list of
+# openers (crates/wye-desktop/src/loop_guard.rs, OPENERS): programs that would
+# hand a link straight back to the default browser, which Wye refuses to
+# launch. Lintian sees the string in the binaries and assumes a call.
+wye: missing-depends-on-sensible-utils sensible-browser [usr/bin/*]

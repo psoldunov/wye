@@ -52,7 +52,7 @@ rule or mapping.
 | Rules | ordered rules |
 | Extras | strip tracking on open; strip tracking on copy; strip `mailto:` on copy; force HTTPS; Songlink on copy |
 | Advanced | expand URLs; expansion services and limits; global transform (enabled, script); global shortcuts; history enabled; force picker from extension; bypass key; frontend (`advanced.frontend`: `auto`, `kde`, `gnome`; default `auto`, an unknown value reads as `auto` with a warning; [ADV-12](10-advanced.md#interface)) |
-| Internal | dismissed callouts; last settings page; onboarding done; previous default browser |
+| Internal | dismissed callouts; last settings page; onboarding done; previous default browser; extension host manifests removed by the user ([BEXT-04](18-onboarding.md)) |
 
 ## Storage
 

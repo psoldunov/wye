@@ -10,8 +10,9 @@
 {
   # The unpacked extension of each browser family and one zip of each, as
   # `frontends/extension/build.sh` assembles them. Wye writes the
-  # native-messaging manifests itself at run time (`wye-native-host
-  # --install`); nothing here touches a browser's directories.
+  # native-messaging manifests itself at run time (the service at every
+  # start, or `wye extension install`); nothing here touches a browser's
+  # directories.
   extension = stdenvNoCC.mkDerivation {
     pname = "wye-extension";
     inherit version;

@@ -263,7 +263,9 @@ wye extension install|remove
 - `wye debug probe` prints the held modifier keys, the pointer position and the focused
   app, which is what a real session provides and a test cannot fake. It helps when a key
   binding does not fire.
-- `wye extension install` writes the browser extension's host manifests.
+- `wye extension install` writes the browser extension's host manifests now. The service
+  also writes them each time it starts and when a new browser's directory appears;
+  `wye extension remove` deletes them and stops that.
 
 ## Configuration
 
@@ -299,12 +301,14 @@ The extension adds **Open Link with Wye** and **Open Page with Wye** to the cont
 a toolbar button and the `Alt+Shift+W` shortcut. It talks to Wye through the
 native-messaging host `wye-native-host`, which the package installs next to `wye`.
 
-Build the extension and load it:
+Wye's service tells every detected browser where the host is each time it starts, and a
+browser first run later as soon as its directory appears, so start Wye once and restart
+the browser (`wye extension install` does it at once). Then build the
+extension and load it:
 
 ```sh
 nix build github:psoldunov/wye#extension
 ls result/share/wye/extension   # firefox/ chromium/ and one zip of each
-wye extension install           # tell every detected browser where the host is
 ```
 
 Details, permanent installs and the message format are in

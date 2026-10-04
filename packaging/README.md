@@ -169,8 +169,8 @@ temporary file, then `mv`), in about 20 ms:
   the packages do.
 - `~/.local/bin/wye` and `~/.local/bin/wye-native-host`, symlinks to the AppImage, and
   `~/.local/bin` first on the `PATH` of everything the AppImage starts. The service writes
-  the launch-at-login entry with the `wye` it finds on `PATH`, and `wye extension install`
-  names the `wye-native-host` it finds there; without the links both would record the
+  the launch-at-login entry with the `wye` it finds on `PATH`, and the browser host manifests
+  (at each start, when a browser's directory appears, or on `wye extension install`) name the `wye-native-host` it finds there; without the links both would record the
   AppImage's temporary mount point. Browsers start the native host from its manifest
   without arguments, hence a link with that name.
 
@@ -205,7 +205,8 @@ The AppImage is a multicall binary. Through a link, the link's name picks the pr
 
 To undo the integration, make another browser the default (the desktop's default-browser
 setting otherwise names a menu entry that no longer exists), switch off launch at login in
-Settings and run `wye extension remove` if you installed the browser manifests, then:
+Settings and run `wye extension remove` (the service writes the browser manifests itself, so
+they exist unless you opted out), then:
 
 ```sh
 ./Wye-<version>-<arch>.AppImage --remove-integration
@@ -280,11 +281,10 @@ Screenshots go to `dist/screenshots/appimage-<distro>-wye-{ui,gtk}-settings.png`
 `build.sh` and then its `test.sh` for x86_64 on an `ubuntu-24.04` runner and for aarch64 on
 an `ubuntu-24.04-arm` runner, six jobs in all. Each job uploads its package as the artifact
 `package-<format>-<arch>`, and the screenshots, smoke-test logs and lint reports as
-`smoke-<format>-<arch>`, also when it failed. It runs on every pull request that changes
-`packaging/` or `data/` (GitHub matches those paths against the pull request's whole diff,
-so every later push to such a pull request runs it again, cancelling the older run), from
-the Actions tab (workflow dispatch), and as part of each release. Other pull requests run
-only `ci.yml` and `rust-doctor.yml`.
+`smoke-<format>-<arch>`, also when it failed. It runs as part of each release and from the
+Actions tab (workflow dispatch); pull requests do not run it, so a change to `packaging/`
+or `data/` is checked by dispatching it on the branch (or by running the scripts locally).
+Pull requests run only `ci.yml` and `rust-doctor.yml`.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a pushed tag
 `vX.Y.Z`. It calls `packages.yml` and, once all six jobs passed, publishes the GitHub

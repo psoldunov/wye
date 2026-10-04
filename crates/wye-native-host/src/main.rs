@@ -4,11 +4,12 @@
 //! The browser starts it with its own arguments and talks to it over stdin
 //! and stdout; anything written to stderr ends up in the browser's log.
 //! `wye-native-host --install` writes the host manifests of every detected
-//! browser, `--remove` deletes them (as `wye extension install|remove` do).
+//! browser, `--remove` deletes them and stops the service from writing them
+//! again at start (as `wye extension install|remove` do).
 
 use std::ffi::OsString;
 use std::io::Write as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use wye_desktop::xdg::XdgDirs;
@@ -46,11 +47,13 @@ fn main() -> ExitCode {
     let args: Vec<OsString> = std::env::args_os().skip(1).collect();
     let result = match mode(&args) {
         Mode::Serve => run_host(),
-        Mode::Install => with_xdg(|xdg| {
+        Mode::Install => with_xdg(|xdg, state| {
             let exe = std::env::current_exe().ok();
-            install::install(&mut std::io::stdout().lock(), xdg, exe.as_deref())
+            install::install(&mut std::io::stdout().lock(), xdg, state, exe.as_deref())
         }),
-        Mode::Remove => with_xdg(|xdg| install::remove(&mut std::io::stdout().lock(), xdg)),
+        Mode::Remove => {
+            with_xdg(|xdg, state| install::remove(&mut std::io::stdout().lock(), xdg, state))
+        }
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -77,9 +80,13 @@ fn run_host() -> Result<(), String> {
     .map_err(|error| error.to_string())
 }
 
-fn with_xdg(work: impl FnOnce(&XdgDirs) -> Result<(), String>) -> Result<(), String> {
+/// Run `work` with the session's XDG directories and the state file the
+/// CLI and the service use (`$XDG_STATE_HOME/wye/state.toml`).
+fn with_xdg(work: impl FnOnce(&XdgDirs, &Path) -> Result<(), String>) -> Result<(), String> {
     let xdg = XdgDirs::from_env().map_err(|error| error.to_string())?;
-    work(&xdg)
+    let state_home = std::env::var_os("XDG_STATE_HOME").map(PathBuf::from);
+    let state = wye_desktop::state::path(&xdg.home, state_home.as_deref());
+    work(&xdg, &state)
 }
 
 #[cfg(test)]

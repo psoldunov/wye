@@ -12,6 +12,7 @@ pub mod clipboard;
 pub mod config;
 pub mod default_browser;
 pub mod expansion;
+pub mod extension;
 pub mod history;
 pub mod inventory;
 pub mod link;

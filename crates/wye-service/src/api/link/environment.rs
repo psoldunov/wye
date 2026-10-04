@@ -40,13 +40,10 @@ impl Environment {
         lookup: impl Fn(&str) -> Option<OsString>,
     ) -> Result<Self, wye_desktop::NoHomeError> {
         let xdg = XdgDirs::from_lookup(&lookup)?;
-        let state_home = lookup("XDG_STATE_HOME")
-            .map(PathBuf::from)
-            .filter(|path| path.is_absolute())
-            .unwrap_or_else(|| xdg.home.join(".local").join("state"));
+        let state_home = lookup("XDG_STATE_HOME").map(PathBuf::from);
         Ok(Self {
             config: xdg.config_home.join("wye").join("config.toml"),
-            state: state_home.join("wye").join("state.toml"),
+            state: wye_desktop::state::path(&xdg.home, state_home.as_deref()),
             proc_root: PathBuf::from("/proc"),
             xdg,
         })

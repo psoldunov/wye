@@ -1,6 +1,8 @@
 //! `wye extension install|remove`: write or delete the native-messaging
 //! host manifests the browser extension needs (BEXT-04), with the same
-//! code as `wye-native-host --install|--remove`.
+//! code as `wye-native-host --install|--remove`. The service writes them
+//! itself at every start; `remove` also stops that (`extension-host-removed`
+//! in the state file) and `install` turns it back on.
 
 use std::process::ExitCode;
 
@@ -16,9 +18,9 @@ pub fn run(ctx: &Context, console: &mut Console<'_>, action: ExtensionAction) ->
     let result = match action {
         ExtensionAction::Install => {
             let exe = std::env::current_exe().ok();
-            manifests::install(&mut console.out, &ctx.xdg, exe.as_deref())
+            manifests::install(&mut console.out, &ctx.xdg, &ctx.paths.state, exe.as_deref())
         }
-        ExtensionAction::Remove => manifests::remove(&mut console.out, &ctx.xdg),
+        ExtensionAction::Remove => manifests::remove(&mut console.out, &ctx.xdg, &ctx.paths.state),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,

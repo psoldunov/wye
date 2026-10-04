@@ -56,7 +56,9 @@ pub enum Command {
         #[command(subcommand)]
         action: DebugAction,
     },
-    /// Connect the browser extension to Wye (BEXT-04).
+    /// Connect the browser extension to Wye (BEXT-04). The service writes
+    /// the host manifests itself when it starts; these write or remove them
+    /// now.
     Extension {
         #[command(subcommand)]
         action: ExtensionAction,
@@ -65,9 +67,11 @@ pub enum Command {
 
 #[derive(Debug, Clone, Copy, Subcommand)]
 pub enum ExtensionAction {
-    /// Write the native-messaging host manifest for every detected browser.
+    /// Write the native-messaging host manifest for every detected browser,
+    /// and let the service keep them current again after `remove`.
     Install,
-    /// Delete the manifests `install` wrote.
+    /// Delete the manifests and stop the service from writing them again,
+    /// until `install`.
     Remove,
 }
 

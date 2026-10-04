@@ -12,7 +12,9 @@ picker opens unless the bypass key (ADV-11, default Alt) is held.
   extension-shortcuts page (BEXT-02).
 - Options page: **Close the tab after sending the page to Wye** (BEXT-03).
 - When Wye's helper is missing, the toolbar button opens a popup that says so
-  and how to install it (BEXT-06).
+  and how to set it up (BEXT-06). When the helper is installed but fails (it
+  crashes, or Wye answers with an error), the badge shows `!` and the tooltip
+  gives the reason; the next successful send clears it.
 
 Firefox reports the keys held during a click, so the bypass key and the
 alternative-browser key work from the context menu and the toolbar button
@@ -36,26 +38,36 @@ service when it is not running.
 
 ## Installing the host
 
-Browsers find the host through a manifest file in their own directory. Wye
-writes one for every browser it finds:
+Browsers find the host through a manifest file in their own directory. The Wye
+service writes one for every browser it finds, refreshes them each time it
+starts, and writes one for a browser as soon as its directory appears (BEXT-04).
+It starts at login, so after installing Wye you only start Wye once, restart the
+browser and install the extension. Nothing else to run.
+
+To manage the manifests by hand:
 
 ```sh
-wye extension install   # write the manifests
-wye extension remove    # delete them
+wye extension install   # write the manifests now, and let the service manage them again
+wye extension remove    # delete them, and stop the service from writing them
 ```
 
-`wye-native-host --install` and `--remove` do the same.
+`remove` records an opt-out (`extension-host-removed = true` in
+`$XDG_STATE_HOME/wye/state.toml`) so the service does not reinstall the
+manifests; `install` clears it. `wye-native-host --install` and `--remove` are
+aliases of the two commands.
 
 | Browser family | Manifest directory |
 |---|---|
 | Chrome, Chromium, Brave, Vivaldi, Edge, Thorium, Helium | `~/.config/<browser>/NativeMessagingHosts/` |
-| Firefox (and forks that use `~/.mozilla`) | `~/.mozilla/native-messaging-hosts/` |
-| LibreWolf, Waterfox, Floorp, Zen | `~/.<browser>/native-messaging-hosts/` |
+| Firefox, Zen (detected by `~/.zen`, which reads Firefox's directory) | `~/.mozilla/native-messaging-hosts/` |
+| LibreWolf, Waterfox, Floorp | `~/.<browser>/native-messaging-hosts/` |
 
-A manifest is written only where the browser's directory exists, so start
-each browser once before installing. The manifest names the host by the path
-found on `PATH` (for example `/etc/profiles/per-user/<you>/bin/wye-native-host`
-on NixOS), which survives upgrades; run `--install` again if Wye moved.
+A manifest is written only where the browser's directory exists; a browser
+first run while Wye runs gets its manifest a few seconds later. A symlink in a
+manifest's place (home-manager, for example) is left alone, by `install` and
+`remove` too. The manifest names the host by the path found on `PATH` (for example
+`/etc/profiles/per-user/<you>/bin/wye-native-host` on NixOS), which survives
+upgrades; the service rewrites it at its next start if Wye moved.
 
 Flatpak and Snap browsers are not supported: their sandbox cannot start a
 program outside it.

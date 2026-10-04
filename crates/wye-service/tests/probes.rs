@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use script::Scene;
 use serde_json::{Value, json};
-use support::{PrivateBus, eventually};
+use support::{Desktop, PrivateBus, eventually};
 use wye_api::names::{KWIN_INTERFACE, OBJECT_PATH};
 use wye_api::picker::Placement;
 use wye_service::ServiceContext;
@@ -192,6 +192,8 @@ struct Setup {
     helper: Arc<KWinHelper>,
     log: Arc<Mutex<Log>>,
     scripts: tempfile::TempDir,
+    /// The service's files: never the real home directory.
+    _desktop: Desktop,
     _service: zbus::Connection,
     _kwin: zbus::Connection,
     _bus: PrivateBus,
@@ -235,6 +237,8 @@ async fn setup(behaviour: Behaviour, timeout: Duration) -> Option<Setup> {
         ..base
     };
     let ctx = ServiceContext::new(platform);
+    let desktop = Desktop::new();
+    run::use_environment(&ctx, desktop.environment());
     run::start(&service, &ctx)
         .await
         .expect("the service starts");
@@ -242,6 +246,7 @@ async fn setup(behaviour: Behaviour, timeout: Duration) -> Option<Setup> {
         helper,
         log,
         scripts,
+        _desktop: desktop,
         _service: service,
         _kwin: kwin,
         _bus: bus,

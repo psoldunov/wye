@@ -1,11 +1,14 @@
 //! File watchers: the configuration directory (reload, SET-06),
 //! `mimeapps.list` and `kdeglobals` (DEF-03), application directories and
-//! browser profile files (DISC-02).
+//! browser profile files (DISC-02), and the browsers' top-level directories
+//! in the home and configuration directories (extension host manifests,
+//! BEXT-04).
 //!
 //! One notify watcher per environment, rebuilt when the environment
 //! changes, a watched directory appears or a profile symlink moves. Events
-//! are debounced per kind: 100 ms for the configuration, 500 ms for the
-//! rest, so an editor's save or a package switch is handled once.
+//! are debounced per kind: 100 ms for the configuration, 2 s for a new
+//! browser directory, 500 ms for the rest, so an editor's save or a package
+//! switch is handled once.
 
 mod plan;
 
@@ -28,6 +31,10 @@ use crate::context::{ServiceContext, blocking};
 const CONFIG_DEBOUNCE: Duration = Duration::from_millis(100);
 /// Quiet time before apps are rescanned or the registration is checked.
 const INVENTORY_DEBOUNCE: Duration = Duration::from_millis(500);
+/// Quiet time before the extension's host manifests are written for a new
+/// browser directory: a browser creates `~/.config/BraveSoftware` and then
+/// `Brave-Browser` in it, or `~/.mozilla` and then `firefox/` (BEXT-04).
+const EXTENSION_HOSTS_DEBOUNCE: Duration = Duration::from_secs(2);
 /// How often the files are checked when no watcher can be started.
 const POLL_EVERY: Duration = Duration::from_secs(2);
 
@@ -77,11 +84,11 @@ async fn watch(ctx: &ServiceContext, environment: Arc<Environment>) {
                 tracing::warn!(every = ?POLL_EVERY, "cannot watch files; checking them every few seconds instead");
                 polling = true;
             }
-            catch_up(ctx).await;
-            poll(ctx, &plan).await;
+            catch_up(ctx, &environment).await;
+            poll(ctx, &environment, &plan).await;
             continue;
         };
-        catch_up(ctx).await;
+        catch_up(ctx, &environment).await;
         let mut pending: BTreeMap<Kind, Instant> = BTreeMap::new();
         loop {
             let next = pending.values().min().copied();
@@ -106,7 +113,7 @@ async fn watch(ctx: &ServiceContext, environment: Arc<Environment>) {
                         .map(|(kind, _)| *kind)
                         .collect();
                     pending.retain(|_, deadline| *deadline > now);
-                    if handle(ctx, &due).await {
+                    if handle(ctx, &environment, &due).await {
                         break;
                     }
                 }
@@ -117,7 +124,7 @@ async fn watch(ctx: &ServiceContext, environment: Arc<Environment>) {
 
 /// Check `plan`'s files every [`POLL_EVERY`] and act on what changed;
 /// returns when the watchers must be rebuilt.
-async fn poll(ctx: &ServiceContext, plan: &Plan) {
+async fn poll(ctx: &ServiceContext, environment: &Arc<Environment>, plan: &Plan) {
     let paths = plan.polled();
     let mut seen = stamps(paths.clone()).await;
     loop {
@@ -129,7 +136,9 @@ async fn poll(ctx: &ServiceContext, plan: &Plan) {
             .flat_map(|(path, _)| plan.classify(path))
             .collect();
         seen = now;
-        if !kinds.is_empty() && handle(ctx, &kinds.into_iter().collect::<Vec<_>>()).await {
+        if !kinds.is_empty()
+            && handle(ctx, environment, &kinds.into_iter().collect::<Vec<_>>()).await
+        {
             return;
         }
     }
@@ -167,12 +176,13 @@ const fn debounce(kind: Kind) -> Duration {
     match kind {
         Kind::Config => CONFIG_DEBOUNCE,
         Kind::Registration | Kind::Inventory | Kind::Rearm => INVENTORY_DEBOUNCE,
+        Kind::ExtensionHosts => EXTENSION_HOSTS_DEBOUNCE,
     }
 }
 
 /// Act on the kinds whose quiet time passed; true when the watchers must
 /// be rebuilt.
-async fn handle(ctx: &ServiceContext, due: &[Kind]) -> bool {
+async fn handle(ctx: &ServiceContext, environment: &Arc<Environment>, due: &[Kind]) -> bool {
     let mut rearm = due.contains(&Kind::Rearm);
     for kind in due {
         match kind {
@@ -190,6 +200,7 @@ async fn handle(ctx: &ServiceContext, due: &[Kind]) -> bool {
                     Err(error) => tracing::warn!(%error, "cannot rescan the apps"),
                 }
             }
+            Kind::ExtensionHosts => api::extension::refresh(ctx, environment.clone()).await,
             Kind::Rearm => {}
         }
     }
@@ -197,14 +208,15 @@ async fn handle(ctx: &ServiceContext, due: &[Kind]) -> bool {
 }
 
 /// Read what may have changed while no watcher was armed (at start and
-/// between two watchers). The first time this also loads the configuration
-/// and remembers the default-browser registration later changes are
-/// compared with.
-async fn catch_up(ctx: &ServiceContext) {
+/// between two watchers). The first time this also loads the configuration,
+/// remembers the default-browser registration later changes are compared
+/// with, and writes the extension's host manifests (BEXT-04).
+async fn catch_up(ctx: &ServiceContext, environment: &Arc<Environment>) {
     if let Err(error) = api::config::reload(ctx).await {
         tracing::warn!(%error, "cannot read the configuration");
     }
     api::default_browser::check_takeover(ctx).await;
+    api::extension::refresh(ctx, environment.clone()).await;
 }
 
 /// The config directories of the installed web browsers, whose profile

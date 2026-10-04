@@ -42,10 +42,12 @@ fn every_field_round_trips() {
         rules_help_seen: true,
         kept_default: Some(id("chromium.desktop")),
         script_errors_notified: vec!["abc".to_owned()],
+        extension_host_removed: true,
     };
     state.save(&path).expect("saved");
     let text = std::fs::read_to_string(&path).expect("read");
     for key in [
+        "extension-host-removed",
         "previous-kdeglobals-browser",
         "onboarding-done",
         "dismissed-callouts",
@@ -93,4 +95,41 @@ fn invalid_file_is_an_error() {
         State::load(&path),
         Err(StateError::Invalid { .. })
     ));
+}
+
+/// The opt-out from the extension host manifests survives a restart and
+/// leaves the file empty while it is off (BEXT-04).
+#[test]
+fn the_extension_host_opt_out_round_trips_bext_04() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    let removed = State {
+        extension_host_removed: true,
+        ..State::default()
+    };
+    removed.save(&path).expect("saved");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read"),
+        "extension-host-removed = true\n"
+    );
+    assert!(State::load(&path).expect("loads").extension_host_removed);
+    State::default().save(&path).expect("saved");
+    assert_eq!(std::fs::read_to_string(&path).expect("read"), "");
+}
+
+#[test]
+fn the_state_file_follows_xdg_state_home() {
+    let home = Path::new("/home/u");
+    assert_eq!(
+        path(home, None),
+        Path::new("/home/u/.local/state/wye/state.toml")
+    );
+    assert_eq!(
+        path(home, Some(Path::new("/s"))),
+        Path::new("/s/wye/state.toml")
+    );
+    assert_eq!(
+        path(home, Some(Path::new("relative"))),
+        Path::new("/home/u/.local/state/wye/state.toml")
+    );
 }

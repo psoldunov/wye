@@ -12,6 +12,8 @@
 pub mod framing;
 pub mod install;
 pub mod message;
+#[cfg(test)]
+mod test_bus;
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
@@ -82,9 +84,26 @@ pub fn context(
     texts.chain(held.into_iter().flatten()).chain(pid).collect()
 }
 
+/// Run `future` on `runtime` for at most `limit`; `None` when it took
+/// longer.
+///
+/// The timer is made inside the runtime: `tokio::time::timeout` needs the
+/// runtime's reactor the moment it is called, so building it as the
+/// argument of `block_on`, outside the runtime, panicked on every link
+/// (BEXT-04).
+pub fn within<T>(
+    runtime: &tokio::runtime::Runtime,
+    limit: Duration,
+    future: impl Future<Output = T>,
+) -> Option<T> {
+    runtime.block_on(async move { tokio::time::timeout(limit, future).await.ok() })
+}
+
 /// The service, over the session bus.
 pub struct Service {
     runtime: tokio::runtime::Runtime,
+    /// The bus to use instead of the session bus (tests start their own).
+    address: Option<String>,
     wye: Option<Wye1Proxy<'static>>,
 }
 
@@ -98,7 +117,20 @@ impl Service {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
-        Ok(Self { runtime, wye: None })
+        Ok(Self {
+            runtime,
+            address: None,
+            wye: None,
+        })
+    }
+
+    /// Like [`Service::new`], on the bus at `address`.
+    #[cfg(test)]
+    fn on_bus(address: &str) -> io::Result<Self> {
+        Ok(Self {
+            address: Some(address.to_owned()),
+            ..Self::new()?
+        })
     }
 
     /// Hand `link` to the service with `context`.
@@ -111,27 +143,38 @@ impl Service {
         link: &Link,
         context: HashMap<&'static str, Value<'static>>,
     ) -> Result<(), String> {
-        let wye = if let Some(wye) = &self.wye {
-            wye.clone()
-        } else {
-            let wye = self
-                .runtime
-                .block_on(connect())
-                .map_err(|error| format!("Wye cannot be reached on the session bus: {error}"))?;
-            self.wye = Some(wye.clone());
-            wye
-        };
+        let wye = self.proxy()?;
         let call = async move { wye.open_link(&link.url, context).await };
-        match self.runtime.block_on(tokio::time::timeout(TIMEOUT, call)) {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(error)) => Err(format!("Wye did not open the link: {error}")),
-            Err(_) => Err(format!("Wye did not answer within {TIMEOUT:?}")),
+        match within(&self.runtime, TIMEOUT, call) {
+            Some(Ok(())) => Ok(()),
+            Some(Err(error)) => Err(format!("Wye did not open the link: {error}")),
+            None => Err(format!("Wye did not answer within {TIMEOUT:?}")),
         }
+    }
+
+    /// The service's proxy, connecting to the bus the first time.
+    fn proxy(&mut self) -> Result<Wye1Proxy<'static>, String> {
+        if let Some(wye) = &self.wye {
+            return Ok(wye.clone());
+        }
+        let wye = within(&self.runtime, TIMEOUT, connect(self.address.clone()))
+            .ok_or_else(|| format!("the session bus did not answer within {TIMEOUT:?}"))?
+            .map_err(|error| format!("Wye cannot be reached on the session bus: {error}"))?;
+        self.wye = Some(wye.clone());
+        Ok(wye)
     }
 }
 
-async fn connect() -> zbus::Result<Wye1Proxy<'static>> {
-    let connection = zbus::Connection::session().await?;
+/// A proxy for the service on the bus at `address`, else the session bus.
+async fn connect(address: Option<String>) -> zbus::Result<Wye1Proxy<'static>> {
+    let connection = match address {
+        Some(address) => {
+            zbus::connection::Builder::address(address.as_str())?
+                .build()
+                .await?
+        }
+        None => zbus::Connection::session().await?,
+    };
     Wye1Proxy::new(&connection).await
 }
 
@@ -197,6 +240,50 @@ mod tests {
             Some(42),
             "an unknown browser is detected by the service"
         );
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+    }
+
+    /// The timer is made inside the runtime: made outside it, as the
+    /// argument of `block_on`, it panicked with "there is no reactor
+    /// running" on every link.
+    #[test]
+    fn a_call_that_takes_too_long_times_out_without_panicking_bext_04() {
+        let outcome = within(
+            &runtime(),
+            Duration::from_millis(5),
+            std::future::pending::<()>(),
+        );
+        assert_eq!(outcome, None);
+    }
+
+    #[test]
+    fn a_call_that_finishes_in_time_returns_its_outcome_bext_04() {
+        assert_eq!(within(&runtime(), TIMEOUT, async { 7 }), Some(7));
+    }
+
+    /// The whole path a link takes, on a private bus nobody serves Wye on:
+    /// the extension gets an error, the host does not panic. Before the
+    /// timer moved into the runtime this panicked.
+    #[test]
+    fn without_wye_on_the_bus_a_link_is_an_error_not_a_panic_bext_04() {
+        let Some(bus) = test_bus::PrivateBus::start() else {
+            return;
+        };
+        let mut service = Service::on_bus(bus.address()).expect("runtime");
+        let error = service
+            .open(&link(None), HashMap::new())
+            .expect_err("nothing serves Wye on this bus");
+        assert!(error.starts_with("Wye "), "{error}");
+        let again = service
+            .open(&link(None), HashMap::new())
+            .expect_err("still nothing");
+        assert!(again.starts_with("Wye "), "{again}");
     }
 
     #[test]

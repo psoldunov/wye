@@ -169,8 +169,8 @@ temporary file, then `mv`), in about 20 ms:
   the packages do.
 - `~/.local/bin/wye` and `~/.local/bin/wye-native-host`, symlinks to the AppImage, and
   `~/.local/bin` first on the `PATH` of everything the AppImage starts. The service writes
-  the launch-at-login entry with the `wye` it finds on `PATH`, and `wye extension install`
-  names the `wye-native-host` it finds there; without the links both would record the
+  the launch-at-login entry with the `wye` it finds on `PATH`, and the browser host manifests
+  (at each start, when a browser's directory appears, or on `wye extension install`) name the `wye-native-host` it finds there; without the links both would record the
   AppImage's temporary mount point. Browsers start the native host from its manifest
   without arguments, hence a link with that name.
 
@@ -205,7 +205,8 @@ The AppImage is a multicall binary. Through a link, the link's name picks the pr
 
 To undo the integration, make another browser the default (the desktop's default-browser
 setting otherwise names a menu entry that no longer exists), switch off launch at login in
-Settings and run `wye extension remove` if you installed the browser manifests, then:
+Settings and run `wye extension remove` (the service writes the browser manifests itself, so
+they exist unless you opted out), then:
 
 ```sh
 ./Wye-<version>-<arch>.AppImage --remove-integration

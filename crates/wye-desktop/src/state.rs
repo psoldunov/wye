@@ -47,6 +47,22 @@ pub struct State {
     /// Hashes of scripts whose failure was already notified (SCR-22).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub script_errors_notified: Vec<String>,
+    /// The user removed the browser extension's host manifests (`wye
+    /// extension remove`), so the service no longer writes them at start
+    /// until `wye extension install` (BEXT-04).
+    #[serde(skip_serializing_if = "is_false")]
+    pub extension_host_removed: bool,
+}
+
+/// The state file `$XDG_STATE_HOME/wye/state.toml` (`state_home` when it
+/// is absolute), else `~/.local/state/wye/state.toml` under `home`.
+#[must_use]
+pub fn path(home: &Path, state_home: Option<&Path>) -> PathBuf {
+    state_home
+        .filter(|dir| dir.is_absolute())
+        .map_or_else(|| home.join(".local").join("state"), Path::to_path_buf)
+        .join("wye")
+        .join("state.toml")
 }
 
 #[allow(

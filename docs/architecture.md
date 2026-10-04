@@ -423,9 +423,17 @@ process) as the source app and the click's held keys when the browser reports th
 unless the bypass key is held (ADV-10, ADV-11). `wye_desktop::native_messaging` writes the
 host manifest into every detected browser's directory (`NativeMessagingHosts/` for the
 Chromium family, `native-messaging-hosts/` for the Firefox family), naming the host by
-its `PATH` location so upgrades keep it valid; `wye extension install|remove` and
-`wye-native-host --install|--remove` run it (`crates/wye-native-host/src/install.rs`,
-used by both). Flatpak and Snap browsers are not supported.
+its `PATH` location so upgrades keep it valid. The service runs it at every start and
+whenever a browser's top-level directory appears (`crates/wye-service/src/api/extension.rs`,
+called by the file watcher: when it arms for an environment, after the bus name is claimed,
+and on `Kind::ExtensionHosts`, debounced 2 s, for `~/.mozilla`, `~/.config/BraveSoftware`
+and the like created in the home or configuration directory; on a blocking thread, writing
+only the manifests that are missing or differ, leaving a symlink in a manifest's place
+alone), so installing the extension is all a user does; `wye extension install|remove` and
+`wye-native-host --install|--remove` run it by hand (`crates/wye-native-host/src/install.rs`,
+used by both). `remove` sets `extension-host-removed` in `state.toml`, which keeps the
+service from writing them again until `install` clears it. Flatpak and Snap browsers are
+not supported.
 
 ### Picker fallback
 
@@ -465,8 +473,9 @@ service never writes the XDG autostart entry and removes one it wrote itself (a 
 file whose `Exec` is `…/wye service --activate`), and Settings shows "Launch at login" as
 managed, with the option's value. Both prepend the Nix profile directories to
 a `PATH` that ends in `/usr/local/bin:/usr/bin:/bin`, which bare desktop-entry `Exec`s are
-resolved against. Native-messaging manifests are written
-at run time by `wye-native-host --install`, not by Nix.
+resolved against. Native-messaging manifests are written at run time by the service (at
+every start and whenever a browser's directory appears) or by `wye extension install`, not
+by Nix; a manifest Nix or home-manager links in place is left alone.
 
 ## Not yet implemented
 
@@ -482,7 +491,7 @@ at run time by `wye-native-host --install`, not by Nix.
 | Path | Contents |
 |------|----------|
 | `$XDG_CONFIG_HOME/wye/config.toml` | User configuration. Hand-edited. |
-| `$XDG_STATE_HOME/wye/state.toml` | Internal state: the browsers to restore (`previous-default-browser`, `previous-kdeglobals-browser`), `kept-default`, onboarding and UI state, and the script errors already notified (`script-errors-notified`). |
+| `$XDG_STATE_HOME/wye/state.toml` | Internal state: the browsers to restore (`previous-default-browser`, `previous-kdeglobals-browser`), `kept-default`, onboarding and UI state, the script errors already notified (`script-errors-notified`), and whether the user removed the extension host manifests (`extension-host-removed`). |
 | `$XDG_STATE_HOME/wye/history.json` | Recent links (DLG-HIS), newest first, at most 100 entries (decision 10). |
 | `$XDG_CONFIG_HOME/autostart/dev.soldunov.wye.desktop` | The XDG autostart entry (`wye service --activate`) while "Launch at login" is on, unless a Nix module owns login start. |
 | `$XDG_CONFIG_HOME/mimeapps.list` | Default browser association, written by `wye default set`. |

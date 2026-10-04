@@ -29,7 +29,8 @@
 #   Wye.AppImage --remove-integration       delete the marked files, then exit
 #
 # The service writes the autostart entry with the `wye` it finds on PATH and
-# `wye extension install` names the `wye-native-host` it finds there, so the
+# the browser host manifests (written at each service start, or by
+# `wye extension install`) name the `wye-native-host` it finds there, so the
 # programs started here get ~/.local/bin on PATH: the stable links, not the
 # AppImage's temporary mount point.
 

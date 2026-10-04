@@ -225,6 +225,9 @@ or `{"error": "…"}`. For each link it calls `OpenLink` with `entry` = `extensi
 and `held-known` = `true` when the browser reported the keys, and the browser (the
 host's parent process) as the source: `source-desktop-id` when its desktop ID is known,
 else `source-executable` and `source-pid`. The call starts the service through D-Bus
-activation. `wye-native-host --install` writes the host manifest for every detected
-browser (`wye_desktop::native_messaging`), `--remove` deletes them; `wye extension
-install|remove` run the same code.
+activation. The service writes the host manifest for every detected browser
+(`wye_desktop::native_messaging`) each time it starts and whenever a browser's
+directory appears, only where one is missing or names another host, never over a
+symlink. `wye-native-host --install` writes them too, `--remove` deletes them
+and records `extension-host-removed` in `state.toml`, so the service stops writing them
+until the next `--install`; `wye extension install|remove` run the same code.

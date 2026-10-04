@@ -5,7 +5,7 @@
 //! `$XDG_STATE_HOME`.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use wye_desktop::XdgDirs;
 
@@ -24,7 +24,10 @@ impl Paths {
     pub fn new(xdg: &XdgDirs, lookup: impl Fn(&str) -> Option<OsString>) -> Self {
         Self {
             config: xdg.config_home.join("wye").join("config.toml"),
-            state: state_home(&xdg.home, lookup).join("wye").join("state.toml"),
+            state: wye_desktop::state::path(
+                &xdg.home,
+                lookup("XDG_STATE_HOME").map(PathBuf::from).as_deref(),
+            ),
         }
     }
 
@@ -33,16 +36,10 @@ impl Paths {
     }
 }
 
-/// `$XDG_STATE_HOME` when set to an absolute path, else `~/.local/state`.
-fn state_home(home: &Path, lookup: impl Fn(&str) -> Option<OsString>) -> PathBuf {
-    lookup("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .filter(|path| path.is_absolute())
-        .unwrap_or_else(|| home.join(".local").join("state"))
-}
-
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     fn paths(vars: &[(&str, &str)]) -> Paths {

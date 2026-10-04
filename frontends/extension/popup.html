@@ -9,11 +9,12 @@
   <body class="popup">
     <h1>Wye's helper is not installed</h1>
     <p>
-      The extension talks to Wye through a small helper program that Wye
-      installs. Install Wye, then run this in a terminal and restart the
-      browser:
+      The extension talks to Wye through a small helper program. Wye sets it
+      up by itself while it runs. If Wye is installed, start it, then restart
+      the browser and press Check Again.
     </p>
-    <pre>wye-native-host --install</pre>
+    <p>To set it up right now, run this in a terminal:</p>
+    <pre>wye extension install</pre>
     <p>
       Browsers installed as Flatpak or Snap cannot reach it.
       <a href="https://github.com/psoldunov/wye/tree/master/frontends/extension#readme"

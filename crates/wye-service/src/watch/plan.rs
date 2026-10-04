@@ -1,5 +1,5 @@
 //! What to watch and what a changed path means (SET-06 reload, DEF-03,
-//! DISC-02). Pure apart from checking which directories exist.
+//! DISC-02, BEXT-04). Pure apart from checking which directories exist.
 //!
 //! Every directory is watched on its own (not recursively): editors and
 //! home-manager replace files by renaming, which the directory sees, and
@@ -25,6 +25,9 @@ pub(crate) enum Kind {
     Registration,
     /// Apps or profiles changed: rescan (DISC-02).
     Inventory,
+    /// A browser's top-level directory appeared or moved: write the
+    /// extension's host manifests (BEXT-04).
+    ExtensionHosts,
     /// A watched directory or a profile symlink appeared or moved: watch
     /// again.
     Rearm,
@@ -42,6 +45,9 @@ pub(crate) struct Plan {
     /// Symlinks on the way to an applications directory (Nix profiles).
     links: Vec<PathBuf>,
     browser_dirs: Vec<PathBuf>,
+    /// The browsers' top-level directories, in the home and configuration
+    /// directories (BEXT-04).
+    extension_names: Vec<PathBuf>,
 }
 
 impl Plan {
@@ -60,15 +66,22 @@ impl Plan {
             .collect::<BTreeSet<_>>()
             .into_iter()
             .collect();
-        let wanted = [config_dir.clone(), config_home.clone()]
-            .into_iter()
-            .chain(applications.iter().cloned())
-            .chain(
-                links
-                    .iter()
-                    .filter_map(|link| link.parent().map(Path::to_path_buf)),
-            )
-            .chain(browser_dirs.iter().cloned());
+        let extension_names = wye_desktop::native_messaging::watched_names(&environment.xdg);
+        // The home directory is watched for the browsers' directories that
+        // appear in it; every other change there classifies to nothing.
+        let wanted = [
+            config_dir.clone(),
+            config_home.clone(),
+            environment.xdg.home.clone(),
+        ]
+        .into_iter()
+        .chain(applications.iter().cloned())
+        .chain(
+            links
+                .iter()
+                .filter_map(|link| link.parent().map(Path::to_path_buf)),
+        )
+        .chain(browser_dirs.iter().cloned());
         let mut seen = BTreeSet::new();
         let dirs = wanted
             .filter(|dir| dir.is_dir() && seen.insert(dir.clone()))
@@ -81,13 +94,15 @@ impl Plan {
             applications,
             links,
             browser_dirs: browser_dirs.to_vec(),
+            extension_names,
         }
     }
 
     /// The paths to check for changes when no watcher can be started:
-    /// every file Wye reads that is named up front, and the application
+    /// every file Wye reads that is named up front, the application
     /// directories (their modification time changes when an entry is added,
-    /// removed or replaced). [`Plan::classify`] reads each of them.
+    /// removed or replaced) and the browsers' top-level directories (seen
+    /// when they appear). [`Plan::classify`] reads each of them.
     pub fn polled(&self) -> Vec<PathBuf> {
         let registration = [MIMEAPPS, KDEGLOBALS].map(|name| self.config_home.join(name));
         let profiles = self
@@ -98,6 +113,7 @@ impl Plan {
             .chain(registration)
             .chain(self.applications.iter().cloned())
             .chain(profiles)
+            .chain(self.extension_names.iter().cloned())
             .collect()
     }
 
@@ -132,6 +148,9 @@ impl Plan {
             && PROFILE_FILES.contains(&name.as_str())
         {
             kinds.insert(Kind::Inventory);
+        }
+        if self.extension_names.iter().any(|dir| dir == path) {
+            kinds.insert(Kind::ExtensionHosts);
         }
         kinds
     }
@@ -225,6 +244,50 @@ mod tests {
         );
     }
 
+    /// A browser's top-level directory appearing in the configuration or
+    /// home directory means its host manifest can be written; nothing else
+    /// in the home directory means anything (BEXT-04).
+    #[test]
+    fn a_new_browser_directory_means_extension_hosts_bext_04() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        for sub in ["config", "home"] {
+            std::fs::create_dir_all(root.join(sub)).expect("dir");
+        }
+        let plan = Plan::new(&environment(root), &[]);
+        assert!(plan.dirs.contains(&root.join("home")), "{:?}", plan.dirs);
+        assert!(plan.dirs.contains(&root.join("config")), "{:?}", plan.dirs);
+
+        for browser in [
+            "config/BraveSoftware",
+            "config/chromium",
+            "config/google-chrome",
+            "home/.mozilla",
+            "home/.zen",
+            "home/.librewolf",
+        ] {
+            assert_eq!(
+                kinds(&plan, &root.join(browser)),
+                [Kind::ExtensionHosts],
+                "{browser}"
+            );
+        }
+        for other in [
+            "home/.bash_history",
+            "home/.zsh_history.new",
+            "home/Downloads",
+            "home/.config",
+            "config/BraveSoftware/Brave-Browser",
+            "home/.mozilla/firefox",
+        ] {
+            assert_eq!(kinds(&plan, &root.join(other)), [], "{other}");
+        }
+        assert_eq!(
+            kinds(&plan, &root.join("config/mimeapps.list")),
+            [Kind::Registration]
+        );
+    }
+
     #[test]
     fn every_polled_path_means_something() {
         let dir = tempfile::tempdir().expect("temp dir");
@@ -233,6 +296,7 @@ mod tests {
         let polled = plan.polled();
         assert!(polled.contains(&root.join("config/wye/config.toml")));
         assert!(polled.contains(&root.join("browser/profiles.ini")));
+        assert!(polled.contains(&root.join("home/.mozilla")));
         for path in polled {
             assert!(!plan.classify(&path).is_empty(), "{}", path.display());
         }

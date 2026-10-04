@@ -9,6 +9,10 @@
 //!
 //! Directories marked `// verify` come from the browsers' documentation or
 //! packaging conventions rather than from an inspected installation.
+//!
+//! Zen is detected by `~/.zen` but reads `~/.mozilla/native-messaging-hosts/`,
+//! the directory Firefox uses; a manifest under `~/.zen` is never read. Wye 1.0.0
+//! wrote one there, and [`remove`] deletes it.
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -60,7 +64,10 @@ struct Location {
     /// The browser's own directory; the manifest is only written when it
     /// exists (the browser is installed and has run).
     root: &'static str,
-    /// The manifest directory inside `root`.
+    /// The browser directory that holds the manifest directory, when it is not
+    /// `root` (a fork that reads another browser's directory).
+    hosts_root: Option<&'static str>,
+    /// The manifest directory inside `hosts_root`, or `root` without one.
     hosts: &'static str,
 }
 
@@ -73,6 +80,7 @@ const fn chromium(browser: &'static str, root: &'static str) -> Location {
         dialect: Dialect::Chromium,
         base: Base::ConfigHome,
         root,
+        hosts_root: None,
         hosts: CHROMIUM_HOSTS,
     }
 }
@@ -83,7 +91,21 @@ const fn firefox(browser: &'static str, base: Base, root: &'static str) -> Locat
         dialect: Dialect::Firefox,
         base,
         root,
+        hosts_root: None,
         hosts: FIREFOX_HOSTS,
+    }
+}
+
+/// A Firefox fork detected by `root` that reads the manifests Firefox reads,
+/// from `hosts_root`.
+const fn firefox_reading(
+    browser: &'static str,
+    root: &'static str,
+    hosts_root: &'static str,
+) -> Location {
+    Location {
+        hosts_root: Some(hosts_root),
+        ..firefox(browser, Base::Home, root)
     }
 }
 
@@ -107,16 +129,34 @@ const LOCATIONS: &[Location] = &[
     firefox("LibreWolf", Base::Home, ".librewolf"),
     firefox("Waterfox", Base::Home, ".waterfox"), // verify
     firefox("Floorp", Base::Home, ".floorp"), // verify
-    firefox("Zen", Base::Home, ".zen"), // verify
+    // Detected by `~/.zen`, reads `~/.mozilla/native-messaging-hosts/`: verified
+    // with Zen 1.22.3b (2026-10-04); a manifest under `~/.zen` is ignored.
+    firefox_reading("Zen", ".zen", ".mozilla"),
 ];
 
-/// One manifest Wye wrote or removed.
+/// What happened to one manifest.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// Written now: it was missing or said something else.
+    Written,
+    /// Already there as Wye would write it; not touched.
+    Current,
+    /// Deleted.
+    Removed,
+    /// A symlink is in its place, so something else (home-manager, for
+    /// example) owns the file: left alone, neither written nor deleted.
+    Symlink,
+}
+
+/// One manifest Wye wrote, found current, removed or left alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Manifest {
     /// The browser it is for, for example `Firefox`.
     pub browser: &'static str,
     /// The manifest file.
     pub path: PathBuf,
+    /// What happened to it.
+    pub outcome: Outcome,
 }
 
 /// Why the manifests could not be written or removed.
@@ -161,8 +201,14 @@ fn merge(base: Value, extra: Value) -> Value {
     }
 }
 
-/// Write a manifest starting `host` for every browser whose directory
-/// exists; returns what was written (BEXT-04).
+/// Make sure every browser whose directory exists has a manifest starting
+/// `host`; returns every such browser's manifest with its [`Outcome`]:
+/// written now, already current, or left alone as a symlink (BEXT-04).
+///
+/// A manifest is written only where it is missing or says something else,
+/// so a run that changes nothing touches no file. A symlink in a
+/// manifest's place is left alone: whatever manages the link (home-manager,
+/// for example) owns the file.
 ///
 /// # Errors
 ///
@@ -175,59 +221,142 @@ pub fn install(xdg: &XdgDirs, host: &Path) -> Result<Vec<Manifest>, NativeMessag
     detected(xdg)
         .map(|(location, path)| {
             let text = format!("{:#}\n", manifest(location.dialect, host));
-            atomic::write(&path, text.as_bytes(), Some(&path))
+            write_if_changed(&path, &text)
                 .map_err(|source| NativeMessagingError::Io {
                     path: path.clone(),
                     source,
                 })
-                .map(|()| Manifest {
+                .map(|outcome| Manifest {
                     browser: location.browser,
                     path,
+                    outcome,
                 })
         })
         .collect()
 }
 
-/// Remove every manifest Wye wrote; returns what was removed.
+/// Like [`install`], returning only the manifests written now (BEXT-04).
+///
+/// # Errors
+///
+/// As [`install`].
+pub fn refresh(xdg: &XdgDirs, host: &Path) -> Result<Vec<Manifest>, NativeMessagingError> {
+    Ok(install(xdg, host)?
+        .into_iter()
+        .filter(|manifest| manifest.outcome == Outcome::Written)
+        .collect())
+}
+
+/// Write `text` to `path` unless it is there already or `path` is a
+/// symlink.
+fn write_if_changed(path: &Path, text: &str) -> io::Result<Outcome> {
+    if is_symlink(path) {
+        return Ok(Outcome::Symlink);
+    }
+    if std::fs::read_to_string(path).is_ok_and(|current| current == text) {
+        return Ok(Outcome::Current);
+    }
+    atomic::write(path, text.as_bytes(), Some(path)).map(|()| Outcome::Written)
+}
+
+fn is_symlink(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink())
+}
+
+/// Remove every manifest Wye wrote; returns what was removed, and the
+/// symlinks left alone in a manifest's place (something else owns them,
+/// as [`install`] assumes).
 ///
 /// # Errors
 ///
 /// The first file that exists but could not be removed.
 pub fn remove(xdg: &XdgDirs) -> Result<Vec<Manifest>, NativeMessagingError> {
     let mut removed = Vec::new();
+    let mut seen = Vec::new();
     for (location, path) in LOCATIONS
         .iter()
-        .map(|location| (location, manifest_path(xdg, location)))
+        .flat_map(|location| {
+            // Wye 1.0.0 wrote Zen's manifest under `~/.zen`, where Zen never reads it.
+            let stale = location.hosts_root.map(|_| Location {
+                hosts_root: None,
+                ..*location
+            });
+            [Some(*location), stale]
+        })
+        .flatten()
+        .map(|location| (location, manifest_path(xdg, &location)))
     {
-        match std::fs::remove_file(&path) {
-            Ok(()) => removed.push(Manifest {
-                browser: location.browser,
-                path,
-            }),
-            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-            Err(source) => return Err(NativeMessagingError::Io { path, source }),
+        if seen.contains(&path) {
+            continue;
         }
+        seen.push(path.clone());
+        let outcome = if is_symlink(&path) {
+            Outcome::Symlink
+        } else {
+            match std::fs::remove_file(&path) {
+                Ok(()) => Outcome::Removed,
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(source) => return Err(NativeMessagingError::Io { path, source }),
+            }
+        };
+        removed.push(Manifest {
+            browser: location.browser,
+            path,
+            outcome,
+        });
     }
     Ok(removed)
 }
 
+/// The directories whose appearance may bring a browser to write a
+/// manifest for: the first component of each browser's directory under
+/// its base, such as `~/.config/BraveSoftware`, `~/.mozilla` or `~/.zen`.
+/// The service watches for them so a browser installed while it runs gets
+/// its manifest without a restart (BEXT-04).
+#[must_use]
+pub fn watched_names(xdg: &XdgDirs) -> Vec<PathBuf> {
+    let mut names: Vec<PathBuf> = Vec::new();
+    for location in LOCATIONS {
+        let Some(first) = Path::new(location.root).components().next() else {
+            continue;
+        };
+        let name = base_dir(xdg, location).join(first);
+        if !names.contains(&name) {
+            names.push(name);
+        }
+    }
+    names
+}
+
 /// The manifests Wye would write: one per browser directory that exists.
 fn detected(xdg: &XdgDirs) -> impl Iterator<Item = (&'static Location, PathBuf)> + '_ {
+    let mut seen = Vec::new();
     LOCATIONS
         .iter()
         .filter(|location| root(xdg, location).is_dir())
         .map(|location| (location, manifest_path(xdg, location)))
+        .filter(move |(_, path)| {
+            // Firefox and Zen share a manifest: the first browser keeps it.
+            let fresh = !seen.contains(path);
+            seen.push(path.clone());
+            fresh
+        })
 }
 
-fn root(xdg: &XdgDirs, location: &Location) -> PathBuf {
+fn base_dir(xdg: &XdgDirs, location: &Location) -> PathBuf {
     match location.base {
-        Base::Home => xdg.home.join(location.root),
-        Base::ConfigHome => xdg.config_home.join(location.root),
+        Base::Home => xdg.home.clone(),
+        Base::ConfigHome => xdg.config_home.clone(),
     }
 }
 
+fn root(xdg: &XdgDirs, location: &Location) -> PathBuf {
+    base_dir(xdg, location).join(location.root)
+}
+
 fn manifest_path(xdg: &XdgDirs, location: &Location) -> PathBuf {
-    root(xdg, location)
+    base_dir(xdg, location)
+        .join(location.hosts_root.unwrap_or(location.root))
         .join(location.hosts)
         .join(format!("{HOST_NAME}.json"))
 }
@@ -324,6 +453,109 @@ mod tests {
         assert_eq!(text["path"], HOST);
     }
 
+    /// The service refreshes the manifests at every start; one that is
+    /// already current is not rewritten, so a start that changes nothing
+    /// touches nothing.
+    #[test]
+    fn refresh_writes_only_what_is_missing_or_different_bext_04() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.xdg.config_home.join("chromium")).unwrap();
+        fs::create_dir_all(fixture.xdg.home.join(".mozilla")).unwrap();
+
+        let first = refresh(&fixture.xdg, Path::new(HOST)).unwrap();
+        assert_eq!(first.len(), 2);
+        let chromium = first[0].path.clone();
+        let stamp = fs::metadata(&chromium).unwrap().modified().unwrap();
+
+        assert!(refresh(&fixture.xdg, Path::new(HOST)).unwrap().is_empty());
+        assert_eq!(
+            fs::metadata(&chromium).unwrap().modified().unwrap(),
+            stamp,
+            "a current manifest is not rewritten"
+        );
+        assert_eq!(
+            install(&fixture.xdg, Path::new(HOST)).unwrap().len(),
+            2,
+            "install still lists every browser it covers"
+        );
+
+        fs::write(&chromium, "{}").unwrap();
+        let changed = refresh(&fixture.xdg, Path::new(HOST)).unwrap();
+        assert_eq!(changed.len(), 1);
+        assert_eq!(changed[0].path, chromium);
+        let moved = refresh(&fixture.xdg, Path::new("/new/wye-native-host")).unwrap();
+        assert_eq!(moved.len(), 2, "a new host path rewrites both");
+    }
+
+    /// A symlinked manifest belongs to whatever made the link: install
+    /// reports it left alone, refresh skips it, remove keeps it.
+    #[test]
+    fn a_symlinked_manifest_is_left_alone_bext_04() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.xdg.home.join(".mozilla/native-messaging-hosts")).unwrap();
+        let target = fixture.path("managed.json");
+        fs::write(&target, "{\"managed\":true}").unwrap();
+        let link = fixture
+            .xdg
+            .home
+            .join(".mozilla/native-messaging-hosts/dev.soldunov.wye.json");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        assert!(refresh(&fixture.xdg, Path::new(HOST)).unwrap().is_empty());
+        let installed = install(&fixture.xdg, Path::new(HOST)).unwrap();
+        assert_eq!(
+            installed,
+            [Manifest {
+                browser: "Firefox",
+                path: link.clone(),
+                outcome: Outcome::Symlink,
+            }]
+        );
+        let removed = remove(&fixture.xdg).unwrap();
+        assert_eq!(removed, installed);
+
+        assert!(is_symlink(&link));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "{\"managed\":true}");
+    }
+
+    #[test]
+    fn install_tells_written_from_current_bext_04() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.xdg.config_home.join("chromium")).unwrap();
+        let outcomes = |host: &str| -> Vec<Outcome> {
+            install(&fixture.xdg, Path::new(host))
+                .unwrap()
+                .into_iter()
+                .map(|manifest| manifest.outcome)
+                .collect()
+        };
+        assert_eq!(outcomes(HOST), [Outcome::Written]);
+        assert_eq!(outcomes(HOST), [Outcome::Current]);
+        assert_eq!(outcomes("/new/wye-native-host"), [Outcome::Written]);
+    }
+
+    /// The top-level directories the service watches, one per browser
+    /// directory's first component, each listed once.
+    #[test]
+    fn watched_names_are_the_top_level_browser_directories_bext_04() {
+        let fixture = Fixture::new();
+        let names = watched_names(&fixture.xdg);
+        let config = &fixture.xdg.config_home;
+        let home = &fixture.xdg.home;
+        for expected in [
+            config.join("BraveSoftware"),
+            config.join("chromium"),
+            config.join("mozilla"),
+            home.join(".mozilla"),
+            home.join(".zen"),
+        ] {
+            assert!(names.contains(&expected), "{}", expected.display());
+        }
+        assert!(!names.contains(&config.join("BraveSoftware/Brave-Browser")));
+        let unique: std::collections::BTreeSet<_> = names.iter().collect();
+        assert_eq!(unique.len(), names.len(), "{names:?}");
+    }
+
     #[test]
     fn a_relative_host_is_refused() {
         let fixture = Fixture::new();
@@ -351,6 +583,69 @@ mod tests {
         assert_eq!(removed[0].browser, "LibreWolf");
         assert!(!removed[0].path.exists());
         assert!(other.exists());
+        assert!(remove(&fixture.xdg).unwrap().is_empty());
+    }
+
+    /// Zen is detected by `~/.zen` but reads Firefox's directory (verified
+    /// with Zen 1.22.3b): the manifest goes there, not under `~/.zen`.
+    #[test]
+    fn zen_alone_gets_its_manifest_in_the_mozilla_directory_bext_04() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.xdg.home.join(".zen")).unwrap();
+
+        let written = install(&fixture.xdg, Path::new(HOST)).unwrap();
+
+        let path = fixture
+            .xdg
+            .home
+            .join(".mozilla/native-messaging-hosts/dev.soldunov.wye.json");
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].browser, "Zen");
+        assert_eq!(written[0].path, path);
+        assert!(path.is_file());
+        assert!(
+            !fixture
+                .xdg
+                .home
+                .join(".zen/native-messaging-hosts")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn firefox_and_zen_share_one_manifest_listed_once_bext_04() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.xdg.home.join(".mozilla")).unwrap();
+        fs::create_dir_all(fixture.xdg.home.join(".zen")).unwrap();
+
+        let written = install(&fixture.xdg, Path::new(HOST)).unwrap();
+
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].browser, "Firefox");
+        assert_eq!(
+            refresh(&fixture.xdg, Path::new("/new/host")).unwrap().len(),
+            1
+        );
+    }
+
+    #[test]
+    fn remove_deletes_the_shared_manifest_and_the_stale_zen_one_bext_04() {
+        let fixture = Fixture::new();
+        fs::create_dir_all(fixture.xdg.home.join(".mozilla")).unwrap();
+        install(&fixture.xdg, Path::new(HOST)).unwrap();
+        let stale = fixture
+            .xdg
+            .home
+            .join(".zen/native-messaging-hosts/dev.soldunov.wye.json");
+        fs::create_dir_all(stale.parent().unwrap()).unwrap();
+        fs::write(&stale, "{}").unwrap();
+
+        let removed = remove(&fixture.xdg).unwrap();
+
+        let browsers: Vec<_> = removed.iter().map(|manifest| manifest.browser).collect();
+        assert_eq!(browsers, ["Firefox", "Zen"]);
+        assert_eq!(removed[1].path, stale);
+        assert!(!stale.exists());
         assert!(remove(&fixture.xdg).unwrap().is_empty());
     }
 

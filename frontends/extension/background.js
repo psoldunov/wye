@@ -40,20 +40,23 @@ function heldKeys(clickData) {
   return Array.isArray(modifiers) ? modifiers : null;
 }
 
-// BEXT-06: without a host, the toolbar button opens the setup popup.
+// The manifest's tooltip. An empty title would show the extension's name in
+// Firefox instead.
+const DEFAULT_TITLE = api.runtime.getManifest().action.default_title;
+const MISSING_TITLE = "Wye: the helper is not installed";
+
+// BEXT-06: without a host, the toolbar button opens the setup popup. The
+// tooltip follows, so an earlier error does not outlive the state it was for.
 async function showHostState(installed) {
   await api.action.setPopup({ popup: installed ? "" : SETUP_POPUP });
   await api.action.setBadgeText({ text: installed ? "" : ERROR_BADGE });
+  await api.action.setTitle({ title: installed ? DEFAULT_TITLE : MISSING_TITLE });
 }
 
 async function showError(message) {
   await api.action.setBadgeText({ text: ERROR_BADGE });
   await api.action.setTitle({ title: `Wye: ${message}` });
 }
-
-// The manifest's tooltip. An empty title would show the extension's name in
-// Firefox instead.
-const DEFAULT_TITLE = api.runtime.getManifest().action.default_title;
 
 async function clearError() {
   await api.action.setBadgeText({ text: "" });
@@ -89,7 +92,15 @@ async function send(url, modifiers, pageOrLink, tab) {
     reply = await api.runtime.sendNativeMessage(HOST, { url, modifiers, pageOrLink });
   } catch (error) {
     console.warn("Wye: the native host is missing or failed", error);
-    await showHostState(false);
+    // BEXT-06: a rejection alone does not mean the host is missing; Chromium
+    // also rejects when the host started and then exited. Only a failed ping
+    // means "not installed". State first, then the error, so the badge stays.
+    if (await pingHost()) {
+      await showHostState(true);
+      await showError(`the helper failed (${error?.message ?? "it stopped unexpectedly"})`);
+    } else {
+      await showHostState(false);
+    }
     return;
   }
   await showHostState(true);

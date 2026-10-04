@@ -144,7 +144,8 @@ build_in_container() {
     "${extra[@]}"
 
   # The four programs move to libexec/: sharun puts AppDir/bin first on the
-  # PATH of everything it starts, and the service and `wye extension install`
+  # PATH of everything it starts, and the service (at each start, for the
+  # browser host manifests) and `wye extension install`
   # look `wye` and `wye-native-host` up on PATH to write paths that outlive
   # this mount (the ~/.local/bin links AppRun makes). Each is a hard link to
   # sharun, which finds the AppDir through SHARUN_DIR (set by the AppRun).

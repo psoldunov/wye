@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="1400" height="560" viewBox="0 0 1400 560">
+  <!--
+    Chrome Web Store marquee promo tile. Wye's app icon (referenced, not copied), the name and
+    the README's one-line tagline. Rendered by README.md in this directory.
+  -->
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1400" y2="560" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0c1a4d"/>
+      <stop offset="1" stop-color="#16348f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="330" cy="280" r="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1f9ae8" stop-opacity=".5"/>
+      <stop offset="1" stop-color="#1f9ae8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1400" height="560" fill="url(#background)"/>
+  <rect width="1400" height="560" fill="url(#glow)"/>
+  <image xlink:href="../../../../data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg" x="119" y="69" width="422" height="422"/>
+  <text x="570" y="296" fill="#fff" font-family="Noto Sans" font-weight="700" font-size="200" letter-spacing="-4">Wye</text>
+  <text x="576" y="404" fill="#bfe3ff" font-family="Noto Sans" font-weight="400" font-size="40">Every link, in the browser you want.</text>
+</svg>

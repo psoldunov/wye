@@ -415,8 +415,11 @@ directly (KEY-51).
 
 `frontends/extension/` is one set of files for Firefox (`manifest.firefox.json`, gecko ID
 `wye@soldunov.dev`, event page) and Chromium (`manifest.chromium.json`, a fixed `key`
-that makes the ID `lphepmclmllmbbkjkdhjbdgbjfpmmdnn`, service worker); `build.sh`
-assembles one family's unpacked extension. It sends links and pages to the
+that makes the ID `jdcifhpoallkdjnbflfienpboodjfjei`, the Chrome Web Store item's; the
+host manifest also allows Wye 1.0.0's `lphepmclmllmbbkjkdhjbdgbjfpmmdnn`; service
+worker); `build.sh` assembles one family's unpacked extension. `nix/frontends.nix` zips
+each family and a third zip, the Chromium build without its `key`, which the Chrome Web
+Store requires; releases attach all three. It sends links and pages to the
 native-messaging host `wye-native-host` (crate `crates/wye-native-host`), which reads length-prefixed JSON, takes the browser (its parent
 process) as the source app and the click's held keys when the browser reports them
 (Firefox), and calls `OpenLink` with `entry = "extension"`; the pipeline forces the picker

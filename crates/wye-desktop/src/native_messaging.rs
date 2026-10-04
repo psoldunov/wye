@@ -32,10 +32,17 @@ pub const HOST_PROGRAM: &str = "wye-native-host";
 /// `frontends/extension/manifest.firefox.json`).
 pub const FIREFOX_EXTENSION_ID: &str = "wye@soldunov.dev";
 
-/// The Chromium extension's ID, fixed by the `key` in
-/// `frontends/extension/manifest.chromium.json` (the first 128 bits of the
-/// key's SHA-256, written with the letters `a` to `p`).
-pub const CHROMIUM_EXTENSION_ID: &str = "lphepmclmllmbbkjkdhjbdgbjfpmmdnn";
+/// The Chromium extension's ID: the Chrome Web Store item's, which the `key` in
+/// `frontends/extension/manifest.chromium.json` fixes for the unpacked and the
+/// sideloaded build too (the first 128 bits of the key's SHA-256, written with
+/// the letters `a` to `p`). The store's own build carries no `key` and gets
+/// the same ID from the item's key (BEXT-04).
+pub const CHROMIUM_EXTENSION_ID: &str = "jdcifhpoallkdjnbflfienpboodjfjei";
+
+/// The ID of the unpacked Chromium extension Wye 1.0.0 shipped, whose key is
+/// lost. Still allowed, so a browser that has that build loaded keeps working
+/// after an upgrade (BEXT-04).
+pub const LEGACY_CHROMIUM_EXTENSION_ID: &str = "lphepmclmllmbbkjkdhjbdgbjfpmmdnn";
 
 const DESCRIPTION: &str = "Wye: send links from the browser to Wye";
 
@@ -185,7 +192,10 @@ pub fn manifest(dialect: Dialect, host: &Path) -> Value {
     });
     let allowed = match dialect {
         Dialect::Chromium => json!({
-            "allowed_origins": [format!("chrome-extension://{CHROMIUM_EXTENSION_ID}/")],
+            "allowed_origins": [
+                format!("chrome-extension://{CHROMIUM_EXTENSION_ID}/"),
+                format!("chrome-extension://{LEGACY_CHROMIUM_EXTENSION_ID}/"),
+            ],
         }),
         Dialect::Firefox => json!({ "allowed_extensions": [FIREFOX_EXTENSION_ID] }),
     };
@@ -389,30 +399,34 @@ mod tests {
 
     const HOST: &str = "/usr/bin/wye-native-host";
 
-    /// Chromium names the extension by its fixed origin, Firefox by its
-    /// gecko ID; each manifest carries only its own family's key.
+    /// Chromium names the extension by its fixed origin (the current ID first,
+    /// then the one Wye 1.0.0 shipped), Firefox by its gecko ID; each manifest
+    /// carries only its own family's key.
     #[test]
     fn each_family_allows_only_its_own_extension_id_bext_04() {
         let families = [
             (
                 Dialect::Chromium,
                 "allowed_origins",
-                "chrome-extension://lphepmclmllmbbkjkdhjbdgbjfpmmdnn/",
+                json!([
+                    "chrome-extension://jdcifhpoallkdjnbflfienpboodjfjei/",
+                    "chrome-extension://lphepmclmllmbbkjkdhjbdgbjfpmmdnn/",
+                ]),
                 "allowed_extensions",
             ),
             (
                 Dialect::Firefox,
                 "allowed_extensions",
-                "wye@soldunov.dev",
+                json!(["wye@soldunov.dev"]),
                 "allowed_origins",
             ),
         ];
-        for (dialect, allowed, id, absent) in families {
+        for (dialect, allowed, ids, absent) in families {
             let manifest = manifest(dialect, Path::new(HOST));
             assert_eq!(manifest["name"], HOST_NAME);
             assert_eq!(manifest["path"], HOST);
             assert_eq!(manifest["type"], "stdio");
-            assert_eq!(manifest[allowed], json!([id]), "{dialect:?}");
+            assert_eq!(manifest[allowed], ids, "{dialect:?}");
             assert!(manifest.get(absent).is_none(), "{dialect:?}");
         }
     }
@@ -532,6 +546,39 @@ mod tests {
         assert_eq!(outcomes(HOST), [Outcome::Written]);
         assert_eq!(outcomes(HOST), [Outcome::Current]);
         assert_eq!(outcomes("/new/wye-native-host"), [Outcome::Written]);
+    }
+
+    /// A manifest Wye 1.0.0 wrote (the old origin only) is rewritten, so an
+    /// upgrade adds the store ID.
+    #[test]
+    fn install_rewrites_a_wye_1_0_0_manifest_bext_04() {
+        let fixture = Fixture::new();
+        let hosts = fixture
+            .xdg
+            .config_home
+            .join("chromium/NativeMessagingHosts");
+        fs::create_dir_all(&hosts).unwrap();
+        let path = hosts.join(format!("{HOST_NAME}.json"));
+        let old = json!({
+            "name": HOST_NAME,
+            "description": DESCRIPTION,
+            "path": HOST,
+            "type": "stdio",
+            "allowed_origins": [format!("chrome-extension://{LEGACY_CHROMIUM_EXTENSION_ID}/")],
+        });
+        fs::write(&path, format!("{old:#}\n")).unwrap();
+
+        let installed = install(&fixture.xdg, Path::new(HOST)).unwrap();
+        assert_eq!(installed[0].outcome, Outcome::Written);
+        let text = fs::read_to_string(&path).unwrap();
+        let written: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(
+            written["allowed_origins"],
+            json!([
+                format!("chrome-extension://{CHROMIUM_EXTENSION_ID}/"),
+                format!("chrome-extension://{LEGACY_CHROMIUM_EXTENSION_ID}/"),
+            ])
+        );
     }
 
     /// The top-level directories the service watches, one per browser

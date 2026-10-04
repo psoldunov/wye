@@ -8,7 +8,8 @@ name: Release
 #   Cachix (when the token is set) so that install substitutes;
 # - builds and smoke-tests the .deb, the .rpm and the AppImage for both
 #   architectures (packages.yml);
-# - publishes the GitHub release with the six packages and SHA256SUMS;
+# - publishes the GitHub release with the six packages, the three browser
+#   extension zips (from the x86_64 Nix build) and SHA256SUMS;
 # - opens a pull request that records the release in nix/release.json, which
 #   is what `programs.wye.channel = "release"` installs.
 #
@@ -89,6 +90,33 @@ jobs:
           REF: github:${{ github.repository }}/${{ needs.check.outputs.rev }}
         run: nix build -L --no-link "$REF"
 
+      # The extension zips do not depend on the architecture, so the x86_64
+      # build of the tag provides them: the Firefox build, the Chromium build
+      # with its key, and the Chromium build without it that the Chrome Web
+      # Store takes.
+      - name: Collect the extension zips
+        if: matrix.arch == 'x86_64'
+        env:
+          REF: github:${{ github.repository }}/${{ needs.check.outputs.rev }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          set -euo pipefail
+          out=$(nix build -L --no-link --print-out-paths "$REF#extension")
+          mkdir extension
+          for name in firefox chromium chromium-webstore; do
+            install -m 644 "$out/share/wye/extension/wye-extension-${name}.zip" \
+              "extension/wye-extension-${name}-${VERSION}.zip"
+          done
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.arch == 'x86_64'
+        with:
+          name: package-extension
+          path: extension/
+          if-no-files-found: error
+          # Already compressed.
+          compression-level: 0
+
   packages:
     needs: check
     permissions:
@@ -107,7 +135,7 @@ jobs:
           path: packages
           merge-multiple: true
 
-      - name: Check the packages, write SHA256SUMS
+      - name: Check the packages and extension zips, write SHA256SUMS
         env:
           VERSION: ${{ needs.check.outputs.version }}
         run: |
@@ -116,7 +144,9 @@ jobs:
           for file in \
             "wye_${VERSION}_amd64.deb" "wye_${VERSION}_arm64.deb" \
             "wye-${VERSION}-1.fc44.x86_64.rpm" "wye-${VERSION}-1.fc44.aarch64.rpm" \
-            "Wye-${VERSION}-x86_64.AppImage" "Wye-${VERSION}-aarch64.AppImage"; do
+            "Wye-${VERSION}-x86_64.AppImage" "Wye-${VERSION}-aarch64.AppImage" \
+            "wye-extension-firefox-${VERSION}.zip" "wye-extension-chromium-${VERSION}.zip" \
+            "wye-extension-chromium-webstore-${VERSION}.zip"; do
             if [ ! -f "$file" ]; then
               echo "::error::$file is missing; the packages are:" *
               exit 1
@@ -134,14 +164,15 @@ jobs:
         run: |
           set -euo pipefail
           # A re-run finds the release of an earlier attempt: its notes stay
-          # as they are, its packages are replaced.
+          # as they are, its packages and extension zips are replaced.
           if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "release $TAG exists; uploading the packages again"
+            echo "release $TAG exists; uploading the packages and extension zips again"
             gh release upload "$TAG" packages/* --clobber
             exit 0
           fi
           # gh creates the release as a draft, uploads the files, then
-          # publishes it, so it never appears without its packages. The
+          # publishes it, so it never appears without its packages and
+          # extension zips. The
           # notes below go before the generated ones.
           cat > notes.md <<EOF
           ## Packages
@@ -152,6 +183,14 @@ jobs:
           - Fedora 44: \`wye-${VERSION}-1.fc44.x86_64.rpm\`, \`wye-${VERSION}-1.fc44.aarch64.rpm\`
           - Any other distribution: \`Wye-${VERSION}-x86_64.AppImage\`, \`Wye-${VERSION}-aarch64.AppImage\`, which sets up its menu entry and D-Bus files under \`~/.local\` when it starts
           - NixOS and home-manager: \`programs.wye.channel = "release"\` installs this release once \`nix/release.json\` records it
+
+          ## Browser extension
+
+          The zips of the extension for Firefox and Chromium-family browsers, the same for every architecture:
+
+          - Firefox: \`wye-extension-firefox-${VERSION}.zip\`
+          - Chromium, Chrome, Brave, Vivaldi, Edge: \`wye-extension-chromium-${VERSION}.zip\` (unzip it and load it unpacked)
+          - \`wye-extension-chromium-webstore-${VERSION}.zip\` is the Chromium build without its \`key\`, which is the upload for the Chrome Web Store
 
           Check a download with \`sha256sum -c SHA256SUMS --ignore-missing\`. Installation: [README](https://github.com/${GH_REPO}/blob/${TAG}/README.md#install), [packaging/README.md](https://github.com/${GH_REPO}/blob/${TAG}/packaging/README.md).
           EOF

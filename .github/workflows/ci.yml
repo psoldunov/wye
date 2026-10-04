@@ -4,24 +4,34 @@ on:
   push:
     branches: [master]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
+# A pull request's newer push cancels the run of its older one; master's
+# runs are never cancelled.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
-  # On both architectures the flake builds for: each runner builds and checks
-  # its own system's outputs, and fills the cache for it.
+  # Each runner builds and checks its own system's outputs and fills the cache
+  # for it. Pull requests check x86_64 only: nothing builds aarch64 ahead of CI
+  # (a local `cachix watch-exec` run fills the cache for x86_64 only), so a
+  # change to the code costs the arm64 runner a cold build of about 40
+  # minutes. aarch64 is checked on every push to master and on a workflow
+  # dispatch (`gh workflow run ci.yml --ref <branch>`), and release.yml builds
+  # the tagged flake and the packages on aarch64 before anything is published.
   flake-check:
     name: flake-check (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-24.04
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
+        arch: [x86_64, aarch64]
+        exclude:
+          - arch: ${{ github.event_name == 'pull_request' && 'aarch64' || 'none' }}
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1

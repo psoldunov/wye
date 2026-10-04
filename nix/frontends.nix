@@ -9,7 +9,9 @@
 }:
 {
   # The unpacked extension of each browser family and one zip of each, as
-  # `frontends/extension/build.sh` assembles them. Wye writes the
+  # `frontends/extension/build.sh` assembles them, and a third zip for the
+  # Chrome Web Store: the Chromium build without its `key`, which the store
+  # refuses (the item's own key gives it the same ID). Wye writes the
   # native-messaging manifests itself at run time (the service at every
   # start, or `wye extension install`); nothing here touches a browser's
   # directories.
@@ -33,6 +35,9 @@
         # Fixed timestamps and order keep the zip reproducible.
         (cd "$family" && find . -type f | LC_ALL=C sort | TZ=UTC zip -X -q -@ "../wye-extension-$family.zip")
       done
+      cp -r chromium chromium-webstore
+      jq 'del(.key)' chromium/manifest.json > chromium-webstore/manifest.json
+      (cd chromium-webstore && find . -type f | LC_ALL=C sort | TZ=UTC zip -X -q -@ ../wye-extension-chromium-webstore.zip)
       runHook postBuild
     '';
     installPhase = ''
@@ -42,6 +47,7 @@
         cp -r "$family" $out/share/wye/extension/
         cp "wye-extension-$family.zip" $out/share/wye/extension/
       done
+      cp wye-extension-chromium-webstore.zip $out/share/wye/extension/
       runHook postInstall
     '';
     meta = {

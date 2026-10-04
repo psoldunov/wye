@@ -26,8 +26,13 @@ the stage never touches the session you are working in.
 docs/media/kde/stage/stage.sh up dark     # or light
 docs/media/kde/stage/capture.sh           # every screenshot, into screenshots/<scheme>/
 docs/media/kde/stage/demo.sh              # the GIF (record it on the dark stage)
+docs/media/kde/stage/store.sh             # the extension's store screenshots (light stage)
 docs/media/kde/stage/stage.sh down
 ```
+
+`store.sh` writes the browser extension's store screenshots into
+`frontends/extension/store/images/` (see the README there). It needs no network: the
+browsers' only website is the made-up article it serves itself.
 
 `capture.sh STEP...` takes some of the screenshots only (`picker`, `tray`,
 `settings_pages`, `rule_editor`, `rule_tester`, `windows`). A stage takes one colour
@@ -47,13 +52,14 @@ pointer or type with `drive.py` (see its docstring) the same way.
 | `shot.py` | Screenshots through KWin's ScreenShot2 D-Bus interface: the screen, the active window with its frame and shadow on a transparent background, and frame recording. |
 | `capture.sh` | The screenshot steps. Windows are captured whole; the picker and the tray menu blur what is behind them, so they are cut out of the screen with wallpaper around them. PNGs are optimised losslessly with oxipng. |
 | `demo.sh`, `demo.py` | The GIF: a link clicked in Konsole, the picker, the page opening in a Firefox profile. The stage's screenshots have no pointer, so `demo.py` draws the Breeze cursor from `drive.py`'s log, zooms out to the whole screen when the browser opens, and cuts the frames where nothing happens before gifski encodes it. |
-| `lib.sh` | Helpers both scripts share: running commands and KWin scripts in the stage. |
+| `store.sh`, `store/` | The extension's store screenshots: Chromium and Firefox from the repository's nixpkgs, the extension loaded unpacked (Chromium with `--load-extension`, Firefox through `about:debugging`, since a remote-control protocol stripes its address bar), on `store/page.html`. `store/serve.py` is the browsers' proxy: it serves that page as `https://journal.example.org/` under a demo CA added to their certificate stores, and refuses every other host. |
+| `lib.sh` | Helpers the scripts share: running commands and KWin scripts in the stage. |
 | `home/` | The made-up home directory, copied fresh on every `up`. History times are seconds before the stage starts. |
 
 Coordinates in the scripts are logical pixels on the 1280×800 screen; captures are in
 device pixels, twice as large. A change to the layout of a surface may need the
-positions in `capture.sh` or `demo.sh` adjusted: the comments next to each say what they
-point at.
+positions in `capture.sh`, `demo.sh` or `store.sh` adjusted: the comments next to each say
+what they point at. A new browser release can move `store.sh`'s menu entries the same way.
 
 Plasma fills a tray submenu (More, Recent Links) only when Qt first tries to show it, and Qt
 shows no empty menu, so the submenu opens on the next pointer motion over its row. A hand on

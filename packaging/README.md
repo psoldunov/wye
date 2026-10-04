@@ -288,6 +288,7 @@ Pull requests run only `ci.yml` and `rust-doctor.yml`.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a pushed tag
 `vX.Y.Z`. It calls `packages.yml` and, once all six jobs passed, publishes the GitHub
-release with the six packages and their `SHA256SUMS`; a package that fails its smoke test
-is never published. A re-run of a release replaces the packages of the existing release
-and leaves its notes alone.
+release with the six packages, the three browser extension zips (from the x86_64 Nix build
+of the tag, which is not part of `packages.yml`) and their `SHA256SUMS`; a package that
+fails its smoke test is never published. A re-run of a release replaces the packages and
+zips of the existing release and leaves its notes alone.

@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Wye",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Open links and pages with Wye, the browser picker.",
   "homepage_url": "https://github.com/psoldunov/wye",
   "browser_specific_settings": {
     "gecko": {
       "id": "wye@soldunov.dev",
-      "strict_min_version": "115.0",
+      "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": ["none"]
       }

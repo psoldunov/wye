@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="440" height="280" viewBox="0 0 440 280">
+  <!--
+    Chrome Web Store small promo tile. Wye's app icon (referenced, not copied) and the name,
+    nothing else: the tile is shown at half size too. Rendered by README.md in this directory.
+  -->
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="440" y2="280" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0c1a4d"/>
+      <stop offset="1" stop-color="#16348f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="130" cy="140" r="150" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1f9ae8" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#1f9ae8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="440" height="280" fill="url(#background)"/>
+  <rect width="440" height="280" fill="url(#glow)"/>
+  <image xlink:href="../../../../data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg" x="37" y="47" width="186" height="186"/>
+  <text x="225" y="167" fill="#fff" font-family="Noto Sans" font-weight="700" font-size="76" letter-spacing="-1">Wye</text>
+</svg>

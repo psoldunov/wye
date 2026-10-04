@@ -88,7 +88,31 @@ frontends/extension/build.sh chromium /tmp/wye-extension-chromium
 - **Chromium family:** open `chrome://extensions`, turn on **Developer mode**,
   **Load unpacked**, choose the Chromium directory. The `key` in
   `manifest.chromium.json` fixes the extension ID to
-  `lphepmclmllmbbkjkdhjbdgbjfpmmdnn`, which the host manifest allows.
+  `jdcifhpoallkdjnbflfienpboodjfjei`, the ID of the Chrome Web Store item, which
+  the host manifest allows. Unpacked builds of Wye 1.0.0 had the ID
+  `lphepmclmllmbbkjkdhjbdgbjfpmmdnn` (that key is lost); the host manifest
+  still allows it, so such a build keeps working.
+
+## Store builds
+
+Store installs are coming: the extension is being submitted to the Firefox
+Add-ons store and the Chrome Web Store. Each Wye release attaches three zips to
+its GitHub release (and ships them in the package under
+`share/wye/extension/`):
+
+| Zip | What |
+|---|---|
+| `wye-extension-firefox-<version>.zip` | The Firefox build, for Firefox Add-ons (AMO). |
+| `wye-extension-chromium-<version>.zip` | The Chromium build with the `key`, for **Load unpacked** after unzipping. |
+| `wye-extension-chromium-webstore-<version>.zip` | The Chromium build without the `key`, the upload for the Chrome Web Store. |
+
+The Chrome Web Store refuses an upload whose manifest has a `key`, and assigns
+the item its ID from a key of its own. The item's key is the one in
+`manifest.chromium.json`, so the store build gets the same ID
+(`jdcifhpoallkdjnbflfienpboodjfjei`) as the unpacked one, and the host manifest
+needs one origin for both. The `flake.nix` check `extension-manifests` fails if
+that ID drifts from `CHROMIUM_EXTENSION_ID` in
+`crates/wye-desktop/src/native_messaging.rs`.
 
 Change the shortcut on `about:addons` → gear → **Manage Extension Shortcuts**
 (Firefox) or `chrome://extensions/shortcuts` (Chromium).
@@ -102,6 +126,6 @@ Change the shortcut on `about:addons` → gear → **Manage Extension Shortcuts*
 | `options.html`, `options.js` | The options page (BEXT-03). |
 | `pages.css` | Style of both pages. |
 | `manifest.firefox.json` | Firefox: event-page background, gecko ID `wye@soldunov.dev`. |
-| `manifest.chromium.json` | Chromium: service-worker background, fixed `key`. |
+| `manifest.chromium.json` | Chromium: service-worker background, fixed `key` (the Chrome Web Store item's; the store zip drops it). |
 | `icons/` | Wye's icon, rendered from `data/icons/hicolor/scalable/apps/dev.soldunov.wye.svg`. |
 | `build.sh` | Assembles one family's unpacked extension. The Nix build (`nix/frontends.nix`) then stamps the workspace version from `Cargo.toml` into its `manifest.json`; the checked-in manifests' `version` is only what `build.sh` alone produces. |

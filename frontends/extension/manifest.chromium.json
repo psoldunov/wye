@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Wye",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Open links and pages with Wye, the browser picker.",
   "homepage_url": "https://github.com/psoldunov/wye",
   "minimum_chrome_version": "116",
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArpeVHeC72VbnzPey7z6iq90W9KCvjND5LgJo1LQmZuGs4x/+booRs7+8DTG/WZ4Fx8ee1Vu4bydso17TV0MJXq4m8sOEpt1p8lw7WgF4C05lNzj9h1o9s+7yuH5wdM40mMI+rMsTQhwypsGSzNjar7iFGY3dK2Byxn1P5J1jwOQE3LYepHYLR2WLKyxgcZwC/YFmQd6A0R6IZkG+LxYiUyFAkijcIPf7ZZpSNLEfv8Mob7mTgi+EOuQF1PPnlMIDeHgVWz9RN6vcyW63eEMSUThzYubBeDAqduWXqt7YbB4Y/RBk309yDWIG1BNLH9Tlf0k9MoyN2Gb3Tkaci3Q2bQIDAQAB",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzHna5xOrdBUoe9Af8ZTWYbJVbaAqI+UAv6WbOD0pAccYw/w1G/LkABsc0dp735mwCT4LJK3GdqEwi3/kw5FosStkNUJDd6SwzxT0iF3/GeBTc6F8oGCMu6ZjzE51b3VoK6yAftcY3MiOAOi7hkhQsCUZIy+TEzmQKNH2uCPybRecxtH3xBFLer7UhL2uQZUQ6yC7fBpH53zmrT+kLWst4cttATpg2noBvP9Rob6RHppUC731Uq1HkxeNz42BDBElLYP03EMjnLurRv+fA9ozRPtAQ4fCA3OJFNSsyhogLeptV0mVBUzKalaO/rPfXm7REcznjbK85p6AsdT3DOj6XQIDAQAB",
   "icons": {
     "16": "icons/wye-16.png",
     "32": "icons/wye-32.png",

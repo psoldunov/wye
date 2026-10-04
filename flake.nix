@@ -332,7 +332,7 @@
               }
               ''
                 dir=${frontends.extension}/share/wye/extension
-                jq -e '.manifest_version == 3 and .background.scripts != null and .browser_specific_settings.gecko.id == "wye@soldunov.dev"' $dir/firefox/manifest.json > /dev/null
+                jq -e '.manifest_version == 3 and .background.scripts != null and .browser_specific_settings.gecko.id == "wye@soldunov.dev" and .browser_specific_settings.gecko.strict_min_version == "140.0"' $dir/firefox/manifest.json > /dev/null
                 jq -e '.manifest_version == 3 and .background.service_worker != null and .key != null' $dir/chromium/manifest.json > /dev/null
                 for family in firefox chromium; do
                   jq -e '.version == "${wye.package.version}"' $dir/$family/manifest.json > /dev/null
@@ -340,6 +340,16 @@
                   test -f $dir/$family/icons/wye-128.png
                   unzip -Z1 $dir/wye-extension-$family.zip | grep -qx manifest.json
                 done
+                # The Chrome Web Store refuses a `key`; the rest of the manifest
+                # is the Chromium build's.
+                unzip -Z1 $dir/wye-extension-chromium-webstore.zip | grep -qx manifest.json
+                unzip -p $dir/wye-extension-chromium-webstore.zip manifest.json | jq -e 'has("key") | not' > /dev/null
+                diff <(unzip -p $dir/wye-extension-chromium-webstore.zip manifest.json | jq -S .) <(jq -S 'del(.key)' $dir/chromium/manifest.json)
+                diff <(unzip -Z1 $dir/wye-extension-chromium-webstore.zip | sort) <(unzip -Z1 $dir/wye-extension-chromium.zip | sort)
+                # The ID the `key` gives the extension is the one the host
+                # manifest allows (BEXT-04).
+                id=$(jq -r .key $dir/chromium/manifest.json | base64 -d | sha256sum | cut -c1-32 | tr 0-9a-f a-p)
+                grep -qxF "pub const CHROMIUM_EXTENSION_ID: &str = \"$id\";" ${./crates/wye-desktop/src/native_messaging.rs}
                 touch $out
               '';
           # Both modules evaluated as a user's configuration would, with the

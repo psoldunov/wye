@@ -159,6 +159,41 @@ fn reports_availability() {
     }
 }
 
+// DEF-08, DEF-09: only apps that handle web links count as browsers.
+#[test]
+fn tells_browsers_from_other_apps() {
+    let fx = Fixture::new();
+    fx.system_entry("firefox.desktop", FIREFOX);
+    fx.system_entry("editor.desktop", EDITOR);
+    let inventory = Inventory::scan(&fx.xdg, &wye());
+
+    let profile = Target::Profile {
+        app: id("firefox"),
+        id: "abc.main".into(),
+    };
+    let exe = Target::Custom(CustomApp::Executable("tool".into()));
+    let browsers = [
+        Target::App(id("firefox")),
+        Target::Custom(CustomApp::Desktop(id("firefox"))),
+        Target::Private(id("firefox")),
+        profile,
+    ];
+    let others = [
+        Target::Picker,
+        Target::Default,
+        Target::App(id("editor")),
+        Target::Custom(CustomApp::Desktop(id("editor"))),
+        Target::App(id("missing")),
+        exe,
+    ];
+    for target in browsers {
+        assert!(inventory.is_browser(&target), "{target}");
+    }
+    for target in others {
+        assert!(!inventory.is_browser(&target), "{target}");
+    }
+}
+
 #[test]
 fn finds_single_entries() {
     let fx = Fixture::new();

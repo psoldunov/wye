@@ -86,8 +86,10 @@ const fn kind(step: &Step) -> &'static str {
         | Step::ScriptUnchanged(_)
         | Step::ScriptFailed { .. } => "script",
         Step::AlternativeKey { .. } => "alternative-key",
-        Step::RuleMatched { .. } => "rule",
-        Step::MappingMatched { .. } | Step::MappingTargetMissing { .. } => "web-app",
+        Step::RuleMatched { .. } | Step::RuleSkipped { .. } => "rule",
+        Step::MappingMatched { .. }
+        | Step::MappingTargetMissing { .. }
+        | Step::MappingSkipped { .. } => "web-app",
         Step::Fallback { .. } => "fallback",
         Step::DefaultIsPrimary { .. } => "default",
         Step::TargetMissing { .. } => "missing",

@@ -25,7 +25,8 @@ missing ([APP-10](06-apps.md)); at runtime it falls back to the Picker.
 **WebAppMapping**: service ID → target. Only non-Default mappings are stored.
 
 **ServiceDefinition** (shipped catalogue, [APP-07](06-apps.md)): ID, name, URL patterns,
-desktop-app identifiers, hand-over (pass-through or scheme translation).
+desktop-app identifiers, hand-over (pass-through or scheme translation), sign-in paths
+([DEF-09](11-url-pipeline.md#default-browser-registration)).
 
 **Rule**: ID, name, enabled, target, URL matchers, source apps, held keys
 ([RUL-27](08-rules.md#rule-editor-sheet)), open in background, force new window, run

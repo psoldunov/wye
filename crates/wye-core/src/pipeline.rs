@@ -23,7 +23,7 @@ use crate::expand::ExpansionCatalogue;
 use crate::hooks::Hooks;
 use crate::keys::Modifiers;
 use crate::normalize::MatchUrl;
-use crate::rule::{CompiledRule, MatchInput, RunPosition};
+use crate::rule::{CompiledRule, MatchInput, Rule, RunPosition};
 use crate::source::SourceApp;
 use crate::target::{Availability, Target};
 
@@ -186,6 +186,22 @@ pub enum Step {
     MappingTargetMissing {
         service: String,
         target: Target,
+    },
+    /// A rule whose target is an app that must not get this link (DEF-08,
+    /// DEF-09); the next matching rule is tried.
+    RuleSkipped {
+        /// Position in `Config::rules` as loaded; see [`Decision::Rule`].
+        index: usize,
+        name: String,
+        position: RunPosition,
+        target: Target,
+        reason: SkipReason,
+    },
+    /// A web app mapping whose app must not get this link (DEF-08, DEF-09).
+    MappingSkipped {
+        service: String,
+        target: Target,
+        reason: SkipReason,
     },
     Fallback {
         target: Target,
@@ -446,19 +462,22 @@ impl Pipeline {
             return (target, Decision::AlternativeKey, OpenOptions::default());
         }
 
+        // The alternative key, the fallback, the forced picker and the
+        // picker's answer are the user's own choice and are never guarded.
+        let guard = Guard::new(request, url, apps);
         let match_url = MatchUrl::new(url);
         let input = MatchInput {
             url: &match_url,
             source: &request.source,
             held: request.held,
         };
-        if let Some(hit) = self.first_rule(RunPosition::Before, input, apps, hooks, steps) {
+        if let Some(hit) = self.first_rule(RunPosition::Before, input, &guard, apps, hooks, steps) {
             return hit;
         }
-        if let Some(hit) = self.mapping(url, apps, steps) {
+        if let Some(hit) = self.mapping(url, &guard, apps, steps) {
             return hit;
         }
-        if let Some(hit) = self.first_rule(RunPosition::After, input, apps, hooks, steps) {
+        if let Some(hit) = self.first_rule(RunPosition::After, input, &guard, apps, hooks, steps) {
             return hit;
         }
         steps.push(Step::Fallback {
@@ -468,23 +487,51 @@ impl Pipeline {
         (target, Decision::Fallback, OpenOptions::default())
     }
 
-    // PIPE-07 and PIPE-09: first match wins (RUL-03).
+    // PIPE-07 and PIPE-09: first match wins (RUL-03), except that a rule
+    // aimed at an app that must not get the link is passed over (DEF-08,
+    // DEF-09).
     fn first_rule(
         &self,
         position: RunPosition,
         input: MatchInput<'_>,
+        guard: &Guard<'_>,
         apps: &dyn Availability,
         hooks: Hooks<'_>,
         steps: &mut Vec<Step>,
     ) -> Option<(Target, Decision, OpenOptions)> {
-        let (index, compiled) = self
+        let matching = self
             .rules
             .iter()
             .filter(|(_, compiled)| compiled.rule.run == position)
-            .find(|(_, compiled)| compiled.matches(input))?;
-        let rule = &compiled.rule;
+            .filter(|(_, compiled)| compiled.matches(input));
+        for (index, compiled) in matching {
+            let rule = &compiled.rule;
+            if let Some(reason) = guard.skip(&rule.target) {
+                steps.push(Step::RuleSkipped {
+                    index: *index,
+                    name: rule.name.clone(),
+                    position,
+                    target: rule.target.clone(),
+                    reason,
+                });
+                continue;
+            }
+            return Some(self.rule_hit(*index, rule, position, hooks, apps, steps));
+        }
+        None
+    }
+
+    fn rule_hit(
+        &self,
+        index: usize,
+        rule: &Rule,
+        position: RunPosition,
+        hooks: Hooks<'_>,
+        apps: &dyn Availability,
+        steps: &mut Vec<Step>,
+    ) -> (Target, Decision, OpenOptions) {
         steps.push(Step::RuleMatched {
-            index: *index,
+            index,
             name: rule.name.clone(),
             position,
             target: rule.target.clone(),
@@ -495,7 +542,7 @@ impl Pipeline {
         }
         let target = self.settle(&rule.target, apps, steps);
         let decision = Decision::Rule {
-            index: *index,
+            index,
             name: rule.name.clone(),
             position,
         };
@@ -503,14 +550,16 @@ impl Pipeline {
             background: rule.open_in_background,
             new_window: rule.force_new_window,
         };
-        Some((target, decision, options))
+        (target, decision, options)
     }
 
     // PIPE-08: a mapping left at Default, or whose app is gone (APP-10), does
-    // not match.
+    // not match; nor does one whose app must not get the link (DEF-08,
+    // DEF-09).
     fn mapping(
         &self,
         url: &Url,
+        guard: &Guard<'_>,
         apps: &dyn Availability,
         steps: &mut Vec<Step>,
     ) -> Option<(Target, Decision, OpenOptions)> {
@@ -525,6 +574,14 @@ impl Pipeline {
                 steps.push(Step::MappingTargetMissing {
                     service: service.name.clone(),
                     target: target.clone(),
+                });
+                continue;
+            }
+            if let Some(reason) = guard.skip_mapping(service, target) {
+                steps.push(Step::MappingSkipped {
+                    service: service.name.clone(),
+                    target: target.clone(),
+                    reason,
                 });
                 continue;
             }
@@ -612,10 +669,16 @@ fn is_html_file(url: &Url) -> bool {
 }
 
 mod finish;
+mod guard;
 mod step_text;
 
-pub use finish::{Chosen, Finished};
+use guard::Guard;
 
+pub use finish::{Chosen, Finished};
+pub use guard::SkipReason;
+
+#[cfg(test)]
+mod guard_tests;
 #[cfg(test)]
 mod hook_tests;
 #[cfg(test)]

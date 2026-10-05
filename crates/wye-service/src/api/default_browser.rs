@@ -43,6 +43,9 @@ pub async fn make_default(ctx: &ServiceContext) -> Result<()> {
         .config
         .general
         .open_local_html;
+    // DEF-05: an unreadable state file stops the call before anything
+    // changes, so the replaced browser is never left unrecorded.
+    super::state::load(ctx).await?;
     let made = blocking(move || change::make_default(&xdg, include_html)).await??;
     super::state::update(ctx, |state| {
         Ok(wye_desktop::State {

@@ -87,6 +87,20 @@ fn set_refuses_without_wyes_desktop_entry() {
     assert_eq!(desktop.read(MIMEAPPS), before);
 }
 
+/// An unreadable state file may hold the only record of the previous default
+/// (DEF-05): `set` reports it and changes nothing.
+#[test]
+fn set_refuses_an_unreadable_state_file() {
+    let desktop = with_fake_one_default();
+    desktop.install_wye();
+    desktop.write(STATE, "previous-default-browser = 3\n");
+    let mimeapps = desktop.read(MIMEAPPS);
+    let run = desktop.wye(&["default", "set"]).expect_code(1);
+    assert!(run.stderr.contains("not a valid state file"), "{run:#?}");
+    assert_eq!(desktop.read(STATE), "previous-default-browser = 3\n");
+    assert_eq!(desktop.read(MIMEAPPS), mimeapps);
+}
+
 #[test]
 fn set_reports_a_managed_mimeapps_list() {
     let desktop = Desktop::new();

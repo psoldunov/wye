@@ -184,7 +184,11 @@ config file read-only. It holds the browsers to restore (`previous-default-brows
 `previous-kdeglobals-browser`), onboarding and UI state, and the default the user chose to
 keep (`kept-default`); the CLI and the service share the type (`wye_desktop::State`). State and `mimeapps.list` are replaced atomically through one helper
 (`wye_desktop::atomic::write`: a temporary file in the same directory, synced, then renamed),
-which never writes through a symlink.
+which never writes through a symlink. Atomic replacement stops torn files, not lost updates,
+so every writer holds an exclusive `flock` on `state.toml.lock` around load, change and save
+(`wye_desktop::State::update`, `StateLock`); readers take no lock. A writer reports an
+unreadable state file instead of replacing it, because it may hold the only record of the
+previous default browser.
 
 ### Loop guard (DEF-06)
 
@@ -498,6 +502,7 @@ by Nix; a manifest Nix or home-manager links in place is left alone.
 |------|----------|
 | `$XDG_CONFIG_HOME/wye/config.toml` | User configuration. Hand-edited. |
 | `$XDG_STATE_HOME/wye/state.toml` | Internal state: the browsers to restore (`previous-default-browser`, `previous-kdeglobals-browser`), `kept-default`, onboarding and UI state, the script errors already notified (`script-errors-notified`), and whether the user removed the extension host manifests (`extension-host-removed`). |
+| `$XDG_STATE_HOME/wye/state.toml.lock` | Empty. The lock every `state.toml` writer holds; left in place. |
 | `$XDG_STATE_HOME/wye/history.json` | Recent links (DLG-HIS), newest first, at most 100 entries (decision 10). |
 | `$XDG_CONFIG_HOME/autostart/dev.soldunov.wye.desktop` | The XDG autostart entry (`wye service --activate`) while "Launch at login" is on, unless a Nix module owns login start. |
 | `$XDG_CONFIG_HOME/mimeapps.list` | Default browser association, written by `wye default set`. |

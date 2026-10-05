@@ -61,18 +61,15 @@ pub fn remove(out: &mut impl Write, xdg: &XdgDirs, state: &Path) -> Result<(), S
 }
 
 /// Record whether the user removed the manifests (BEXT-04). The state file
-/// is shared with the service and the CLI, so it is loaded, changed and
-/// saved, and only written when the flag changes.
+/// is shared with the service and the CLI, so it is updated under the file
+/// lock, and only written when the flag changes. An unreadable file is an
+/// error and is left as it is.
 fn set_removed(state: &Path, removed: bool) -> Result<(), String> {
-    let current = State::load(state).map_err(|error| error.to_string())?;
-    if current.extension_host_removed == removed {
-        return Ok(());
-    }
-    State {
+    State::update(state, |current| State {
         extension_host_removed: removed,
         ..current
-    }
-    .save(state)
+    })
+    .map(|_| ())
     .map_err(|error| error.to_string())
 }
 

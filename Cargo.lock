@@ -2954,6 +2954,7 @@ name = "wye-desktop"
 version = "1.1.0"
 dependencies = [
  "rusqlite",
+ "rustix",
  "serde",
  "serde_json",
  "tempfile",

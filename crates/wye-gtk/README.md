@@ -218,8 +218,10 @@ The self-test runs each surface in a child process on a private Xvfb (when `Xvfb
 settings stay out), no portals, no accessibility bus, in-memory GSettings, GNOME's font and
 title buttons. It fails on a crash, a missing pass line, or any GLib message of level warning
 or worse: the child's log writer prints each as one JSON line (`src/selftest/log.rs`) with
-the code that logged it, and there is no allow-list. The flake check `gtk-selftest` runs the
-installed, wrapped binary the same way, with the icon theme the wrapper brings.
+the code that logged it. The allow-list there (`ALLOWED`) names only warnings GTK logs about
+its own state, each with the reason; do not widen it for your own warnings. The flake check
+`gtk-selftest` runs the installed, wrapped binary the same way, with the icon theme the
+wrapper brings.
 
 **Snapshots.** `--snapshots DIR` saves every visible window after each case as
 `DIR/<surface>-<NN>-<slug>.png` (`-w2`… for further windows, `-p1`… for each open popover of

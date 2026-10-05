@@ -1,6 +1,7 @@
 //! `GetApps`, `GetServices` and `GetExpansionCatalogue` payloads (DLG-APP,
 //! APP-03, APP-05, DLG-EXP). Pure.
 
+use wye_api::AppRef;
 use wye_api::apps::{AppInfo, AppList};
 use wye_api::expansion::{ExpansionCatalogue, ShortLink, Wrapper};
 use wye_api::services::{ServiceInfo, ServiceList};
@@ -9,7 +10,7 @@ use wye_core::expand;
 use wye_core::{Config, ServiceCatalogue, Target};
 use wye_desktop::{Inventory, Locale};
 
-use super::targets::{packaging, spec};
+use super::targets::{self, packaging, spec};
 
 /// DLG-APP-01: installed apps (browsers only unless `all`), by name, and the
 /// apps that recently sent links (DLG-APP-02).
@@ -40,8 +41,9 @@ pub(crate) fn apps(
     }
 }
 
-/// APP-03, APP-05: the catalogue with each service's installed own app and
-/// its mapping (`{"default": true}` when none is stored).
+/// APP-03, APP-05, APP-12: the catalogue with each service's installed own
+/// apps (the catalogue's, then those named after the service) and its mapping
+/// (`{"default": true}` when none is stored).
 pub(crate) fn services(
     inventory: &Inventory,
     locale: &Locale,
@@ -52,19 +54,20 @@ pub(crate) fn services(
         .services()
         .iter()
         .map(|service| {
-            let installed = service
-                .desktop_apps
-                .iter()
-                .find_map(|id| inventory.get(id).filter(|app| !app.forwards_links));
-            ServiceInfo {
-                id: service.id.clone(),
-                name: service.name.clone(),
-                icon: installed.and_then(|app| app.entry.icon.clone()),
-                installed_app: installed.map(|app| wye_api::AppRef {
+            let installed_apps: Vec<AppRef> = targets::service_apps(inventory, service)
+                .into_iter()
+                .map(|app| AppRef {
                     id: app.id().to_string(),
                     name: app.display_name(locale),
                     icon: app.entry.icon.clone(),
-                }),
+                })
+                .collect();
+            ServiceInfo {
+                id: service.id.clone(),
+                name: service.name.clone(),
+                icon: installed_apps.first().and_then(|app| app.icon.clone()),
+                installed_app: installed_apps.first().cloned(),
+                installed_apps,
                 target: spec(config.apps.get(&service.id).unwrap_or(&Target::Default)),
             }
         })

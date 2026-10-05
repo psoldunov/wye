@@ -99,6 +99,62 @@ impl ServiceDefinition {
     pub fn is_own_app(&self, app: &DesktopId) -> bool {
         self.desktop_apps.contains(app)
     }
+
+    /// True when an installed app called `app_name` is this service's own
+    /// desktop app by name (APP-12). The comparison ignores case and runs of
+    /// spaces; a bracketed qualifier at the end of the service name may be
+    /// left out, and one trailing "for Linux", "Desktop" or "Linux" on the
+    /// app's name is ignored. A service with a translated hand-over never
+    /// matches: only the apps the catalogue lists accept its links.
+    #[must_use]
+    pub fn owns_app_named(&self, app_name: &str) -> bool {
+        if self.hand_over != HandOver::PassThrough {
+            return false;
+        }
+        let service = normalise_name(&self.name);
+        let service_candidates = [
+            Some(service.as_str()),
+            strip_bracketed_suffix(&service).filter(|short| !short.is_empty()),
+        ];
+        let app = normalise_name(app_name);
+        let app_candidates = [Some(app.as_str()), strip_platform_suffix(&app)];
+        app_candidates
+            .into_iter()
+            .flatten()
+            .filter(|candidate| !candidate.is_empty())
+            .any(|candidate| {
+                service_candidates
+                    .into_iter()
+                    .flatten()
+                    .any(|s| s == candidate)
+            })
+    }
+}
+
+/// Trimmed, lower-cased, with runs of whitespace collapsed to one space.
+fn normalise_name(name: &str) -> String {
+    name.split_whitespace()
+        .map(str::to_lowercase)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// `"element (matrix)"` becomes `"element"`; `None` without a trailing
+/// bracketed group.
+fn strip_bracketed_suffix(name: &str) -> Option<&str> {
+    let body = name.strip_suffix(')')?;
+    let open = body.rfind('(')?;
+    name.get(..open).map(str::trim)
+}
+
+/// The name without one trailing whole-word platform suffix (APP-12); the
+/// suffix needs a leading space, so "Desktop" alone stays as it is.
+fn strip_platform_suffix(name: &str) -> Option<&str> {
+    const SUFFIXES: [&str; 3] = [" for linux", " desktop", " linux"];
+    SUFFIXES
+        .iter()
+        .find_map(|suffix| name.strip_suffix(suffix))
+        .map(str::trim)
 }
 
 /// True when `path` starts with `prefix`, ignoring ASCII case, and the match
@@ -238,6 +294,47 @@ mod tests {
             HandOver::PassThrough.apply(&url("https://a.example/")),
             "https://a.example/"
         );
+    }
+
+    fn owns(service: &str, app_name: &str) -> bool {
+        ServiceCatalogue::shipped()
+            .get(service)
+            .unwrap()
+            .owns_app_named(app_name)
+    }
+
+    // APP-12
+    #[test]
+    fn app12_an_app_named_after_the_service_is_its_own_app() {
+        for name in [
+            "Claude",
+            "claude",
+            "  Claude ",
+            "Claude Desktop",
+            "Claude for Linux",
+            "Claude Linux",
+        ] {
+            assert!(owns("claude", name), "{name:?}");
+        }
+        for name in ["Claude Code", "Clauder", "Desktop", ""] {
+            assert!(!owns("claude", name), "{name:?}");
+        }
+    }
+
+    // APP-12
+    #[test]
+    fn app12_a_bracketed_qualifier_of_the_service_name_may_be_left_out() {
+        for name in ["Element", "Element (Matrix)", "Element Desktop"] {
+            assert!(owns("element", name), "{name:?}");
+        }
+        assert!(!owns("linear", "Linear Algebra"));
+    }
+
+    // APP-12
+    #[test]
+    fn app12_a_translated_hand_over_finds_no_app_by_name() {
+        assert!(!owns("spotify", "Spotify"));
+        assert!(!owns("steam", "Steam"));
     }
 
     fn service_with_sign_in_paths(paths: &[&str]) -> ServiceDefinition {

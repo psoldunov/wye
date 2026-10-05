@@ -5,7 +5,7 @@
 //   title: string          the page's name; the window's title (SET-01): "General", "Browsers", …
 //   config: var            the configuration (kebab-case JSON, as `config.toml`)
 //   status: var            `Status` (defaultBrowser, config, capabilities, uiState)
-//   services: var          `GetServices`: {services: [{id, name, icon, installedApp, target}]}
+//   services: var          `GetServices`: {services: [{id, name, icon, installedApp, installedApps, target}]}
 //   editable: bool         changes can be saved; false for a read-only file (home-manager). Rows disable their own control
 //                          then (WyeRow.needsConfig); callouts, help buttons and links keep working.
 //   value(path, fallback)  the configuration value at the dotted path, for example value("general.tray-icon", "wye")

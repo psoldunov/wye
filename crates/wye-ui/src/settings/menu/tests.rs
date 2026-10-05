@@ -326,3 +326,106 @@ fn surfaces_parse_from_their_names() {
     assert_eq!(Surface::parse("apps"), Some(Surface::Apps));
     assert_eq!(Surface::parse("nope"), None);
 }
+
+/// Linear with two installed own apps (APP-12), sent as `installedApps` only.
+fn linear_with_two_apps() -> ServiceInfo {
+    let app = |id: &str, name: &str| AppRef {
+        id: id.into(),
+        name: name.into(),
+        icon: None,
+    };
+    ServiceInfo {
+        id: "linear".into(),
+        name: "Linear".into(),
+        installed_apps: vec![
+            app("linear.desktop", "Linear"),
+            app("chrome-abc-Default.desktop", "Linear (PWA)"),
+        ],
+        target: json!({"default": true}),
+        ..ServiceInfo::default()
+    }
+}
+
+fn inventory_with_linear_apps() -> TargetInventory {
+    let mut inventory = inventory();
+    inventory.targets.extend([
+        info(&json!({"app": "linear.desktop"}), TargetKind::App, "Linear"),
+        info(
+            &json!({"app": "chrome-abc-Default.desktop"}),
+            TargetKind::App,
+            "Linear (PWA)",
+        ),
+    ]);
+    inventory
+}
+
+// APP-12
+#[test]
+fn app12_every_own_app_of_a_service_is_listed_in_order_below_default_and_picker() {
+    let current = json!({"default": true});
+    let services = [linear_with_two_apps()];
+    let rows = build(
+        &inventory_with_linear_apps(),
+        &request(Surface::Apps, &current, Some(&services[0]), &services),
+    );
+    let labels = labels(&rows);
+    assert_eq!(
+        labels[..6],
+        [
+            "Default (Firefox)",
+            "---",
+            "Picker",
+            "---",
+            "Linear",
+            "Linear (PWA)"
+        ]
+    );
+    // Section c holds them; the browser section does not repeat them.
+    assert_eq!(labels.iter().filter(|l| l.starts_with("Linear")).count(), 2);
+}
+
+// APP-12, TGT-05
+#[test]
+fn app12_no_own_app_of_any_service_is_a_browser() {
+    let current = json!({"picker": true});
+    let services = [linear_with_two_apps()];
+    let rows = build(
+        &inventory_with_linear_apps(),
+        &request(Surface::Browsers, &current, None, &services),
+    );
+    assert!(!labels(&rows).iter().any(|l| l.starts_with("Linear")));
+    assert_eq!(
+        foreign_app_ids(&services),
+        BTreeSet::from([
+            "linear.desktop".to_owned(),
+            "chrome-abc-Default.desktop".to_owned()
+        ])
+    );
+}
+
+// APP-12
+#[test]
+fn app12_the_second_own_app_is_described_when_the_inventory_lacks_it() {
+    let current = json!({"app": "chrome-abc-Default.desktop"});
+    let services = [linear_with_two_apps()];
+    let row = describe(
+        &TargetInventory::default(),
+        &request(Surface::Apps, &current, Some(&services[0]), &services),
+    );
+    assert_eq!(row.label, "Linear (PWA)");
+    assert!(!row.missing && row.checked);
+}
+
+// APP-05
+#[test]
+fn a_service_that_sends_only_installed_app_still_lists_it() {
+    let current = json!({"default": true});
+    let services = [discord()];
+    assert!(services[0].installed_apps.is_empty());
+    let rows = build(
+        &inventory(),
+        &request(Surface::Apps, &current, Some(&services[0]), &services),
+    );
+    assert!(labels(&rows).contains(&"Discord".to_owned()));
+    assert_eq!(foreign_app_ids(&services).len(), 1);
+}

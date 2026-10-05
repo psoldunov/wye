@@ -5,9 +5,10 @@ use std::collections::BTreeSet;
 
 use wye_api::targets::{TargetInfo, TargetInventory, TargetKind};
 use wye_api::{Badge, Packaging, TargetCapabilities};
+use wye_core::catalogue::ServiceDefinition;
 use wye_core::target_menu::{self, CustomEntry, PICKER_LABEL, TargetCatalog};
 use wye_core::{Availability as _, Config, CustomApp, DesktopId, ServiceCatalogue, Target};
-use wye_desktop::{Inventory, Locale};
+use wye_desktop::{InstalledApp, Inventory, Locale};
 
 /// The catalogue menus and the picker read: web handlers, the installed own
 /// apps of web services (APP-05) and the custom apps the configuration
@@ -25,15 +26,43 @@ pub(crate) fn catalog(
     }
 }
 
-/// The installed own apps of web services (APP-05): not browsers, so no
-/// list of browsers offers them (TGT-05, SHOWN-02, SHOWN-09).
+/// The installed own apps of web services (APP-05, APP-12): not browsers, so
+/// no list of browsers offers them (TGT-05, SHOWN-02, SHOWN-09).
 pub(crate) fn own_apps(inventory: &Inventory, services: &ServiceCatalogue) -> Vec<DesktopId> {
+    let mut seen = BTreeSet::new();
     services
         .services()
         .iter()
-        .flat_map(|service| service.desktop_apps.iter().cloned())
-        .filter(|id| inventory.get(id).is_some())
+        .flat_map(|service| service_apps(inventory, service))
+        .map(|app| app.id().clone())
+        .filter(|id| seen.insert(id.clone()))
         .collect()
+}
+
+/// Every installed own app of one service (APP-05, APP-12): the catalogue's
+/// desktop IDs in order, then the apps named after the service, ordered by
+/// desktop ID. Apps that forward links never count, and no browser counts by
+/// its name.
+pub(crate) fn service_apps<'a>(
+    inventory: &'a Inventory,
+    service: &ServiceDefinition,
+) -> Vec<&'a InstalledApp> {
+    let mut found: Vec<&InstalledApp> = service
+        .desktop_apps
+        .iter()
+        .filter_map(|id| inventory.get(id))
+        .filter(|app| !app.forwards_links)
+        .collect();
+    for app in inventory.apps() {
+        if !app.handles_web
+            && !app.forwards_links
+            && service.owns_app_named(&app.entry.name)
+            && !found.iter().any(|listed| listed.id() == app.id())
+        {
+            found.push(app);
+        }
+    }
+    found
 }
 
 /// The inventory `GetTargets` returns: the Picker, every available target in

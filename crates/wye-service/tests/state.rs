@@ -4,7 +4,7 @@
 
 mod support;
 
-use support::{ONE, Service, WYE, eventually};
+use support::{ONE, Service, TWO, WYE, eventually};
 use wye_api::Error;
 
 const MIMEAPPS: &str = "config/mimeapps.list";
@@ -105,6 +105,37 @@ async fn def02_def05_make_default_and_give_it_back_with_kdeglobals() {
     assert!(!status.is_default);
     assert_eq!(status.current.map(|app| app.id), Some(ONE.to_owned()));
     assert!(status.kept_current, "giving it back is not a takeover");
+}
+
+/// With an unreadable state file `MakeDefault` fails before it changes
+/// anything, so the browser it would replace is never left unrecorded.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn def05_make_default_with_an_unreadable_state_file_changes_nothing() {
+    let shown = format!("[[browsers.shown]]\ntarget = {{ app = \"{ONE}\" }}\n");
+    let Some(service) = Service::start(&shown).await else {
+        return;
+    };
+    let desktop = &service.desktop;
+    // The first scan writes the state; let it finish so it cannot replace
+    // the invalid file below.
+    service.wye().await.get_targets().await.expect("GetTargets");
+    eventually("the first scan is recorded", || async {
+        desktop.read(STATE).contains(TWO)
+    })
+    .await;
+    desktop.install_wye();
+    desktop.write(MIMEAPPS, &listing(ONE));
+    let kde = "[General]\nBrowserApplication=fake-one.desktop\n";
+    desktop.write(KDEGLOBALS, kde);
+    let invalid = "previous-default-browser = 3\n";
+    desktop.write(STATE, invalid);
+    service.ctx.set_environment(desktop.environment_on("KDE"));
+
+    let refused = service.wye().await.make_default().await;
+    assert!(refused.is_err(), "{refused:?}");
+    assert_eq!(desktop.read(MIMEAPPS), listing(ONE));
+    assert_eq!(desktop.read(KDEGLOBALS), kde);
+    assert_eq!(desktop.read(STATE), invalid);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

@@ -3,13 +3,25 @@
 //! example one written by home-manager) never blocks it (12-data-model.md,
 //! "Internal").
 //!
-//! The CLI (`wye default`) and the service share this file. Every writer
-//! loads the whole state, changes its own fields and saves the result, so
-//! one never drops what the other keeps.
+//! The CLI (`wye default`, `wye extension`) and the service share this
+//! file. Every writer loads the whole state, changes its own fields and
+//! saves the result, and holds an exclusive lock (`state.toml.lock` next to
+//! the file, see [`StateLock`]) for that whole cycle, so a save never writes
+//! back a copy that is stale: one writer never drops what another keeps.
+//! [`State::update`] is that cycle; [`State::save`] takes the lock too.
+//! Readers take no lock: the atomic rename always shows them a whole file.
+//!
+//! A writer never replaces a file it cannot read. Its fields, notably
+//! `previous-default-browser` (DEF-05), may be the only record of what the
+//! user had before Wye; the writer reports the error and leaves the file be.
 
+use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 
+use rustix::fs::{FlockOperation, flock};
+use rustix::io::Errno;
 use serde::{Deserialize, Serialize};
 use wye_core::DesktopId;
 
@@ -100,6 +112,103 @@ pub enum StateError {
         #[source]
         source: io::Error,
     },
+    #[error("cannot lock {path}: {source}")]
+    Lock {
+        path: PathBuf,
+        #[source]
+        source: io::Error,
+    },
+}
+
+/// The exclusive lock every writer of the state file holds while it loads,
+/// changes and saves it. Released when dropped.
+///
+/// The lock is an `flock` on `state.toml.lock`, next to the state file. It
+/// is a separate file because [`atomic::write`] replaces `state.toml`'s
+/// inode on every save, so a lock on that file would not outlast a write.
+/// The lock file is left in place on purpose: removing it would let two
+/// writers lock different inodes. `flock` locks belong to the open file
+/// description, so two holders in one process exclude each other too.
+///
+/// A holder must not call [`State::save`] or [`State::update`] on the same
+/// path, nor acquire a second `StateLock` for it: each waits for the lock,
+/// so it would wait on itself forever. Save through the guard instead.
+#[derive(Debug)]
+#[must_use = "the lock is released as soon as the guard is dropped"]
+pub struct StateLock {
+    path: PathBuf,
+    // Held for its `flock`, released when the file closes.
+    _file: File,
+}
+
+impl StateLock {
+    /// Waits for the exclusive lock of the state file at `path` (the state
+    /// file, not the lock file), creating the directory and the lock file
+    /// when needed.
+    ///
+    /// # Errors
+    ///
+    /// [`StateError::Lock`] when the directory or lock file cannot be
+    /// created or the lock cannot be taken.
+    pub fn acquire(path: &Path) -> Result<Self, StateError> {
+        let mut lock_path = path.as_os_str().to_owned();
+        lock_path.push(".lock");
+        let lock_path = PathBuf::from(lock_path);
+        let locked = |source| StateError::Lock {
+            path: lock_path.clone(),
+            source,
+        };
+        if let Some(parent) = lock_path.parent() {
+            std::fs::create_dir_all(parent).map_err(locked)?;
+        }
+        let file = OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .mode(0o600)
+            .open(&lock_path)
+            .map_err(locked)?;
+        loop {
+            match flock(&file, FlockOperation::LockExclusive) {
+                Ok(()) => break,
+                Err(Errno::INTR) => {}
+                Err(errno) => return Err(locked(errno.into())),
+            }
+        }
+        Ok(Self {
+            path: path.to_owned(),
+            _file: file,
+        })
+    }
+
+    /// Reads the state file under the lock; see [`State::load`].
+    ///
+    /// # Errors
+    ///
+    /// As [`State::load`].
+    pub fn load(&self) -> Result<State, StateError> {
+        State::load(&self.path)
+    }
+
+    /// Writes the state file under the lock; see [`State::save`].
+    ///
+    /// # Errors
+    ///
+    /// [`StateError::Serialize`] when the state cannot be serialised and
+    /// [`StateError::Write`] when the directory or file cannot be written.
+    pub fn save(&self, state: &State) -> Result<(), StateError> {
+        write(&self.path, state)
+    }
+}
+
+/// Writes `state` atomically, creating the directory when needed. The caller
+/// holds the lock.
+fn write(path: &Path, state: &State) -> Result<(), StateError> {
+    let text = toml::to_string(state)?;
+    atomic::write(path, text.as_bytes(), Some(path)).map_err(|source| StateError::Write {
+        path: path.to_owned(),
+        source,
+    })
 }
 
 impl State {
@@ -126,15 +235,38 @@ impl State {
     /// Writes the state atomically, creating its directory when needed. A
     /// symlink at `path` is left alone and reported as an error.
     ///
+    /// This replaces every field, waiting for the lock so it never lands
+    /// inside another writer's update. To change some fields, keeping the
+    /// rest as they are on disk, use [`State::update`].
+    ///
     /// # Errors
     ///
+    /// [`StateError::Lock`] when the lock cannot be taken,
+    /// [`StateError::Serialize`] when the state cannot be serialised and
     /// [`StateError::Write`] when the directory or file cannot be written.
     pub fn save(&self, path: &Path) -> Result<(), StateError> {
-        let text = toml::to_string(self)?;
-        atomic::write(path, text.as_bytes(), Some(path)).map_err(|source| StateError::Write {
-            path: path.to_owned(),
-            source,
-        })
+        StateLock::acquire(path)?.save(self)
+    }
+
+    /// Changes the state file: under the lock, loads it, applies `change` and
+    /// saves the result when it differs. Returns the resulting state.
+    ///
+    /// An unreadable file is an error and is left as it is. The lock is
+    /// taken even when nothing changes, so a writable state directory is
+    /// needed, as for every writer.
+    ///
+    /// # Errors
+    ///
+    /// [`StateError::Lock`], the errors of [`State::load`],
+    /// [`StateError::Serialize`] and [`StateError::Write`].
+    pub fn update(path: &Path, change: impl FnOnce(Self) -> Self) -> Result<Self, StateError> {
+        let lock = StateLock::acquire(path)?;
+        let before = lock.load()?;
+        let after = change(before.clone());
+        if after != before {
+            lock.save(&after)?;
+        }
+        Ok(after)
     }
 }
 

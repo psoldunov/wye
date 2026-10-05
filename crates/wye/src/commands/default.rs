@@ -56,13 +56,14 @@ fn set(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
     let previous = current_default(&context.xdg).filter(|id| rememberable(&context.xdg, id, &wye));
     if let Some(previous) = previous {
         // Remember it before changing anything, so `unset` can always undo.
-        // The service keeps other fields in the same file; they stay.
-        let state = State {
+        // The update runs under the state file's lock, so fields the service
+        // saves meanwhile stay; an unreadable state file stops the command
+        // before the default changes.
+        State::update(&context.paths.state, |state| State {
             previous_default_browser: Some(previous),
             kept_default: None,
-            ..context.state_or_default(console.err)
-        };
-        state.save(&context.paths.state)?;
+            ..state
+        })?;
     }
     set_default(&context.xdg, &wye, include_html).map_err(explain)?;
     writeln!(console.out, "Wye is now your default browser")?;
@@ -120,11 +121,12 @@ fn unset(context: &Context, console: &mut Console<'_>) -> anyhow::Result<()> {
     }
     let include_html = context.config(console.err, true).general.open_local_html;
     set_default(&context.xdg, &previous, include_html).map_err(explain)?;
-    let cleared = State {
+    // Not `state.save`: that would write back what was read before the
+    // default changed, dropping fields the service saved meanwhile.
+    State::update(&context.paths.state, |state| State {
         previous_default_browser: None,
         ..state
-    };
-    cleared.save(&context.paths.state)?;
+    })?;
     writeln!(
         console.out,
         "{} ({previous}) is your default browser again",

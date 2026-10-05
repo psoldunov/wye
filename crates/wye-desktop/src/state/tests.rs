@@ -1,3 +1,6 @@
+use std::os::unix::fs::PermissionsExt;
+use std::time::Duration;
+
 use super::*;
 
 fn id(text: &str) -> DesktopId {
@@ -26,7 +29,109 @@ fn round_trip_creates_directories() {
     assert_eq!(text, "previous-default-browser = \"firefox.desktop\"\n");
     assert_eq!(State::load(&path).expect("loads"), state);
     let parent = path.parent().expect("parent");
-    assert_eq!(std::fs::read_dir(parent).expect("dir").count(), 1);
+    let mut names: Vec<_> = std::fs::read_dir(parent)
+        .expect("dir")
+        .map(|entry| entry.expect("entry").file_name())
+        .collect();
+    names.sort();
+    assert_eq!(names, ["state.toml", "state.toml.lock"]);
+    let mode = std::fs::metadata(parent.join("state.toml.lock"))
+        .expect("lock file")
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+}
+
+/// Two writers whose cycles overlap both keep their fields: the second waits
+/// for the first's save instead of loading the file before it.
+#[test]
+fn interleaved_updates_keep_both_fields() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    let (started, hear) = std::sync::mpsc::channel();
+    std::thread::scope(|scope| {
+        scope.spawn(|| {
+            State::update(&path, |state| {
+                started.send(()).expect("signalled");
+                std::thread::sleep(Duration::from_millis(100));
+                State {
+                    previous_default_browser: Some(id("firefox.desktop")),
+                    ..state
+                }
+            })
+            .expect("first update");
+        });
+        let path = &path;
+        scope.spawn(move || {
+            hear.recv().expect("first writer started");
+            State::update(path, |state| State {
+                seen_browsers: Some(vec![id("chromium.desktop")]),
+                ..state
+            })
+            .expect("second update");
+        });
+    });
+    let state = State::load(&path).expect("loads");
+    assert_eq!(state.previous_default_browser, Some(id("firefox.desktop")));
+    assert_eq!(state.seen_browsers, Some(vec![id("chromium.desktop")]));
+}
+
+#[test]
+fn update_returns_the_changed_state() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    let after = State::update(&path, |state| State {
+        onboarding_done: true,
+        ..state
+    })
+    .expect("updated");
+    assert!(after.onboarding_done);
+    assert_eq!(State::load(&path).expect("loads"), after);
+}
+
+/// An unreadable file is reported and left alone: its fields may be the only
+/// record of the previous default browser (DEF-05).
+#[test]
+fn update_refuses_an_invalid_file() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    std::fs::write(&path, "previous-default-browser = 3\n").expect("written");
+    let result = State::update(&path, |state| State {
+        onboarding_done: true,
+        ..state
+    });
+    assert!(matches!(result, Err(StateError::Invalid { .. })));
+    assert_eq!(
+        std::fs::read(&path).expect("read"),
+        b"previous-default-browser = 3\n"
+    );
+}
+
+#[test]
+fn an_unchanged_update_writes_nothing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    State::update(&path, |state| state).expect("updated");
+    assert!(!path.exists());
+}
+
+#[test]
+fn save_waits_for_a_held_lock() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    let lock = StateLock::acquire(&path).expect("locked");
+    let state = State {
+        onboarding_done: true,
+        ..State::default()
+    };
+    std::thread::scope(|scope| {
+        let saving = scope.spawn(|| state.save(&path));
+        std::thread::sleep(Duration::from_millis(100));
+        assert!(!path.exists(), "saved while the lock was held");
+        drop(lock);
+        saving.join().expect("joined").expect("saved");
+    });
+    assert_eq!(State::load(&path).expect("loads"), state);
 }
 
 #[test]

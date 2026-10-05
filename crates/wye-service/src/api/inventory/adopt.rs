@@ -45,9 +45,10 @@ pub(super) async fn run(ctx: ServiceContext) {
 async fn adopt(ctx: &ServiceContext) -> Result<()> {
     let scan = super::current(ctx).await?;
     let state = state::load(ctx).await.unwrap_or_else(|error| {
-        // Unreadable counts as never scanned: record the browsers without
-        // adding any, so nothing the user hid comes back.
-        tracing::warn!(%error, "the state file is unreadable; browsers are only recorded");
+        // Unreadable counts as never scanned: no browser is added, so nothing
+        // the user hid comes back. Recording them then fails too, because a
+        // writer never replaces an unreadable file; that is logged.
+        tracing::warn!(%error, "the state file is unreadable; no browser is added");
         wye_desktop::State::default()
     });
     for _ in 0..CONFLICT_ATTEMPTS {

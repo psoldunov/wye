@@ -14,9 +14,18 @@ pub fn host_matches(host: &str, domain: &str) -> bool {
     tail.eq_ignore_ascii_case(domain) && (head.is_empty() || head.ends_with('.'))
 }
 
+/// True when `host` is `name` itself, not one of its subdomains. Compared
+/// case-insensitively; a trailing `.` on `host` is ignored.
+#[must_use]
+pub fn host_is(host: &str, name: &str) -> bool {
+    host.strip_suffix('.')
+        .unwrap_or(host)
+        .eq_ignore_ascii_case(name)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::host_matches;
+    use super::{host_is, host_matches};
 
     #[test]
     fn domain_and_subdomains() {
@@ -25,5 +34,13 @@ mod tests {
         assert!(host_matches("a.b.example.org.", "*.example.org"));
         assert!(!host_matches("notyoutube.com", "youtube.com"));
         assert!(!host_matches("com", "youtube.com"));
+    }
+
+    #[test]
+    fn exact_host() {
+        assert!(host_is("notion.so", "notion.so"));
+        assert!(host_is("WWW.Notion.so.", "www.notion.so"));
+        assert!(!host_is("mail.notion.so", "notion.so"));
+        assert!(!host_is("notion.so", "www.notion.so"));
     }
 }

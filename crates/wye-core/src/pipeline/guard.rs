@@ -1,9 +1,10 @@
-//! Links an app must not receive (DEF-08, DEF-09).
+//! Links an app must not receive (DEF-08, DEF-09, APP-13).
 //!
-//! A rule or web app mapping may send a link to a desktop app. Two kinds of
-//! link would then loop or fail: a link the app itself just handed to Wye,
-//! and a sign-in page, which only a browser can complete. [`Guard`] spots
-//! both so the pipeline passes over that rule or mapping.
+//! A rule or web app mapping may send a link to a desktop app. Three kinds
+//! of link would then loop or fail: a link the app itself just handed to
+//! Wye, a sign-in page, which only a browser can complete, and, for a
+//! mapping, a link on a host of the service that its app does not open.
+//! [`Guard`] spots them so the pipeline passes over that rule or mapping.
 
 use url::Url;
 
@@ -20,6 +21,9 @@ pub enum SkipReason {
     BackToSource,
     /// DEF-09: a sign-in page, which only a browser can complete.
     SignInPage,
+    /// APP-13: a host of the service that its desktop app does not open,
+    /// such as Notion's MCP sign-in or Notion Mail.
+    NotAppHost,
 }
 
 /// What the pipeline knows about one link that decides whether an app may
@@ -46,33 +50,40 @@ impl<'a> Guard<'a> {
     /// Why a rule must not send the link to `target`, or `None` when it
     /// may. Rules know only the generic sign-in words (DEF-09).
     pub(super) fn skip(&self, target: &Target) -> Option<SkipReason> {
-        self.skip_with(target, sign_in::is_sign_in_page(self.url))
+        let page = sign_in::is_sign_in_page(self.url).then_some(SkipReason::SignInPage);
+        self.skip_with(target, page)
     }
 
     /// Why the mapping of `service` must not send the link to `target`, or
     /// `None` when it may. A mapping also knows the service's own sign-in
-    /// routes (DEF-09).
+    /// routes (DEF-09) and the hosts its app opens (APP-13).
     pub(super) fn skip_mapping(
         &self,
         service: &ServiceDefinition,
         target: &Target,
     ) -> Option<SkipReason> {
-        self.skip_with(target, service.is_sign_in(self.url))
+        let page = if service.is_sign_in(self.url) {
+            Some(SkipReason::SignInPage)
+        } else if !service.app_opens_host(self.url) {
+            Some(SkipReason::NotAppHost)
+        } else {
+            None
+        };
+        self.skip_with(target, page)
     }
 
     /// Only an app that is not a browser is ever skipped: the picker,
     /// Default, browsers, their profiles and their private windows always
-    /// take the link.
-    fn skip_with(&self, target: &Target, sign_in: bool) -> Option<SkipReason> {
+    /// take the link. `page` is why the link itself must stay out of apps,
+    /// if it must.
+    fn skip_with(&self, target: &Target, page: Option<SkipReason>) -> Option<SkipReason> {
         if !matches!(target, Target::App(_) | Target::Custom(_)) || self.apps.is_browser(target) {
             return None;
         }
         if self.source.is_some_and(|source| source.is_app(target)) {
             Some(SkipReason::BackToSource)
-        } else if sign_in {
-            Some(SkipReason::SignInPage)
         } else {
-            None
+            page
         }
     }
 }

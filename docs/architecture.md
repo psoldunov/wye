@@ -201,7 +201,7 @@ executable. `wye default set` never remembers such an entry as the browser to re
 `wye default unset` never restores one. Shell wrappers and D-Bus calls to the `OpenURI`
 portal are not recognised.
 
-### Back to the source app and sign-in pages (DEF-08, DEF-09)
+### Back to the source app, sign-in pages and app hosts (DEF-08, DEF-09, APP-13)
 
 The logic is in `wye-core`: `crates/wye-core/src/sign_in.rs` (`is_sign_in_page`) and
 `crates/wye-core/src/pipeline/guard.rs` (`Guard`, `SkipReason`). `Pipeline::decide` builds one
@@ -221,7 +221,18 @@ never by later segments, because later segments hold names users choose (a Figma
 `sign-in-paths` in `data/services.toml` (ClickUp's `/api` OAuth page). `ServiceDefinition::is_sign_in`
 in `wye_core::catalogue` tests the generic words or the service's own paths, and
 `Guard::skip_mapping` uses it. Rules name no service, so `Guard::skip` uses only the generic
-detector. A skip is a trace step of kind `rule` or `web-app`, so the
+detector.
+
+A service's hosts say which links belong to it; its `app-hosts` say which of them its desktop
+app opens (APP-13). The two differ because a browser profile that holds the account should
+still get every host of the service (Notion Mail, the MCP sign-in), while the Notion app opens
+workspace pages on three hosts only and cannot give the rest back to the browser without a
+loop. `ServiceDefinition::app_opens_host` compares hosts exactly (`host::host_is`), so
+`notion.so` does not cover `mail.notion.so`, and `Guard::skip_mapping` skips a mapping to an
+app with `SkipReason::NotAppHost` after the sign-in test. The service still matches, so a
+mapping to a browser target is unaffected.
+
+A skip is a trace step of kind `rule` or `web-app`, so the
 D-Bus contract gets no new step kinds and the UIs, the rule tester and `wye test` show it
 unchanged.
 

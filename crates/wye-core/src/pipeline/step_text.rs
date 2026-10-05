@@ -121,11 +121,12 @@ impl Step {
 
 impl SkipReason {
     /// Why the link stays out of `target`, for [`Step::RuleSkipped`] and
-    /// [`Step::MappingSkipped`] (DEF-08, DEF-09).
+    /// [`Step::MappingSkipped`] (DEF-08, DEF-09, APP-13).
     fn text(self, target: &Target) -> String {
         match self {
             Self::BackToSource => format!("the link came from {target}"),
             Self::SignInPage => format!("sign-in pages open in a browser, not in {target}"),
+            Self::NotAppHost => format!("links on this host open in a browser, not in {target}"),
         }
     }
 }
@@ -225,8 +226,13 @@ mod tests {
             },
             Step::MappingSkipped {
                 service: "Linear".into(),
-                target,
+                target: target.clone(),
                 reason: SkipReason::SignInPage,
+            },
+            Step::MappingSkipped {
+                service: "Notion".into(),
+                target,
+                reason: SkipReason::NotAppHost,
             },
         ]
     }
@@ -273,6 +279,10 @@ mod tests {
         assert_eq!(
             texts[25],
             "Web app mapping \"Linear\" skipped: sign-in pages open in a browser, not in firefox.desktop"
+        );
+        assert_eq!(
+            texts[26],
+            "Web app mapping \"Notion\" skipped: links on this host open in a browser, not in firefox.desktop"
         );
     }
 }

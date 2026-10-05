@@ -52,6 +52,10 @@ pub struct State {
     /// until `wye extension install` (BEXT-04).
     #[serde(skip_serializing_if = "is_false")]
     pub extension_host_removed: bool,
+    /// Web-link handlers discovery already offered for the picker
+    /// (SHOWN-09); `None` until the first scan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seen_browsers: Option<Vec<DesktopId>>,
 }
 
 /// The state file `$XDG_STATE_HOME/wye/state.toml` (`state_home` when it

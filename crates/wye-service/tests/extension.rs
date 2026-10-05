@@ -86,8 +86,11 @@ async fn the_opt_out_keeps_the_manifests_away_bext_04() {
             .path("home/.mozilla/native-messaging-hosts")
             .exists()
     );
-    assert_eq!(
-        service.desktop.read(STATE),
-        "extension-host-removed = true\n"
+    // The first scan records the browsers it saw (SHOWN-09); the opt-out
+    // stays as it was.
+    let state = service.desktop.read(STATE);
+    assert!(
+        state.starts_with("extension-host-removed = true\n"),
+        "{state}"
     );
 }

@@ -142,3 +142,125 @@ async fn disc02_an_installed_app_is_noticed_without_a_rescan() {
             .any(|info| info.name == "Fake Three")
     );
 }
+
+// SHOWN-09: browsers discovery finds for the first time join the shown list.
+
+const CONFIG: &str = "config/wye/config.toml";
+const STATE: &str = "state/wye/state.toml";
+const SHOWN_ONE: &str = "[[browsers.shown]]\ntarget = { app = \"fake-one.desktop\" }\n";
+
+/// Wait until the first scan's adoption has written the state.
+async fn first_scan_recorded(service: &Service) {
+    service.wye().await.get_targets().await.expect("GetTargets");
+    eventually("the first scan is recorded", || async {
+        service.desktop.read(STATE).contains(TWO)
+    })
+    .await;
+}
+
+fn install_fake_three(service: &Service) {
+    service
+        .desktop
+        .app("fake-three.desktop", "Fake Three", "fake-three %u", true);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shown09_the_first_scan_records_the_browsers_and_keeps_the_file() {
+    let Some(service) = Service::start(SHOWN_ONE).await else {
+        return;
+    };
+    first_scan_recorded(&service).await;
+    let state = service.desktop.read(STATE);
+    assert!(state.contains("seen-browsers"), "{state}");
+    assert!(state.contains(ONE), "{state}");
+    assert_eq!(service.desktop.read(CONFIG), SHOWN_ONE, "nothing was added");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shown09_a_new_browser_is_appended_to_the_shown_list() {
+    let Some(service) = Service::start(SHOWN_ONE).await else {
+        return;
+    };
+    first_scan_recorded(&service).await;
+    install_fake_three(&service);
+    service.wye().await.rescan().await.expect("rescanned");
+    eventually("the browser is appended", || async {
+        service.desktop.read(CONFIG).contains("fake-three.desktop")
+    })
+    .await;
+    let text = service.desktop.read(CONFIG);
+    let one = text.find(ONE).expect("kept");
+    let three = text.find("fake-three.desktop").expect("added");
+    assert!(one < three, "appended after the user's entries: {text}");
+    assert!(!text.contains(TWO), "Fake Two stays out: {text}");
+    assert!(!text.contains("hotkey = "), "no hotkey: {text}");
+    // The state is written after the configuration.
+    eventually("the browser is recorded", || async {
+        service.desktop.read(STATE).contains("fake-three.desktop")
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shown09_a_browser_the_user_removed_stays_out_after_a_reinstall() {
+    let Some(service) = Service::start(SHOWN_ONE).await else {
+        return;
+    };
+    first_scan_recorded(&service).await;
+    let wye = service.wye().await;
+    let two = service.desktop.path(&format!("data/applications/{TWO}"));
+    std::fs::remove_file(&two).expect("uninstalled");
+    wye.rescan().await.expect("rescanned");
+    service.desktop.app(TWO, "Fake Two", "fake-two %u", true);
+    install_fake_three(&service);
+    wye.rescan().await.expect("rescanned");
+    // Fake Three is the marker that the adoption ran on the new scan.
+    eventually("Fake Three is appended", || async {
+        service.desktop.read(CONFIG).contains("fake-three.desktop")
+    })
+    .await;
+    let text = service.desktop.read(CONFIG);
+    assert!(!text.contains(TWO), "Fake Two stays hidden: {text}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shown09_an_empty_list_stays_empty() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    first_scan_recorded(&service).await;
+    install_fake_three(&service);
+    service.wye().await.rescan().await.expect("rescanned");
+    eventually("the browser is recorded", || async {
+        service.desktop.read(STATE).contains("fake-three.desktop")
+    })
+    .await;
+    assert_eq!(service.desktop.read(CONFIG), "", "no list was created");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn shown09_a_read_only_configuration_keeps_its_list() {
+    let store = "store-config.toml";
+    let Some(service) = Service::start_with(SHOWN_ONE, |desktop| {
+        desktop.write(store, SHOWN_ONE);
+        std::fs::remove_file(desktop.path(CONFIG)).expect("removed");
+        std::os::unix::fs::symlink(desktop.path(store), desktop.path(CONFIG)).expect("linked");
+    })
+    .await
+    else {
+        return;
+    };
+    first_scan_recorded(&service).await;
+    install_fake_three(&service);
+    service.wye().await.rescan().await.expect("rescanned");
+    // The browser counts as offered even though the file kept its list.
+    eventually("the browser is recorded", || async {
+        service.desktop.read(STATE).contains("fake-three.desktop")
+    })
+    .await;
+    assert_eq!(
+        service.desktop.read(store),
+        SHOWN_ONE,
+        "the file is untouched"
+    );
+}

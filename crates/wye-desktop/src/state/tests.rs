@@ -43,6 +43,7 @@ fn every_field_round_trips() {
         kept_default: Some(id("chromium.desktop")),
         script_errors_notified: vec!["abc".to_owned()],
         extension_host_removed: true,
+        seen_browsers: Some(vec![id("firefox.desktop"), id("chromium.desktop")]),
     };
     state.save(&path).expect("saved");
     let text = std::fs::read_to_string(&path).expect("read");
@@ -55,6 +56,7 @@ fn every_field_round_trips() {
         "rules-help-seen",
         "kept-default",
         "script-errors-notified",
+        "seen-browsers",
     ] {
         assert!(text.contains(key), "{key} missing from {text}");
     }
@@ -132,4 +134,32 @@ fn the_state_file_follows_xdg_state_home() {
         path(home, Some(Path::new("relative"))),
         Path::new("/home/u/.local/state/wye/state.toml")
     );
+}
+
+/// Discovery's record of offered browsers (SHOWN-09) keeps "never scanned"
+/// (`None`) apart from "scanned, nothing found" (an empty list).
+#[test]
+fn seen_browsers_tell_never_scanned_from_none_found() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("state.toml");
+    std::fs::write(&path, "onboarding-done = true\n").expect("written");
+    assert_eq!(State::load(&path).expect("loads").seen_browsers, None);
+
+    let state = State {
+        seen_browsers: Some(Vec::new()),
+        ..State::default()
+    };
+    state.save(&path).expect("saved");
+    assert_eq!(State::load(&path).expect("loads"), state);
+
+    let seen = State {
+        seen_browsers: Some(vec![id("firefox.desktop")]),
+        ..State::default()
+    };
+    seen.save(&path).expect("saved");
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("read"),
+        "seen-browsers = [\"firefox.desktop\"]\n"
+    );
+    assert_eq!(State::load(&path).expect("loads"), seen);
 }

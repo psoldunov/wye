@@ -295,10 +295,11 @@ an `ubuntu-24.04-arm` runner, six jobs in all. Each job uploads its package as t
 `smoke-<format>-<arch>`, also when it failed. It runs as part of each release and from the
 Actions tab (workflow dispatch); pull requests do not run it, so a change to `packaging/`
 or `data/` is checked by dispatching it on the branch (or by running the scripts locally).
-Pull requests run only `ci.yml` and `rust-doctor.yml`.
+Pull requests run only `ci.yml` (advisories) and `rust-doctor.yml`.
 
 [`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a pushed tag
-`vX.Y.Z`. It calls `packages.yml` and, once all six jobs passed, publishes the GitHub
+`vX.Y.Z`. It calls `flake-check.yml` and `packages.yml` and, once the flake check passed on
+both architectures and all six package jobs passed, publishes the GitHub
 release with the six packages, the three browser extension zips (from the x86_64 Nix build
 of the tag, which is not part of `packages.yml`) and their `SHA256SUMS`; a package that
 fails its smoke test is never published. A re-run of a release replaces the packages and

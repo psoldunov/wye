@@ -8,7 +8,8 @@
 //! lines still on one. Every other line comes from elsewhere (Rust's
 //! `tracing`, fontconfig): it is shown but never fails the test.
 //!
-//! There is no allow-list: any warning or critical fails the run.
+//! Any warning or critical fails the run unless [`ALLOWED`] names it: a
+//! message GTK logs about its own state, whatever Wye does.
 
 use std::io::Write as _;
 
@@ -17,6 +18,17 @@ use serde::{Deserialize, Serialize};
 
 /// Prefix of every `GLib` message in the child's stderr.
 const MARKER: &str = "wye-log ";
+
+/// Warnings that do not fail the self-test: log domain, text the message
+/// contains, and the reason. Keep it short: every entry hides a class of
+/// real mistakes, so never add one for a warning Wye's code causes.
+const ALLOWED: &[(&str, &str, &str)] = &[(
+    "Gdk",
+    "gdk_frame_timings_submitted() called on submitted frame.",
+    "GTK 4.24's X11 backend reports one frame as submitted twice (gdk/x11/gdksurface-x11.c and \
+     gdk/x11/gdkdisplay-x11.c both call gdk_frame_clock_submitted()), once per process, on \
+     Xvfb; Wye never touches frame timings (Debian testing, packaging/smoke-test.sh)",
+)];
 
 /// What the child prints once the surface showed every case.
 pub const PASS_LINE: &str = "wye-gtk self-test passed:";
@@ -72,6 +84,13 @@ impl Message {
         };
         format!("{:?} [{}] {}{at}", self.level, self.domain, self.text)
     }
+
+    /// Whether [`ALLOWED`] names this message.
+    fn is_allowed(&self) -> bool {
+        ALLOWED
+            .iter()
+            .any(|(domain, needle, _reason)| self.domain == *domain && self.text.contains(needle))
+    }
 }
 
 /// The child's stderr, split up.
@@ -99,11 +118,11 @@ impl Log {
         log
     }
 
-    /// The warnings, criticals and errors.
+    /// The warnings, criticals and errors outside [`ALLOWED`].
     pub fn problems(&self) -> Vec<&Message> {
         self.messages
             .iter()
-            .filter(|message| message.level.is_problem())
+            .filter(|message| message.level.is_problem() && !message.is_allowed())
             .collect()
     }
 
@@ -210,6 +229,19 @@ mod tests {
         let levels: Vec<_> = log.problems().iter().map(|m| m.level).collect();
         assert_eq!(levels, [Level::Critical]);
         assert!(!log.passed());
+    }
+
+    #[test]
+    fn an_allowed_warning_passes_only_from_its_own_domain() {
+        let text = "gdk_frame_timings_submitted() called on submitted frame.";
+        let stderr = line("warning", "Gdk", text)
+            + &line("message", "wye-gtk", "wye-gtk self-test passed: picker");
+        let log = Log::parse(&stderr);
+        assert!(log.passed());
+        assert!(log.problems().is_empty());
+
+        let elsewhere = Log::parse(&line("warning", "Gtk", text));
+        assert_eq!(elsewhere.problems().len(), 1);
     }
 
     #[test]

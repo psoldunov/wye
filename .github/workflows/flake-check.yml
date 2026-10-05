@@ -1,0 +1,53 @@
+name: Flake check
+
+# `nix flake check` on x86_64 and aarch64, each on a runner of its own
+# architecture. The release workflow calls this one and publishes nothing
+# unless both pass; anyone with write access can also run it from the Actions
+# tab (`gh workflow run flake-check.yml --ref <branch>`). Pull requests and
+# pushes to master do not run it: a run takes over half an hour (a cold
+# aarch64 build about 40 minutes), so the flake is checked for releases only.
+# Before pushing, run the review gates in AGENTS.md locally.
+on:
+  workflow_call:
+    secrets:
+      CACHIX_AUTH_TOKEN:
+        required: false
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A release's run is never cancelled.
+concurrency:
+  group: flake-check-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  flake-check:
+    name: flake-check (${{ matrix.arch }})
+    strategy:
+      # One architecture failing says nothing about the other.
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
+
+      # Substitutes every result an earlier run or a local
+      # `cachix watch-exec psoldunov -- nix flake check` already built, and
+      # pushes what this run builds. Without the secret it only reads.
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+        with:
+          name: psoldunov
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
+      - name: nix flake check
+        run: nix flake check -L --keep-going

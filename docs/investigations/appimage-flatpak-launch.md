@@ -1,6 +1,7 @@
 # The AppImage cannot launch Flatpak browsers
 
-**Status:** root cause confirmed, not fixed. **Found:** 2026-10-04, against Wye 1.1.0
+**Status:** root cause confirmed and fixed
+([LAUNCH-08](../spec/05-browsers.md#discovery-and-launching)). **Found:** 2026-10-04, against Wye 1.1.0
 (`Wye-1.1.0-x86_64.AppImage`). **Severity:** every link dies silently on an AppImage
 install whose browsers are Flatpaks.
 
@@ -291,14 +292,70 @@ when the child exits non-zero, and consider extending LAUNCH-07 to a child that 
 within a moment of starting. Either one turns this class of bug from invisible into a
 single log line, and the history entry (PIPE-16) would stop claiming a lost link opened.
 
+## The fix as built
+
+The scrub lives in the private module `crates/wye-desktop/src/launch/appimage.rs`.
+`spawn_with_env` (`crates/wye-desktop/src/launch.rs`) applies it to every launched app's
+environment before it handles the activation token.
+
+- **Gate.** It acts only when `APPDIR` and `SHARUN_DIR` are both set to absolute paths
+  other than `/` that name the same directory, and Wye's own executable is inside it.
+  sharun sets both in every mode, an extracted AppDir included. A `.deb`, `.rpm` or Nix
+  install changes nothing, and neither does a stray `APPDIR`, even one such as `/usr`
+  above a packaged `/usr/bin/wye`.
+- **Markers removed.** `APPDIR`, `APPIMAGE`, `APPOFFSET`, `APPIMAGE_ARCH`,
+  `APPIMAGE_UID`, `ARGV0`, `OWD`, `SHARUN_DIR`, `URUNTIME`, `URUNTIME_DIR`, `HOSTPATH`,
+  `HOST_HOME`, `HOST_XDG_{CONFIG,DATA,CACHE,STATE}_HOME` and `HOST_KERNEL_VERSION`.
+- **Session values restored.** When `HOST_HOME` is a non-empty absolute path, `HOME` and
+  `XDG_{CONFIG,DATA,CACHE,STATE}_HOME` come back from sharun's saved originals, so
+  `XDG_CACHE_HOME` goes from `~/.cache/AppImage-Cache` back to the session's value.
+- **Everything else swept.** In every other variable, the `:`-separated components inside
+  the AppDir are dropped (component-wise match, against both `$APPDIR` as given and its
+  canonical path, which sharun uses for the values it sets), and the variable is removed
+  when nothing non-empty is left. `PATH` loses `$APPDIR/bin` and keeps `~/.local/bin`;
+  `XDG_DATA_DIRS` loses `$APPDIR/share`; `GIO_LAUNCH_DESKTOP` and `GTK_EXE_PREFIX` go. A
+  path embedded in a longer value (`--opt=$APPDIR/x`) is not a component and stays.
+- **Portable mode.** quick-sharun's `05-gsettings-backend.hook` sets
+  `GSETTINGS_BACKEND=keyfile` when `Wye.AppImage.home` or `Wye.AppImage.config` exists.
+  When `HOME` or `XDG_CONFIG_HOME` is restored, a `GSETTINGS_BACKEND` of `keyfile` is
+  removed too, so a GTK browser keeps the session's dconf.
+- **Reaper warning.** The reaper logs a warning ("launched app exited with a failure",
+  with the program, the pid, the status and how long it ran) when a launched app exits
+  non-zero.
+
+Tests: unit tests in `crates/wye-desktop/src/launch/appimage.rs`; an e2e test in
+`crates/wye/tests/e2e.rs` that runs the real service on a private bus with a faked
+AppImage environment and asserts that the launched fake browser's environment is clean;
+and `check_appimage_launched_env` in `packaging/smoke-test.sh`, which does the same from
+the real AppImage (see Test gap).
+
+**Not done: extending LAUNCH-07 to an app that dies right after starting.** It changes
+what LAUNCH-07 promises (a launch that failed to start becomes a launch that failed
+shortly after), and it needs either a wait before the launch counts as successful or a
+notification after the fact. That is a spec and UX decision, and it is the maintainer's
+call. The reaper warning already puts this class of failure in the log.
+
 ## Test gap
 
-`packaging/appimage/test.sh` checks what the AppImage writes into the session, that a
-second start rewrites nothing, that planted foreign files are left alone, and
-`--version`. Nothing in it, or in `packaging/smoke-test.sh`, launches anything *out of*
-the AppImage. A check that runs the AppImage's `wye` and asserts that a child process's
-`PATH` carries no `$APPDIR` entry would catch this whole class without needing a browser
-or a Flatpak in the container.
+The gap is covered. `packaging/appimage/test.sh` checks what the AppImage writes into the
+session, that a second start rewrites nothing, that planted foreign files are left alone,
+and `--version`. Before the fix nothing in it, or in `packaging/smoke-test.sh`, launched
+anything *out of* the AppImage.
+
+`check_appimage_launched_env` in `packaging/smoke-test.sh` now does. In AppImage mode it
+registers a fake browser, makes it the primary browser, runs `wye open` against the
+service started from the AppImage, and has the fake browser write out its own environment
+and its parent's (the service's). It fails when the service did not run from the AppImage
+(no `APPDIR`, so the check would prove nothing), when the browser's environment contains
+the `$APPDIR` path or any runtime marker, or when `XDG_CACHE_HOME` is not the session's.
+It needs no real browser and no Flatpak in the container. Both environments land in the
+logs as `launched-app-environ.txt` and `service-environ.txt`.
+
+The fake browser reads its own environment from `/proc/$$/environ`, not
+`/proc/self/environ`. A redirection opens `/proc/self` in the child that then execs the
+reader, and on Fedora, whose `sh` is bash, that read came back empty: the first run passed
+the path and marker checks on an empty file. The check now also fails when the recorded
+environment has no `PATH`.
 
 ## Reproducing it
 

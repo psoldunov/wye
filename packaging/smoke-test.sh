@@ -21,8 +21,9 @@
 # this test's $XDG_DATA_HOME and ~/.local/bin on its first launch, and the
 # AppImage-only checks run too: files it did not write survive, a second
 # launch rewrites nothing, the live session activates the UI hosts through
-# the integrated D-Bus files, and --remove-integration removes exactly what
-# it wrote. The container needs no FUSE when APPIMAGE_EXTRACT_AND_RUN=1 is
+# the integrated D-Bus files, an app the service launches gets none of the
+# AppImage's environment, and --remove-integration removes exactly what it
+# wrote. The container needs no FUSE when APPIMAGE_EXTRACT_AND_RUN=1 is
 # exported.
 #
 # Every check prints PASS, FAIL or SKIP; the script exits 1 when any check
@@ -522,6 +523,99 @@ check_appimage_other_installation() {
   done
 }
 
+# The steps of check_appimage_launched_env, run on its private bus (as their
+# own bash): open a link, then wait up to 10 s for the fake browser's report.
+launched_env_steps() {
+  local tries=0
+  "$bindir/wye" open https://example.com/ || echo "LAUNCHED-ENV: wye open failed"
+  while [ ! -e "$scratch/launched-env" ] && [ "$tries" -lt 50 ]; do
+    sleep 0.2
+    tries=$((tries + 1))
+  done
+}
+
+# AppImage g. LAUNCH-08: an app the service launches gets the session's
+# environment, not the AppImage's. A fake browser records its own environment
+# and its parent's (the service, which spawns the Exec directly); the service
+# must have run from the AppImage (APPDIR set), and the browser's environment
+# must hold no path into it, no runtime marker, and the session's
+# XDG_CACHE_HOME. Needs the integrated D-Bus files, so it runs after the first
+# launch; it puts the session back as it found it.
+check_appimage_launched_env() {
+  local browser=$scratch/smoke-browser entry=$XDG_DATA_HOME/applications/wye-smoke-browser.desktop
+  local config=$XDG_CONFIG_HOME/wye/config.toml saved=$scratch/config.toml.saved
+  local log=$logs/launched-env.txt launched=$scratch/launched-env launcher=$scratch/launcher-env
+  local appdir markers cache
+
+  # /proc/$$, not /proc/self: the redirection opens /proc/self in a child that
+  # then execs tr, and bash (Fedora's sh) reads nothing from an environ whose
+  # process image exec replaced.
+  cat >"$browser" <<'EOF'
+#!/bin/sh
+dir=${0%/*}
+tr '\0' '\n' <"/proc/$PPID/environ" >"$dir/launcher-env.tmp"
+tr '\0' '\n' <"/proc/$$/environ" >"$dir/launched-env.tmp"
+mv "$dir/launcher-env.tmp" "$dir/launcher-env"
+mv "$dir/launched-env.tmp" "$dir/launched-env"
+EOF
+  chmod 755 "$browser"
+  mkdir -p "${entry%/*}" "${config%/*}"
+  printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Smoke Browser' \
+    "Exec=$browser %u" 'MimeType=x-scheme-handler/http;x-scheme-handler/https;' >"$entry"
+  rm -f "$saved"
+  if [ -e "$config" ]; then mv "$config" "$saved"; fi
+  printf '[browsers]\nprimary = { app = "wye-smoke-browser.desktop" }\n' >"$config"
+
+  stop wye
+  bindir=$bindir scratch=$scratch \
+    dbus-run-session -- bash -c "$(declare -f launched_env_steps); launched_env_steps" >"$log" 2>&1
+  # The service warms a UI host up by D-Bus activation (PICK-25). One the bus
+  # started before it went away may still be integrating the AppImage, which
+  # would rewrite files under the checks that follow: give it time to take
+  # AppRun's integration lock, wait for the lock, then stop everything.
+  sleep 2
+  if command -v flock >/dev/null; then
+    flock -w 10 "$XDG_RUNTIME_DIR/wye-appimage.lock" true 2>/dev/null
+  fi
+  stop wye wye-ui wye-gtk
+
+  if [ ! -e "$launched" ]; then
+    fail "launched env: the fake browser never ran ($(tail -n 1 "$log"))"
+  elif ! grep -q '^PATH=' "$launched"; then
+    fail "launched env: the fake browser recorded no environment, so this check proves nothing"
+  else
+    appdir=$(sed -n 's/^APPDIR=//p' "$launcher" 2>/dev/null | head -n 1)
+    markers='^(APPDIR|APPIMAGE|APPOFFSET|APPIMAGE_ARCH|APPIMAGE_UID|ARGV0|OWD|SHARUN_DIR|URUNTIME|URUNTIME_DIR|HOSTPATH|HOST_HOME|HOST_XDG_[A-Z]+_HOME|HOST_KERNEL_VERSION)='
+    cache=$(sed -n 's/^XDG_CACHE_HOME=//p' "$launched" | head -n 1)
+    if [ -z "$appdir" ]; then
+      fail "launched env: the service did not run from the AppImage (no APPDIR), so this check proves nothing"
+    else
+      pass "launched env: the service ran from the AppImage ($appdir)"
+      if grep -qF "$appdir" "$launched"; then
+        fail "launched env: the launched app's environment names $appdir ($(grep -m 1 -F "$appdir" "$launched"))"
+      else
+        pass "launched env: no path into the AppImage in the launched app's environment"
+      fi
+      if grep -qE "$markers" "$launched"; then
+        fail "launched env: the launched app inherited $(grep -m 1 -E "$markers" "$launched")"
+      else
+        pass "launched env: no AppImage runtime marker in the launched app's environment"
+      fi
+      if [ "$cache" = "$XDG_CACHE_HOME" ]; then
+        pass "launched env: XDG_CACHE_HOME is the session's"
+      else
+        fail "launched env: XDG_CACHE_HOME is '$cache', not '$XDG_CACHE_HOME'"
+      fi
+    fi
+  fi
+
+  # Both environments stay in the logs, for a failure to be read afterwards.
+  if [ -e "$launched" ]; then cp "$launched" "$logs/launched-app-environ.txt"; fi
+  if [ -e "$launcher" ]; then cp "$launcher" "$logs/service-environ.txt"; fi
+  rm -f "$entry" "$browser" "$launched" "$launcher" "$launched.tmp" "$launcher.tmp" "$config"
+  if [ -e "$saved" ]; then mv "$saved" "$config"; fi
+}
+
 if [ -n "$appimage" ]; then
   check_appimage_launch
   check_appimage_libraries
@@ -529,6 +623,7 @@ if [ -n "$appimage" ]; then
   check_appimage_session_files
   check_self_tests
   check_live
+  check_appimage_launched_env
   check_appimage_removal
   check_appimage_other_installation
 else

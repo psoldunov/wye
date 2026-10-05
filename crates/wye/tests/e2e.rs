@@ -14,8 +14,10 @@
 mod support;
 
 use std::collections::HashMap;
+use std::ffi::OsString;
 use std::fs;
 use std::io::{BufRead as _, BufReader};
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -40,6 +42,12 @@ struct Bus {
 
 impl Bus {
     fn start(desktop: &Desktop) -> Option<Self> {
+        Self::start_with_env(desktop, &[])
+    }
+
+    /// [`Bus::start`], with `extra` added to the daemon's environment (and so
+    /// to the activated service's), replacing a variable of the same name.
+    fn start_with_env(desktop: &Desktop, extra: &[(&'static str, OsString)]) -> Option<Self> {
         let program = find_on_path("dbus-daemon").or_else(|| {
             eprintln!("skipping: dbus-daemon is not on PATH");
             None
@@ -55,7 +63,7 @@ impl Bus {
             .arg(format!("--config-file={}", config.display()))
             .args(["--nofork", "--print-address=1"])
             .env_clear()
-            .envs(bus_env(desktop, &address))
+            .envs(bus_env(desktop, &address, extra))
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             // An activated service inherits stderr; a pipe would hold the
@@ -124,13 +132,21 @@ fn bus_config(socket: &Path, services: &Path) -> String {
 }
 
 /// The desktop's environment with the private bus as the session bus, which
-/// the activated service inherits.
-fn bus_env(desktop: &Desktop, address: &str) -> Vec<(&'static str, std::ffi::OsString)> {
+/// the activated service inherits, and `extra` on top: a variable of the
+/// same name is replaced, any other is added.
+fn bus_env(
+    desktop: &Desktop,
+    address: &str,
+    extra: &[(&'static str, OsString)],
+) -> Vec<(&'static str, OsString)> {
     desktop
         .env()
         .into_iter()
-        .filter(|(name, _)| *name != "DBUS_SESSION_BUS_ADDRESS")
+        .filter(|(name, _)| {
+            *name != "DBUS_SESSION_BUS_ADDRESS" && extra.iter().all(|(other, _)| other != name)
+        })
         .chain([("DBUS_SESSION_BUS_ADDRESS", address.into())])
+        .chain(extra.iter().cloned())
         .collect()
 }
 
@@ -256,6 +272,111 @@ async fn a_private_window_choice_opens_the_browser_privately() {
     let log = desktop.wait_for_log("firefox.desktop");
     assert!(log.lines().any(|arg| arg == "--private-window"), "{log}");
     assert!(log.lines().any(|arg| arg == URL), "{log}");
+}
+
+#[test]
+fn a_service_in_an_appimage_launches_apps_with_the_session_environment() {
+    // LAUNCH-08: the service runs from inside a fake AppDir with the
+    // runtime's variables set; the app it launches sees none of them.
+    let desktop = Desktop::new();
+    let log = desktop.path("fake-env.log");
+    let script = desktop.path("bin/fake-env");
+    fs::write(
+        &script,
+        format!(
+            "#!/bin/sh\nenv > '{0}.tmp' && mv '{0}.tmp' '{0}'\n",
+            log.display()
+        ),
+    )
+    .expect("script");
+    fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).expect("mode");
+    desktop.write(
+        "data/applications/fake-env.desktop",
+        &format!(
+            "[Desktop Entry]\nType=Application\nName=Fake Env\nExec={} %u\n\
+             MimeType=x-scheme-handler/http;x-scheme-handler/https;\n",
+            script.display()
+        ),
+    );
+    desktop.config("[browsers]\nprimary = { app = \"fake-env.desktop\" }\n");
+
+    let binary = Path::new(env!("CARGO_BIN_EXE_wye"));
+    let appdir = fs::canonicalize(binary.parent().expect("a directory")).expect("canonical");
+    let appdir_text = appdir.display().to_string();
+    let home = desktop.path("home");
+    let sysdata = desktop.path("sysdata");
+    let session_path = desktop_env(&desktop, "PATH");
+    let Some(bus) = Bus::start_with_env(
+        &desktop,
+        &[
+            ("APPDIR", appdir.clone().into()),
+            ("SHARUN_DIR", appdir.clone().into()),
+            ("URUNTIME", "/nonexistent/Wye.AppImage".into()),
+            ("PATH", format!("{appdir_text}/bin:{session_path}").into()),
+            (
+                "XDG_DATA_DIRS",
+                format!("{appdir_text}/share:{}", sysdata.display()).into(),
+            ),
+            (
+                "GIO_LAUNCH_DESKTOP",
+                format!("{appdir_text}/bin/gio-launch-desktop").into(),
+            ),
+            ("XDG_CACHE_HOME", home.join(".cache/AppImage-Cache").into()),
+            ("HOST_HOME", home.clone().into()),
+            ("HOST_XDG_CACHE_HOME", home.join(".cache").into()),
+        ],
+    ) else {
+        return;
+    };
+    desktop
+        .wye_on_bus(&["open", URL], &bus.address)
+        .expect_code(0);
+
+    let dumped = desktop.wait_for_log("fake-env.desktop");
+    let vars: HashMap<&str, &str> = dumped
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .collect();
+    for gone in [
+        "APPDIR",
+        "SHARUN_DIR",
+        "URUNTIME",
+        "HOST_HOME",
+        "HOST_XDG_CACHE_HOME",
+        "GIO_LAUNCH_DESKTOP",
+    ] {
+        assert!(!vars.contains_key(gone), "{gone} leaked:\n{dumped}");
+    }
+    assert_eq!(
+        vars.get("XDG_CACHE_HOME").copied(),
+        Some(home.join(".cache").to_str().expect("UTF-8"))
+    );
+    assert_eq!(
+        vars.get("XDG_DATA_DIRS").copied(),
+        Some(sysdata.to_str().expect("UTF-8"))
+    );
+    let expected_path: Vec<&str> = session_path
+        .split(':')
+        .filter(|entry| !Path::new(entry).starts_with(&appdir))
+        .collect();
+    assert_eq!(
+        vars.get("PATH")
+            .map(|path| path.split(':').collect::<Vec<_>>()),
+        Some(expected_path)
+    );
+    for needle in [format!("{appdir_text}/bin"), format!("{appdir_text}/share")] {
+        assert!(!dumped.contains(&needle), "{needle} leaked:\n{dumped}");
+    }
+}
+
+/// The value of `name` in the desktop's environment.
+fn desktop_env(desktop: &Desktop, name: &str) -> String {
+    desktop
+        .env()
+        .into_iter()
+        .find(|(candidate, _)| *candidate == name)
+        .and_then(|(_, value)| value.into_string().ok())
+        .expect("a UTF-8 value")
 }
 
 /// Open [`URL`] with `wye open` on a picker route, answer the picker the

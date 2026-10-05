@@ -70,6 +70,16 @@ The tray, the rules and the history, on KDE Plasma 6. [Take the tour](docs/tour.
 every surface: the picker and its menus, all the Settings pages, the rule editor and
 tester, the transform script editor and the first run.
 
+## Wye and Junction
+
+[Junction](https://github.com/sonnyp/Junction) is the picker most people try first. It asks
+about every link, in the same libadwaita window on every desktop. Wye asks only when no rule
+decides, finds your browser profiles by itself and cleans each link before it opens it. It
+also looks like it belongs on your desktop: Qt and Kirigami in Breeze on KDE Plasma, drawn
+inside GNOME Shell itself on GNOME, a blurred panel at the pointer on both, and a badge in
+the profile's colour on every profile tile. [Wye and Junction](docs/comparison.md) compares
+the two point by point.
+
 ## Install
 
 Wye runs on x86_64 and aarch64 (arm64). Each [GitHub

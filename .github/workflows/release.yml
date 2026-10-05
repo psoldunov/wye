@@ -6,6 +6,8 @@ name: Release
 # - builds the tagged flake for x86_64 and aarch64, exactly as
 #   `programs.wye.channel = "release"` fetches it, and pushes the result to
 #   Cachix (when the token is set) so that install substitutes;
+# - runs `nix flake check` on both architectures (flake-check.yml), the only
+#   place CI runs it;
 # - builds and smoke-tests the .deb, the .rpm and the AppImage for both
 #   architectures (packages.yml);
 # - publishes the GitHub release with the six packages, the three browser
@@ -123,8 +125,16 @@ jobs:
       contents: read
     uses: ./.github/workflows/packages.yml
 
+  flake-check:
+    needs: check
+    permissions:
+      contents: read
+    uses: ./.github/workflows/flake-check.yml
+    secrets:
+      CACHIX_AUTH_TOKEN: ${{ secrets.CACHIX_AUTH_TOKEN }}
+
   release:
-    needs: [check, nix, packages]
+    needs: [check, nix, flake-check, packages]
     runs-on: ubuntu-24.04
     permissions:
       contents: write

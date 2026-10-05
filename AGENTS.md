@@ -23,7 +23,7 @@ window or desktop app, or asks with a small picker. The specification is in
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`, `wye-gtk.service`); `kwin/` the KWin query script. |
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `packaging/` | Docker builds of the `.deb` (`deb/`, Debian testing), the `.rpm` (`rpm/`, Fedora 44) and the AppImage (`appimage/`, Arch base, Arch Linux ARM on aarch64, sharun bundles every library including glibc; its `AppRun` integrates the AppImage into `~/.local` on every start), each for the machine's own architecture (x86_64 or aarch64), the shared `install.sh` (mirrors the `postInstall` of `nix/package.nix`) and `smoke-test.sh` (installs each in a clean container and launches both UI hosts). See its README. |
-| `.github/workflows/` | `ci.yml` (`nix flake check` on x86_64; aarch64 too on pushes to master and workflow dispatch, not pull requests; advisories), `rust-doctor.yml`, `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; each release and workflow dispatch only, not pull requests), `release.yml` (tag check, Nix build of the tag on both architectures, `packages.yml`, GitHub release with the six packages, the three extension zips and `SHA256SUMS`, pull request recording it in `nix/release.json`). |
+| `.github/workflows/` | `ci.yml` (advisories, on pull requests and pushes to master), `rust-doctor.yml`, `flake-check.yml` (`nix flake check` on x86_64 and aarch64; each release and workflow dispatch only, not pull requests or pushes to master), `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; each release and workflow dispatch only, not pull requests), `release.yml` (tag check, Nix build of the tag on both architectures, `flake-check.yml`, `packages.yml`, GitHub release with the six packages, the three extension zips and `SHA256SUMS`, pull request recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
 | `docs/investigations/` | Bug investigation reports: one confirmed root cause per file, with the evidence that pinned it down and the fix it calls for. |
 | `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session, `gnome/stage/` the GNOME ones in a headless GNOME Shell session (their READMEs). |
@@ -63,7 +63,12 @@ Run in this order. Every gate must pass before a change is ready.
    channels, evaluated with a fake `release.json`) and `nix-fmt`. `cargo test` includes
    `crates/wye/tests/e2e.rs`: the real `wye service` on a private `dbus-daemon`, activated
    from the shipped service file, with a fake browser and a fake `PickerHost1`.
-   Run it through the `ci-check` script (or `cachix watch-exec psoldunov -- nix flake check -L --keep-going`) with `CACHIX_AUTH_TOKEN` set before pushing: it fills the public psoldunov Cachix cache, so CI substitutes instead of building.
+   CI runs it for releases only (`flake-check.yml`, called by `release.yml`, which publishes
+   nothing unless it passes), not on pull requests, so gates 1 to 5 are what a pull request is
+   checked against. Run it on a branch from the Actions tab (`gh workflow run flake-check.yml
+   --ref <branch>`) or locally through the `ci-check` script (or `cachix watch-exec psoldunov
+   -- nix flake check -L --keep-going`) with `CACHIX_AUTH_TOKEN` set: it fills the public
+   psoldunov Cachix cache, so the release's run substitutes instead of building.
 
 ## Commits
 

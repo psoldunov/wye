@@ -27,13 +27,13 @@ fn app_id(target: &Value) -> Option<&str> {
     target.get("app").and_then(Value::as_str)
 }
 
-/// The desktop IDs of the apps web services own: not browsers, so no list
-/// here offers them (TGT-05, SHOWN-02).
+/// The desktop IDs of the apps web services own (APP-05, APP-12): not
+/// browsers, so no list here offers them (TGT-05, SHOWN-02).
 #[must_use]
 pub fn foreign_app_ids(services: &[ServiceInfo]) -> BTreeSet<String> {
     services
         .iter()
-        .filter_map(|service| service.installed_app.as_ref())
+        .flat_map(ServiceInfo::own_apps)
         .map(|app| app.id.clone())
         .collect()
 }

@@ -5,7 +5,7 @@
 //!
 //! 1. "Default (<primary>)": Apps page and rule editor only.
 //! 2. "Picker": every menu (TGT-07).
-//! 3. The service's own desktop app: Apps page, when installed (APP-05).
+//! 3. The service's own desktop apps: Apps page, when installed (APP-05, APP-12).
 //! 4. Every installed browser and every added app, alphabetically (TGT-05).
 //! 5. "Private Browsing" and one "<Browser> (Private)" per browser.
 //! 6. "Profiles: <Browser>" and its profiles, per browser.
@@ -181,9 +181,11 @@ pub fn describe(inventory: &TargetInventory, request: &Request<'_>) -> Row {
         let icon = display_icon(inventory, info);
         return Row::of(info, &info.name, icon, request.current);
     }
-    if let Some(app) = request.service.and_then(|s| s.installed_app.as_ref())
-        && json!({"app": app.id}) == *request.current
-    {
+    if let Some(app) = request.service.and_then(|s| {
+        s.own_apps()
+            .iter()
+            .find(|app| json!({"app": app.id}) == *request.current)
+    }) {
         let icon = icon::source(app.icon.as_deref());
         return Row::item(&app.name, icon, request.current.clone(), request.current);
     }
@@ -256,25 +258,31 @@ fn own_app_section(inventory: &TargetInventory, request: &Request<'_>) -> Vec<Ro
     if request.surface != Surface::Apps {
         return Vec::new();
     }
-    let Some(app) = request.service.and_then(|s| s.installed_app.as_ref()) else {
+    let Some(service) = request.service else {
         return Vec::new();
     };
-    let target = json!({"app": app.id});
-    let known = inventory.targets.iter().find(|info| info.target == target);
-    let icon = icon::source(
-        app.icon
-            .as_deref()
-            .or_else(|| known.and_then(|k| k.icon.as_deref())),
-    );
-    vec![Row::item(&app.name, icon, target, request.current)]
+    service
+        .own_apps()
+        .iter()
+        .map(|app| {
+            let target = json!({"app": app.id});
+            let known = inventory.targets.iter().find(|info| info.target == target);
+            let icon = icon::source(
+                app.icon
+                    .as_deref()
+                    .or_else(|| known.and_then(|k| k.icon.as_deref())),
+            );
+            Row::item(&app.name, icon, target, request.current)
+        })
+        .collect()
 }
 
-/// The desktop IDs of the apps web services own. They are not browsers, so
-/// no browser menu or list offers them (TGT-05, SHOWN-02).
+/// The desktop IDs of the apps web services own (APP-05, APP-12). They are
+/// not browsers, so no browser menu or list offers them (TGT-05, SHOWN-02).
 pub fn foreign_app_ids(services: &[ServiceInfo]) -> BTreeSet<String> {
     services
         .iter()
-        .filter_map(|service| service.installed_app.as_ref())
+        .flat_map(ServiceInfo::own_apps)
         .map(|app| app.id.clone())
         .collect()
 }

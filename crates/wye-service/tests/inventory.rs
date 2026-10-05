@@ -68,6 +68,71 @@ async fn dlg_app_lists_browsers_or_every_app() {
     );
 }
 
+// APP-12
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn app12_an_app_named_after_a_service_is_its_own_app() {
+    let Some(service) = Service::start("").await else {
+        return;
+    };
+    service.desktop.app(
+        "claude-desktop.desktop",
+        "Claude",
+        "claude-desktop %u",
+        false,
+    );
+    service.desktop.app(
+        "claude-code.desktop",
+        "Claude Code",
+        "claude-code %f",
+        false,
+    );
+    service.desktop.app(
+        "spotify-launcher.desktop",
+        "Spotify",
+        "spotify-launcher %U",
+        false,
+    );
+    let wye = service.wye().await;
+    wye.rescan().await.expect("BRW-06");
+    let services: ServiceList =
+        json::decode("services", &wye.get_services().await.expect("GetServices"))
+            .expect("ServiceList");
+    let find = |id: &str| {
+        services
+            .services
+            .iter()
+            .find(|service| service.id == id)
+            .expect(id)
+    };
+    let claude = find("claude");
+    let ids: Vec<&str> = claude
+        .installed_apps
+        .iter()
+        .map(|app| app.id.as_str())
+        .collect();
+    assert_eq!(ids, ["claude-desktop.desktop"]);
+    assert_eq!(
+        claude.installed_app.as_ref().map(|app| app.id.as_str()),
+        Some("claude-desktop.desktop")
+    );
+    assert!(find("spotify").installed_apps.is_empty());
+    let inventory = targets(&service).await;
+    let own = inventory
+        .targets
+        .iter()
+        .find(|info| info.target == serde_json::json!({"app": "claude-desktop.desktop"}))
+        .expect("listed");
+    assert_eq!(own.kind, TargetKind::App);
+    assert_eq!(own.name, "Claude");
+    assert!(!own.missing);
+    assert!(
+        !inventory
+            .targets
+            .iter()
+            .any(|info| info.target == serde_json::json!({"app": "claude-code.desktop"}))
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn app03_services_and_the_expansion_catalogue_decode() {
     let Some(service) = Service::start("").await else {

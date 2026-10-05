@@ -47,6 +47,17 @@ impl Desktop {
 
     /// A browser whose executable appends each argument to `<stem>.log`.
     pub fn add_browser(&self, id: &str, name: &str) {
+        self.install(id, name, "x-scheme-handler/http;x-scheme-handler/https;");
+    }
+
+    /// An app that is not a browser, such as an Electron client: it handles
+    /// only its own `<stem>:` links. Its executable logs like a browser's.
+    pub fn add_app(&self, id: &str, name: &str) {
+        let stem = id.trim_end_matches(".desktop");
+        self.install(id, name, &format!("x-scheme-handler/{stem};"));
+    }
+
+    fn install(&self, id: &str, name: &str, mime_types: &str) {
         let stem = id.trim_end_matches(".desktop");
         let program = self.path("bin").join(stem);
         let log = self.log_path(id);
@@ -60,7 +71,7 @@ impl Desktop {
             &format!("data/applications/{id}"),
             &format!(
                 "[Desktop Entry]\nType=Application\nName={name}\nExec={} %u\n\
-                 MimeType=x-scheme-handler/http;x-scheme-handler/https;\n",
+                 MimeType={mime_types}\n",
                 program.display()
             ),
         );

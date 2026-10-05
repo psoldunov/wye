@@ -213,11 +213,20 @@ impl<'de> Deserialize<'de> for Target {
     }
 }
 
-/// Answers whether a target can open right now. Implemented over the
-/// discovered desktop entries and profiles; the pipeline uses it to fall back
-/// when a configured app was uninstalled.
+/// Answers what is known about a target: whether it can open right now, and
+/// whether it is a web browser. Implemented over the discovered desktop
+/// entries and profiles; the pipeline uses the first to fall back when a
+/// configured app was uninstalled and the second to keep links that must
+/// stay in a browser out of apps (DEF-08, DEF-09).
 pub trait Availability {
     fn is_available(&self, target: &Target) -> bool;
+
+    /// True when `target` is a web browser: a browser app, one of its
+    /// profiles or its private window (DEF-08, DEF-09). The default knows
+    /// only that profiles and private windows belong to browsers.
+    fn is_browser(&self, target: &Target) -> bool {
+        matches!(target, Target::Private(_) | Target::Profile { .. })
+    }
 }
 
 #[cfg(test)]

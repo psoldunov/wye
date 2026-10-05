@@ -8,6 +8,10 @@
 # id:           stable key used in the configuration file ([apps] <id> = …)
 # hosts:        a host and its subdomains
 # paths:        optional path prefixes; empty means every path
+# sign-in-paths: path prefixes of sign-in or authorisation pages that the
+#               generic sign-in words miss (DEF-09). Matched at a path
+#               segment boundary, case ignored. A mapping to an app that
+#               is not a browser leaves these pages to a browser.
 # desktop-apps: desktop IDs of the service's own app (distro, Flatpak, Snap)
 # hand-over:    "pass-through" (the https link as is), "spotify-uri"
 #               (open.spotify.com/track/<id> → spotify:track:<id>) or
@@ -46,6 +50,7 @@ hosts = ["claude.ai"]
 id = "clickup"
 name = "ClickUp"
 hosts = ["app.clickup.com"]
+sign-in-paths = ["/api"]
 
 [[service]]
 id = "discord"

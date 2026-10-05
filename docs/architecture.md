@@ -201,6 +201,30 @@ executable. `wye default set` never remembers such an entry as the browser to re
 `wye default unset` never restores one. Shell wrappers and D-Bus calls to the `OpenURI`
 portal are not recognised.
 
+### Back to the source app and sign-in pages (DEF-08, DEF-09)
+
+The logic is in `wye-core`: `crates/wye-core/src/sign_in.rs` (`is_sign_in_page`) and
+`crates/wye-core/src/pipeline/guard.rs` (`Guard`, `SkipReason`). `Pipeline::decide` builds one
+`Guard` per link. It can skip the target of a rule (PIPE-07, PIPE-09) or of a web app mapping
+(PIPE-08) when that target is an app and not a browser. Browser targets, browser profiles,
+private windows, the Picker, Default, the alternative-browser key, the fallback and the
+picker's choice are never skipped. DEF-08 applies only to IN-01: a link an app hands to the
+default browser. Other entry points are explicit requests. `SourceApp::is_app` compares the
+source with the target by desktop ID, then by executable or window class. The browser test is
+`Availability::is_browser`, which `wye_desktop::Inventory` answers from `handles_web`, the
+same flag the Browsers list uses.
+
+A page is a sign-in page by its host's first label or by one of its first two path segments,
+never by later segments, because later segments hold names users choose (a Figma file named
+"Login"). The cost is that a page whose own name sits in the first two segments, such as
+`t.me/login`, opens in a browser. Routes the generic words miss are listed per service as
+`sign-in-paths` in `data/services.toml` (ClickUp's `/api` OAuth page). `ServiceDefinition::is_sign_in`
+in `wye_core::catalogue` tests the generic words or the service's own paths, and
+`Guard::skip_mapping` uses it. Rules name no service, so `Guard::skip` uses only the generic
+detector. A skip is a trace step of kind `rule` or `web-app`, so the
+D-Bus contract gets no new step kinds and the UIs, the rule tester and `wye test` show it
+unchanged.
+
 ### Default browser (DEF-02, DEF-05)
 
 The current default is the first *installed* desktop ID listed for

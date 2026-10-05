@@ -5,6 +5,7 @@ use serde::Deserialize;
 use url::Url;
 
 use crate::host::host_matches;
+use crate::sign_in::is_sign_in_page;
 use crate::target::DesktopId;
 
 const SHIPPED: &str = include_str!("../../../data/services.toml");
@@ -58,6 +59,8 @@ pub struct ServiceDefinition {
     #[serde(default)]
     paths: Vec<String>,
     #[serde(default)]
+    sign_in_paths: Vec<String>,
+    #[serde(default)]
     pub desktop_apps: Vec<DesktopId>,
     #[serde(default)]
     pub hand_over: HandOver,
@@ -75,11 +78,39 @@ impl ServiceDefinition {
                     .any(|p| url.path().starts_with(p.as_str())))
     }
 
+    /// True when `url` is a sign-in or authorisation page of this service
+    /// (DEF-09): one the generic detector [`is_sign_in_page`] recognises, or
+    /// one under a `sign-in-paths` prefix. The catalogue lists only the
+    /// routes the generic words miss, such as `ClickUp`'s `/api`. A prefix
+    /// matches at a path segment boundary, ignoring ASCII case: `/api`
+    /// matches `/api` and `/api/x` but not `/apis`; a prefix that ends in
+    /// `/` is a plain prefix.
+    #[must_use]
+    pub fn is_sign_in(&self, url: &Url) -> bool {
+        is_sign_in_page(url)
+            || self
+                .sign_in_paths
+                .iter()
+                .any(|prefix| has_path_prefix(url.path(), prefix))
+    }
+
     /// True when `app` is this service's own desktop app.
     #[must_use]
     pub fn is_own_app(&self, app: &DesktopId) -> bool {
         self.desktop_apps.contains(app)
     }
+}
+
+/// True when `path` starts with `prefix`, ignoring ASCII case, and the match
+/// ends at a segment boundary unless `prefix` itself ends in `/`.
+fn has_path_prefix(path: &str, prefix: &str) -> bool {
+    let Some(head) = path.get(..prefix.len()) else {
+        return false;
+    };
+    head.eq_ignore_ascii_case(prefix)
+        && (prefix.ends_with('/')
+            || path.len() == prefix.len()
+            || path.as_bytes().get(prefix.len()) == Some(&b'/'))
 }
 
 /// The catalogue, sorted by service name (APP-03).
@@ -207,5 +238,134 @@ mod tests {
             HandOver::PassThrough.apply(&url("https://a.example/")),
             "https://a.example/"
         );
+    }
+
+    fn service_with_sign_in_paths(paths: &[&str]) -> ServiceDefinition {
+        let listed: Vec<String> = paths.iter().map(|p| format!("{p:?}")).collect();
+        toml::from_str(&format!(
+            "id = \"x\"\nname = \"X\"\nhosts = [\"x.test\"]\nsign-in-paths = [{}]\n",
+            listed.join(", ")
+        ))
+        .unwrap()
+    }
+
+    // DEF-09
+    #[test]
+    fn sign_in_paths_match_at_a_segment_boundary_ignoring_case() {
+        let service = service_with_sign_in_paths(&["/api", "/connect/"]);
+        for link in [
+            "https://x.test/api",
+            "https://x.test/api/x",
+            "https://x.test/API?client_id=x",
+            "https://x.test/Api/",
+            "https://x.test/connect/google",
+            "https://x.test/login",
+        ] {
+            assert!(service.is_sign_in(&url(link)), "{link}");
+        }
+        for link in [
+            "https://x.test/apis",
+            "https://x.test/apiary/x",
+            "https://x.test/v1/api",
+            "https://x.test/connect",
+            "https://x.test/",
+        ] {
+            assert!(!service.is_sign_in(&url(link)), "{link}");
+        }
+    }
+
+    #[test]
+    fn a_service_without_sign_in_paths_knows_only_the_generic_words() {
+        let service = service_with_sign_in_paths(&[]);
+        assert!(service.is_sign_in(&url("https://x.test/oauth/authorize")));
+        assert!(!service.is_sign_in(&url("https://x.test/api")));
+    }
+
+    // DEF-09: each shipped service recognises its own sign-in pages.
+    #[test]
+    fn every_service_knows_its_sign_in_pages() {
+        const PAGES: &[(&str, &str)] = &[
+            (
+                "figma",
+                "https://www.figma.com/app_auth/6f4c/grant?desktop_protocol=figma",
+            ),
+            ("figma", "https://www.figma.com/login"),
+            ("figma", "https://www.figma.com/oauth?client_id=x"),
+            ("linear", "https://linear.app/login"),
+            ("linear", "https://linear.app/oauth/authorize?client_id=x"),
+            ("linear", "https://linear.app/auth/desktop-redirect"),
+            ("slack", "https://slack.com/signin"),
+            ("slack", "https://slack.com/oauth/v2/authorize?client_id=x"),
+            ("slack", "https://slack.com/openid/connect/authorize"),
+            ("slack", "https://acme.slack.com/sso/saml/start"),
+            ("discord", "https://discord.com/login"),
+            (
+                "discord",
+                "https://discord.com/oauth2/authorize?client_id=x",
+            ),
+            ("discord", "https://discord.com/api/oauth2/authorize"),
+            ("zoom", "https://zoom.us/signin"),
+            ("zoom", "https://zoom.us/oauth/authorize?client_id=x"),
+            ("zoom", "https://acme.zoom.us/saml/login"),
+            ("notion", "https://www.notion.so/login"),
+            ("notion", "https://api.notion.com/v1/oauth/authorize"),
+            ("asana", "https://app.asana.com/-/login"),
+            ("asana", "https://app.asana.com/-/oauth_authorize"),
+            ("airtable", "https://airtable.com/login"),
+            ("airtable", "https://airtable.com/oauth2/v1/authorize"),
+            ("claude", "https://claude.ai/login"),
+            ("claude", "https://claude.ai/oauth/authorize?client_id=x"),
+            ("clickup", "https://app.clickup.com/login"),
+            (
+                "clickup",
+                "https://app.clickup.com/api?client_id=x&redirect_uri=y",
+            ),
+            ("front", "https://app.frontapp.com/signin"),
+            ("front", "https://app.frontapp.com/oauth/authorize"),
+            ("steam", "https://store.steampowered.com/login/"),
+            ("steam", "https://steamcommunity.com/openid/login"),
+            ("steam", "https://steamcommunity.com/login/home/"),
+            ("webex", "https://signin.webex.com/collabs/auth"),
+            (
+                "webex",
+                "https://idbroker.webex.com/idb/oauth2/v1/authorize",
+            ),
+            ("zulip", "https://zulipchat.com/login/"),
+            ("zulip", "https://acme.zulipchat.com/accounts/login/"),
+        ];
+        let catalogue = ServiceCatalogue::shipped();
+        for (id, link) in PAGES {
+            let service = catalogue.get(id).unwrap_or_else(|| panic!("{id}"));
+            let link = url(link);
+            assert!(service.matches(&link), "{id} does not match {link}");
+            assert!(service.is_sign_in(&link), "{id}: {link}");
+        }
+    }
+
+    // DEF-09: pages with content stay with the service's app.
+    #[test]
+    fn content_links_are_not_sign_in_pages() {
+        let catalogue = ServiceCatalogue::shipped();
+        for link in [
+            "https://www.figma.com/design/YmWx/Artian?node-id=1",
+            "https://www.figma.com/design/abc/Login",
+            "https://linear.app/almost-always/issue/AA-137/login",
+            "https://app.slack.com/client/T1/C2",
+            "https://discord.com/channels/1/2",
+            "https://discord.gg/abcdef",
+            "https://us02web.zoom.us/j/123",
+            "https://www.notion.so/acme/Login-0123456789abcdef",
+            "https://open.spotify.com/track/4uLU6hMCjMI75M1A2tKUQC",
+            "https://store.steampowered.com/app/1/",
+            "https://meet.google.com/abc-defg-hij",
+            "https://app.clickup.com/9012/v/l/2",
+        ] {
+            let link = url(link);
+            let services: Vec<_> = catalogue.matching(&link).collect();
+            assert!(!services.is_empty(), "no service matches {link}");
+            for service in services {
+                assert!(!service.is_sign_in(&link), "{}: {link}", service.id);
+            }
+        }
     }
 }

@@ -1,10 +1,12 @@
 //! Source apps: the app in which the user clicked a link.
 
+use std::ffi::OsStr;
 use std::fmt;
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-use crate::target::DesktopId;
+use crate::target::{CustomApp, DesktopId, Target};
 
 /// What Wye managed to learn about the app that opened a link. Either part
 /// may be missing: a Flatpak app behind the `OpenURI` portal often yields
@@ -22,6 +24,33 @@ impl SourceApp {
     #[must_use]
     pub fn is_unknown(&self) -> bool {
         self.desktop_id.is_none() && self.executable.is_none()
+    }
+
+    /// True when `target` opens this very app, not one of its profiles or
+    /// private windows (DEF-08).
+    ///
+    /// Desktop IDs compare ignoring ASCII case, because an ID derived from
+    /// the focused window may differ in case from the entry's (`Figma.desktop`
+    /// and `figma.desktop`). When only the executable is known, it is
+    /// compared with the application ID, again ignoring case (the window
+    /// class `Figma` for `figma.desktop`). A program path matches by its file
+    /// name. An unknown source is never an app.
+    #[must_use]
+    pub fn is_app(&self, target: &Target) -> bool {
+        match target {
+            Target::App(id) | Target::Custom(CustomApp::Desktop(id)) => {
+                match (&self.desktop_id, &self.executable) {
+                    (Some(own), _) => own.as_str().eq_ignore_ascii_case(id.as_str()),
+                    (None, Some(executable)) => executable.eq_ignore_ascii_case(id.app_id()),
+                    (None, None) => false,
+                }
+            }
+            Target::Custom(CustomApp::Executable(path)) => {
+                let name = Path::new(path).file_name().and_then(OsStr::to_str);
+                name.is_some() && name == self.executable.as_deref()
+            }
+            Target::Picker | Target::Default | Target::Private(_) | Target::Profile { .. } => false,
+        }
     }
 }
 
@@ -106,5 +135,69 @@ mod tests {
     #[test]
     fn unknown_source_never_matches() {
         assert!(!SourceAppSpec::from("slack".to_owned()).matches(&SourceApp::default()));
+    }
+
+    fn desktop(id: &str) -> Target {
+        Target::App(DesktopId::new(id).unwrap())
+    }
+
+    fn custom_desktop(id: &str) -> Target {
+        Target::Custom(CustomApp::Desktop(DesktopId::new(id).unwrap()))
+    }
+
+    fn source(desktop_id: Option<&str>, executable: Option<&str>) -> SourceApp {
+        SourceApp {
+            desktop_id: desktop_id.map(|id| DesktopId::new(id).unwrap()),
+            executable: executable.map(str::to_owned),
+        }
+    }
+
+    // DEF-08
+    #[test]
+    fn is_app_compares_desktop_ids_ignoring_case() {
+        let figma = source(Some("figma.desktop"), None);
+        assert!(figma.is_app(&desktop("figma.desktop")));
+        assert!(figma.is_app(&custom_desktop("figma.desktop")));
+        assert!(source(Some("Figma.desktop"), None).is_app(&custom_desktop("figma.desktop")));
+        assert!(!figma.is_app(&desktop("linear.desktop")));
+    }
+
+    // DEF-08
+    #[test]
+    fn is_app_falls_back_to_the_executable_without_a_desktop_id() {
+        let class = source(None, Some("Figma"));
+        assert!(class.is_app(&custom_desktop("figma.desktop")));
+        assert!(class.is_app(&desktop("figma.desktop")));
+        assert!(!class.is_app(&desktop("linear.desktop")));
+        // A known desktop ID decides; the executable is not consulted.
+        assert!(!source(Some("linear.desktop"), Some("figma")).is_app(&desktop("figma.desktop")));
+    }
+
+    // DEF-08
+    #[test]
+    fn is_app_matches_a_program_by_file_name() {
+        let figma = source(None, Some("figma"));
+        let program = |path: &str| Target::Custom(CustomApp::Executable(path.to_owned()));
+        assert!(figma.is_app(&program("/opt/figma/figma")));
+        assert!(figma.is_app(&program("figma")));
+        assert!(!figma.is_app(&program("/opt/figma/Figma")));
+        assert!(!figma.is_app(&program("/opt/figma/other")));
+        assert!(!source(Some("figma.desktop"), None).is_app(&program("/opt/figma/figma")));
+    }
+
+    // DEF-08: profiles and private windows are browser targets, not the app.
+    #[test]
+    fn is_app_is_false_for_everything_else() {
+        let firefox = source(Some("firefox.desktop"), Some("firefox"));
+        let profile = Target::Profile {
+            app: DesktopId::new("firefox.desktop").unwrap(),
+            id: "work".into(),
+        };
+        let private = Target::Private(DesktopId::new("firefox.desktop").unwrap());
+        for target in [Target::Picker, Target::Default, profile, private] {
+            assert!(!firefox.is_app(&target), "{target}");
+        }
+        assert!(!SourceApp::default().is_app(&desktop("firefox.desktop")));
+        assert!(!SourceApp::default().is_app(&Target::Custom(CustomApp::Executable("x".into()))));
     }
 }

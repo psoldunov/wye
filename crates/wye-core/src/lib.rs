@@ -24,6 +24,7 @@ pub mod picker;
 pub mod pipeline;
 pub mod rule;
 pub mod rules_file;
+pub mod sign_in;
 pub mod source;
 pub mod target;
 pub mod target_menu;
@@ -36,7 +37,7 @@ pub use keys::{Modifier, Modifiers};
 pub use matcher::{MatcherKind, UrlMatcher};
 pub use pipeline::{
     Chosen, Decision, EntryPoint, Finished, Force, LinkRequest, OpenOptions, Pipeline, Rejected,
-    Resolution, ScriptScope, Step,
+    Resolution, ScriptScope, SkipReason, Step,
 };
 pub use rule::{Rule, RunPosition};
 pub use source::{SourceApp, SourceAppSpec};

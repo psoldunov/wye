@@ -6,7 +6,8 @@
 
 use std::fmt;
 
-use super::{ScriptScope, Step};
+use super::{ScriptScope, SkipReason, Step};
+use crate::target::Target;
 
 impl fmt::Display for Step {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -72,6 +73,26 @@ impl Step {
             Self::MappingTargetMissing { service, target } => {
                 format!("Web app mapping {service:?} skipped: {target} is not installed")
             }
+            Self::RuleSkipped {
+                index,
+                name,
+                position,
+                target,
+                reason,
+            } => format!(
+                "Rule {} {name:?} ({}) skipped: {}",
+                index + 1,
+                position.label(),
+                reason.text(target)
+            ),
+            Self::MappingSkipped {
+                service,
+                target,
+                reason,
+            } => format!(
+                "Web app mapping {service:?} skipped: {}",
+                reason.text(target)
+            ),
             Self::Fallback { target } => format!("No match, primary browser: {target}"),
             Self::DefaultIsPrimary { target } => {
                 format!("Default means the primary browser: {target}")
@@ -98,13 +119,24 @@ impl Step {
     }
 }
 
+impl SkipReason {
+    /// Why the link stays out of `target`, for [`Step::RuleSkipped`] and
+    /// [`Step::MappingSkipped`] (DEF-08, DEF-09).
+    fn text(self, target: &Target) -> String {
+        match self {
+            Self::BackToSource => format!("the link came from {target}"),
+            Self::SignInPage => format!("sign-in pages open in a browser, not in {target}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use url::Url;
 
     use super::*;
     use crate::rule::RunPosition;
-    use crate::target::{DesktopId, Target};
+    use crate::target::{CustomApp, DesktopId, Target};
 
     fn firefox() -> Target {
         Target::App(DesktopId::new("firefox.desktop").unwrap())
@@ -115,6 +147,7 @@ mod tests {
     fn every_step() -> Vec<Step> {
         let url = Url::parse("https://example.com/").unwrap();
         let target = firefox();
+        let figma = Target::Custom(CustomApp::Desktop(DesktopId::new("figma.desktop").unwrap()));
         vec![
             Step::Unwrapped {
                 wrapper: "google".into(),
@@ -175,7 +208,26 @@ mod tests {
                 target: target.clone(),
             },
             Step::HeldUntilUnlock,
-            Step::PickerChoice { target },
+            Step::PickerChoice {
+                target: target.clone(),
+            },
+            Step::RuleSkipped {
+                index: 1,
+                name: "R".into(),
+                position: RunPosition::Before,
+                target: target.clone(),
+                reason: SkipReason::BackToSource,
+            },
+            Step::MappingSkipped {
+                service: "Figma".into(),
+                target: figma,
+                reason: SkipReason::BackToSource,
+            },
+            Step::MappingSkipped {
+                service: "Linear".into(),
+                target,
+                reason: SkipReason::SignInPage,
+            },
         ]
     }
 
@@ -210,5 +262,17 @@ mod tests {
         );
         assert_eq!(texts[19], "Picker requested");
         assert_eq!(texts[22], "Picker choice: firefox.desktop");
+        assert_eq!(
+            texts[23],
+            "Rule 2 \"R\" (before built-in rules) skipped: the link came from firefox.desktop"
+        );
+        assert_eq!(
+            texts[24],
+            "Web app mapping \"Figma\" skipped: the link came from figma.desktop"
+        );
+        assert_eq!(
+            texts[25],
+            "Web app mapping \"Linear\" skipped: sign-in pages open in a browser, not in firefox.desktop"
+        );
     }
 }

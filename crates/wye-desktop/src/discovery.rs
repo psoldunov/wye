@@ -262,6 +262,18 @@ impl Availability for Inventory {
             }
         }
     }
+
+    /// DEF-08, DEF-09: an app is a browser when it handles web links, the
+    /// test behind the `browser` flag of `GetTargets`.
+    fn is_browser(&self, target: &Target) -> bool {
+        match target {
+            Target::Picker | Target::Default | Target::Custom(CustomApp::Executable(_)) => false,
+            Target::App(id) | Target::Custom(CustomApp::Desktop(id)) => {
+                self.get(id).is_some_and(|app| app.handles_web)
+            }
+            Target::Private(_) | Target::Profile { .. } => true,
+        }
+    }
 }
 
 /// Resolves one desktop ID without scanning everything: the first

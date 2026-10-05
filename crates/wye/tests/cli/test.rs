@@ -93,3 +93,49 @@ fn unknown_keys_are_invalid_input() {
         .wye(&["test", "https://example.com/", "--keys", "Hyper"])
         .expect_code(2);
 }
+
+// DEF-08, DEF-09: a web app mapping to a non-browser app does not take back
+// a link from that app, nor a sign-in page.
+#[test]
+fn an_app_mapping_skips_links_from_the_app_and_sign_in_pages() {
+    let desktop = Desktop::new();
+    desktop.add_app("fake-figma.desktop", "Fake Figma");
+    desktop.config(
+        "[browsers]\nprimary = { app = \"fake-one.desktop\" }\n\n\
+         [apps.figma]\ncustom = \"fake-figma.desktop\"\n",
+    );
+
+    let plain = desktop
+        .wye(&["test", "https://www.figma.com/design/abc/File"])
+        .expect_code(0);
+    assert!(plain.stdout.contains("Opens in: Fake Figma"), "{plain:#?}");
+
+    let from_app = desktop
+        .wye(&[
+            "test",
+            "https://www.figma.com/design/abc/File",
+            "--source",
+            "fake-figma.desktop",
+        ])
+        .expect_code(0);
+    assert!(
+        from_app.stdout.contains("Opens in: Fake One"),
+        "{from_app:#?}"
+    );
+    assert!(
+        from_app.stdout.contains("skipped: the link came from"),
+        "{from_app:#?}"
+    );
+
+    let sign_in = desktop
+        .wye(&["test", "https://www.figma.com/app_auth/x/grant"])
+        .expect_code(0);
+    assert!(
+        sign_in.stdout.contains("Opens in: Fake One"),
+        "{sign_in:#?}"
+    );
+    assert!(
+        sign_in.stdout.contains("sign-in pages open in a browser"),
+        "{sign_in:#?}"
+    );
+}

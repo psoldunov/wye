@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Wye",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Open links and pages with Wye, the browser picker.",
   "homepage_url": "https://github.com/psoldunov/wye",
   "minimum_chrome_version": "116",

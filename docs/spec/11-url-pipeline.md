@@ -47,7 +47,7 @@ Stages marked ✱ are specified; the rest is this spec's ordering.
 | PIPE-05 | Global transform ✱ | [ADV-03](10-advanced.md#url-transformation), after expansion and cleaning. |
 | PIPE-06 | Alternative-browser key | If the held modifiers equal the alternative-browser key ([BRW-03](05-browsers.md), exact match per [KEY-05](15-keyboard.md#controls)), or the entry point is IN-04: target = alternative browser; skip PIPE-07 to PIPE-10. The key is the user's escape hatch, so it beats rules. |
 | PIPE-07 | Rules, "before built-in rules" ✱ | Top to bottom, first match wins ([RUL-03](08-rules.md)). Matching uses the normalised link (no scheme, no leading `www.`). A rule that would send the link back to its source app ([DEF-08](#default-browser-registration)), or a sign-in page to an app that is not a browser ([DEF-09](#default-browser-registration)), is skipped. |
-| PIPE-08 | Built-in rules ✱ | Web app mappings ([APP](06-apps.md)). A mapping set to Default does not match. A mapping is skipped under the same two conditions as in PIPE-07 (DEF-08, DEF-09). |
+| PIPE-08 | Built-in rules ✱ | Web app mappings ([APP](06-apps.md)). A mapping set to Default does not match. A mapping is skipped under the same two conditions as in PIPE-07 (DEF-08, DEF-09), and a mapping to an app that is not a browser also skips the service's hosts that its desktop app does not open ([APP-13](06-apps.md)). |
 | PIPE-09 | Rules, "after built-in rules" ✱ | Same as PIPE-07, including the skips for DEF-08 and DEF-09. |
 | PIPE-10 | Fallback ✱ | No match: primary browser. "Default" in a matched rule or mapping also means primary browser. |
 | PIPE-11 | Forced picker ✱ | Entry point IN-05 with ADV-10 on and bypass key not held: target = Picker. `wye open --pick`: target = Picker. |

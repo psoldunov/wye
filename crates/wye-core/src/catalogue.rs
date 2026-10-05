@@ -4,7 +4,7 @@
 use serde::Deserialize;
 use url::Url;
 
-use crate::host::host_matches;
+use crate::host::{host_is, host_matches};
 use crate::sign_in::is_sign_in_page;
 use crate::target::DesktopId;
 
@@ -57,6 +57,8 @@ pub struct ServiceDefinition {
     pub name: String,
     hosts: Vec<String>,
     #[serde(default)]
+    app_hosts: Vec<String>,
+    #[serde(default)]
     paths: Vec<String>,
     #[serde(default)]
     sign_in_paths: Vec<String>,
@@ -76,6 +78,16 @@ impl ServiceDefinition {
                     .paths
                     .iter()
                     .any(|p| url.path().starts_with(p.as_str())))
+    }
+
+    /// True when the service's desktop app opens links on the host of `url`
+    /// (APP-13): every host when the entry lists no `app-hosts`, otherwise
+    /// only the hosts listed there, each compared exactly, so `notion.so`
+    /// does not take `mail.notion.so`.
+    #[must_use]
+    pub fn app_opens_host(&self, url: &Url) -> bool {
+        let host = url.host_str().unwrap_or_default();
+        self.app_hosts.is_empty() || self.app_hosts.iter().any(|h| host_is(host, h))
     }
 
     /// True when `url` is a sign-in or authorisation page of this service
@@ -436,6 +448,81 @@ mod tests {
             let link = url(link);
             assert!(service.matches(&link), "{id} does not match {link}");
             assert!(service.is_sign_in(&link), "{id}: {link}");
+        }
+    }
+
+    // APP-13
+    #[test]
+    fn app_hosts_are_compared_exactly() {
+        let service: ServiceDefinition = toml::from_str(
+            "id = \"x\"\nname = \"X\"\nhosts = [\"x.test\"]\n\
+             app-hosts = [\"x.test\", \"www.x.test\"]\n",
+        )
+        .unwrap();
+        for link in ["https://x.test/a", "https://WWW.x.test/a"] {
+            assert!(service.app_opens_host(&url(link)), "{link}");
+        }
+        for link in ["https://api.x.test/a", "https://a.www.x.test/"] {
+            assert!(service.matches(&url(link)), "{link}");
+            assert!(!service.app_opens_host(&url(link)), "{link}");
+        }
+        let every_host = service_with_sign_in_paths(&[]);
+        assert!(every_host.app_opens_host(&url("https://api.x.test/a")));
+    }
+
+    // APP-13: an app host outside the service's hosts would never apply.
+    #[test]
+    fn every_app_host_is_a_host_of_its_service() {
+        for service in ServiceCatalogue::shipped().services() {
+            for app_host in &service.app_hosts {
+                assert!(
+                    service.hosts.iter().any(|h| host_matches(app_host, h)),
+                    "{}: {app_host}",
+                    service.id
+                );
+            }
+        }
+    }
+
+    // APP-13, DEF-09: a mapping to the Notion app takes only the pages the
+    // app opens; the rest of Notion stays with the service, so a mapping to
+    // a browser profile still takes it.
+    #[test]
+    fn the_notion_app_gets_only_notion_pages() {
+        let catalogue = ServiceCatalogue::shipped();
+        let notion = catalogue.get("notion").unwrap();
+        let app_takes = |link: &str| {
+            let link = url(link);
+            notion.matches(&link) && notion.app_opens_host(&link) && !notion.is_sign_in(&link)
+        };
+        for link in [
+            "https://www.notion.so/acme/Page-0123456789abcdef0123456789abcdef",
+            "https://www.notion.so/0123456789abcdef0123456789abcdef",
+            "https://notion.so/0123456789abcdef0123456789abcdef",
+            "https://app.notion.com/p/acme/Page-0123456789abcdef0123456789abcdef",
+            "https://www.notion.so/acme/Login-0123456789abcdef0123456789abcdef",
+        ] {
+            assert!(app_takes(link), "{link}");
+        }
+        for link in [
+            "https://mcp.notion.com/authorize",
+            "https://api.notion.com/v1/oauth/authorize",
+            "https://www.notion.com/pricing",
+            "https://developers.notion.com/",
+            "https://calendar.notion.so/",
+            "https://mail.notion.so/",
+            "https://identity.notion.so/",
+            "https://www.notion.so/install-integration?client_id=x",
+            "https://www.notion.so/browser-session-handoff-to-desktop?x=1",
+            "https://www.notion.so/loginwithemail?token=x",
+            "https://www.notion.so/login",
+            "https://www.notion.so/signup",
+            "https://www.notion.so/logout",
+            "https://www.notion.so/loginpasswordreset?token=x",
+            "https://www.notion.so/native/oauth2callback",
+        ] {
+            assert!(notion.matches(&url(link)), "{link}");
+            assert!(!app_takes(link), "{link}");
         }
     }
 

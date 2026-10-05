@@ -359,3 +359,64 @@ fn a_mapping_skips_its_services_own_sign_in_route_but_a_rule_does_not() {
         Decision::Rule { index: 0, .. }
     ));
 }
+
+fn config_with_notion(target: Target) -> Config {
+    let mut config = Config::default();
+    config.browsers.primary = firefox();
+    config.apps.insert("notion".to_owned(), target);
+    config
+}
+
+fn notion_mapping_applies(resolution: &Resolution, target: &Target) -> bool {
+    resolution.target == *target
+        && matches!(&resolution.decision, Decision::Mapping { service } if service == "notion")
+}
+
+const NOTION_PAGE: &str = "https://www.notion.so/acme/Page-0123456789abcdef0123456789abcdef";
+const NOTION_MAIL: &str = "https://mail.notion.so/inbox";
+const NOTION_CONSENT: &str = "https://www.notion.so/install-integration?client_id=x";
+
+// APP-13, DEF-09: a mapping to the Notion app takes only the pages the app
+// opens; Notion Mail and OAuth consent go to a browser.
+#[test]
+fn a_mapping_to_the_notion_app_takes_only_its_pages() {
+    let notion = app("notion.desktop");
+    let resolution = resolve(
+        config_with_notion(notion.clone()),
+        &handler(NOTION_PAGE, SourceApp::default()),
+        &Apps::default(),
+    );
+    assert!(notion_mapping_applies(&resolution, &notion));
+
+    for (link, reason) in [
+        (NOTION_MAIL, SkipReason::NotAppHost),
+        (NOTION_CONSENT, SkipReason::SignInPage),
+    ] {
+        let resolution = resolve(
+            config_with_notion(notion.clone()),
+            &handler(link, SourceApp::default()),
+            &Apps::default(),
+        );
+        assert_eq!(resolution.target, firefox(), "{link}");
+        assert_eq!(resolution.decision, Decision::Fallback, "{link}");
+        assert!(skipped_mapping(&resolution, reason), "{link}");
+    }
+}
+
+// APP-13: a browser profile holds the Notion account, so it keeps every
+// Notion host and sign-in page.
+#[test]
+fn a_mapping_to_a_profile_keeps_every_notion_link() {
+    let work = Target::Profile {
+        app: desktop_id("firefox.desktop"),
+        id: "work".into(),
+    };
+    for link in [NOTION_PAGE, NOTION_MAIL, NOTION_CONSENT] {
+        let resolution = resolve(
+            config_with_notion(work.clone()),
+            &handler(link, SourceApp::default()),
+            &Apps::default(),
+        );
+        assert!(notion_mapping_applies(&resolution, &work), "{link}");
+    }
+}

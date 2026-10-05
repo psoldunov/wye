@@ -7,6 +7,10 @@
 #
 # id:           stable key used in the configuration file ([apps] <id> = …)
 # hosts:        a host and its subdomains
+# app-hosts:    the hosts the service's desktop app opens, each matched
+#               exactly (no subdomains); empty means every host above. A
+#               mapping to an app that is not a browser leaves links on the
+#               service's other hosts to a browser (APP-13).
 # paths:        optional path prefixes; empty means every path
 # sign-in-paths: path prefixes of sign-in or authorisation pages that the
 #               generic sign-in words miss (DEF-09). Matched at a path
@@ -102,6 +106,21 @@ hosts = ["teams.microsoft.com", "teams.live.com"]
 id = "notion"
 name = "Notion"
 hosts = ["notion.so", "notion.com"]
+# The desktop app opens workspace pages on these three hosts only. Notion's
+# other hosts (www.notion.com, MCP and API sign-in, Mail, Calendar) need a
+# browser.
+app-hosts = ["notion.so", "www.notion.so", "app.notion.com"]
+# Emailed sign-in links, password resets, signing out, OAuth consent, the
+# app's "Log in with browser" page and its other sign-in hand-offs.
+sign-in-paths = [
+    "/browser-session-handoff-to-desktop",
+    "/install-integration",
+    "/loginpasswordreset",
+    "/loginwithemail",
+    "/logout",
+    "/native",
+]
+desktop-apps = ["notion.desktop"]
 
 [[service]]
 id = "signal"

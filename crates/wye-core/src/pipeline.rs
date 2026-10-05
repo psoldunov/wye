@@ -197,7 +197,8 @@ pub enum Step {
         target: Target,
         reason: SkipReason,
     },
-    /// A web app mapping whose app must not get this link (DEF-08, DEF-09).
+    /// A web app mapping whose app must not get this link (DEF-08, DEF-09,
+    /// APP-13).
     MappingSkipped {
         service: String,
         target: Target,
@@ -555,7 +556,7 @@ impl Pipeline {
 
     // PIPE-08: a mapping left at Default, or whose app is gone (APP-10), does
     // not match; nor does one whose app must not get the link (DEF-08,
-    // DEF-09).
+    // DEF-09, APP-13).
     fn mapping(
         &self,
         url: &Url,

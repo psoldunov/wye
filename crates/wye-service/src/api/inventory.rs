@@ -1,17 +1,19 @@
 //! Apps and targets: `GetTargets`, `GetApps`, `GetServices`,
 //! `GetExpansionCatalogue`, `Rescan` and the `InventoryRevision` property
 //! (TGT-02 to TGT-07, APP-03, APP-05, APP-10, DLG-APP, DLG-EXP, DISC-02,
-//! BRW-06, TRAY-15).
+//! BRW-06, TRAY-15, SHOWN-09).
 //!
 //! The installed apps and browser profiles are scanned once and kept; the
 //! watchers ([`crate::watch`]) and `Rescan` scan again, and the revision
 //! bumps only when something changed.
 
+mod adopt;
 mod lists;
 pub(crate) mod targets;
 
 use std::sync::{Arc, Mutex, PoisonError, RwLock};
 
+use tokio::task::JoinHandle;
 use wye_api::json;
 use wye_core::{DesktopId, ServiceCatalogue};
 use wye_desktop::{Inventory, WYE_DESKTOP_ID};
@@ -39,6 +41,9 @@ pub struct State {
     current: RwLock<Option<Arc<Scan>>>,
     /// One scan at a time.
     scanning: tokio::sync::Mutex<()>,
+    /// A scan stored new apps, so the adoption task has browsers to look at
+    /// (SHOWN-09).
+    scanned: tokio::sync::Notify,
     /// Desktop IDs of apps that sent links, newest first (DLG-APP-02); kept
     /// in memory only.
     recent_sources: Mutex<Vec<String>>,
@@ -67,6 +72,12 @@ impl State {
             .unwrap_or_else(PoisonError::into_inner)
             .clone()
     }
+}
+
+/// The task that offers new browsers in the picker (SHOWN-09); see
+/// [`adopt::run`].
+pub(crate) fn spawn_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
+    vec![tokio::spawn(adopt::run(ctx.clone()))]
 }
 
 /// The apps, scanned on first use and again whenever the environment
@@ -119,6 +130,7 @@ pub(crate) async fn scan(ctx: &ServiceContext) -> Result<Arc<Scan>> {
     });
     ctx.inventory().set(scan.clone());
     drop(scanning);
+    ctx.inventory().scanned.notify_one();
     if before.is_some() {
         super::config::effects::changed(ctx, Property::InventoryRevision);
         super::config::effects::changed(ctx, Property::Tray);

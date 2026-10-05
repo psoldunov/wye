@@ -18,16 +18,22 @@ pub(crate) fn catalog(
     config: &Config,
     services: &ServiceCatalogue,
 ) -> TargetCatalog {
-    let own_apps: Vec<DesktopId> = services
-        .services()
-        .iter()
-        .flat_map(|service| service.desktop_apps.iter().cloned())
-        .filter(|id| inventory.get(id).is_some())
-        .collect();
+    let own_apps = own_apps(inventory, services);
     TargetCatalog {
         custom: custom_entries(inventory, locale, config),
         ..inventory.catalog(locale, &own_apps)
     }
+}
+
+/// The installed own apps of web services (APP-05): not browsers, so no
+/// list of browsers offers them (TGT-05, SHOWN-02, SHOWN-09).
+pub(crate) fn own_apps(inventory: &Inventory, services: &ServiceCatalogue) -> Vec<DesktopId> {
+    services
+        .services()
+        .iter()
+        .flat_map(|service| service.desktop_apps.iter().cloned())
+        .filter(|id| inventory.get(id).is_some())
+        .collect()
 }
 
 /// The inventory `GetTargets` returns: the Picker, every available target in

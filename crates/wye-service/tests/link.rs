@@ -210,13 +210,20 @@ async fn a_failed_launch_offers_other_browsers() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_picker_stand_in_opens_the_previous_default() {
-    let Some(service) = Service::start("[browsers]\nprimary = { picker = true }\n").await else {
+    // The state is written before the service starts: the first scan saves
+    // the browsers it saw to the same file (SHOWN-09) and could otherwise
+    // overwrite a file written behind its back.
+    let Some(service) =
+        Service::start_with("[browsers]\nprimary = { picker = true }\n", |desktop| {
+            desktop.write(
+                "state/wye/state.toml",
+                "previous-default-browser = \"fake-two.desktop\"\n",
+            );
+        })
+        .await
+    else {
         return;
     };
-    service.desktop.write(
-        "state/wye/state.toml",
-        "previous-default-browser = \"fake-two.desktop\"\n",
-    );
     wye(&service)
         .await
         .open_link(URL, cli())

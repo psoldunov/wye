@@ -51,6 +51,7 @@ The popup that every target popup row opens (Browsers, Apps, rule editor).
 | SHOWN-06 | **Done** (primary button, bottom right) closes the sheet. Checkbox, order and hotkey changes apply at once. | Specified |
 | SHOWN-07 | The list scrolls; the footer stays pinned. | Specified |
 | SHOWN-08 | An app added with "+" can be removed again (context menu or delete button on its row). | Proposed |
+| SHOWN-09 | A browser discovery finds for the first time ([DISC-02](#discovery-and-launching)) is appended to the shown list, without a hotkey, so it appears in the picker and the tray menu at once. Every web-link handler counts except the own apps of web services; the first scan after an upgrade only records what is installed. Only the browser itself is added, never its profiles or private windows. A browser the user unchecked stays hidden, also after it is uninstalled and installed again. An empty list is left empty (it already shows every installed browser), and a read-only configuration keeps its list. | Proposed |
 
 Target metrics: sheet width about 380 px, rows about 32 px tall, icons about 16 px.
 

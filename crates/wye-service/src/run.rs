@@ -118,6 +118,7 @@ fn spawn_session_tasks(ctx: &ServiceContext) -> Vec<JoinHandle<()>> {
         .into_iter()
         .chain(api::link::spawn_tasks(ctx))
         .chain(api::tray::spawn_tasks(ctx))
+        .chain(api::inventory::spawn_tasks(ctx))
         .chain(api::scripts::spawn_tasks(ctx))
         .collect()
 }

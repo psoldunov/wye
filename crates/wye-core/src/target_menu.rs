@@ -6,8 +6,10 @@ use serde::Serialize;
 
 use crate::target::{DesktopId, Target};
 
+mod adopt;
 mod catalog;
 
+pub use adopt::{Adoption, adopt_new_browsers};
 pub use catalog::{
     AppEntry, Badge, CustomEntry, HandlerEntry, ProfileEntry, ShownTarget, TargetCaps,
     TargetCatalog, TargetInfo, shown_targets,

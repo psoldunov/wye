@@ -94,7 +94,10 @@ In the service a link goes through `crates/wye-service/src/api/link.rs`: it take
 browser (`api/config.rs`, `snapshot`), runs the pipeline on a blocking thread
 (`resolve_with` and `finish`, with the expansion and transform-script hooks of
 `api/link/hooks.rs`), and builds the command line with `wye_desktop::build_command`. The `Launcher` starts it with the activation token
-set (or removed for a background launch, LAUNCH-03/04), and the `ScopeManager` moves the
+set (or removed for a background launch, LAUNCH-03/04) and, when Wye runs from its AppImage,
+the session's environment rather than the AppImage's (LAUNCH-08,
+`crates/wye-desktop/src/launch/appimage.rs`); its reaper logs an app that exits with a
+failure. The `ScopeManager` moves the
 child into a transient scope `app-wye-<escaped desktop ID>-<random>.scope` through the
 user manager's `StartTransientUnit` (LAUNCH-06; failure is logged, and `KillMode=process`
 is the backstop). A launch that fails notifies with buttons for up to three other

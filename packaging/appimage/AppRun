@@ -465,7 +465,11 @@ fi
 
 # The runtime's APPIMAGE and OWD would otherwise reach every browser and app
 # Wye launches; an Electron app's updater takes APPIMAGE for its own file and
-# would replace this AppImage. Nothing in Wye reads them.
+# would replace this AppImage. Nothing in Wye reads them. The rest of the
+# runtime's environment ($APPDIR/bin on PATH and the other paths into the
+# AppImage, the markers, the moved XDG_CACHE_HOME) stays for Wye's own
+# programs, which need it; the service removes it from every app it launches
+# (LAUNCH-08, crates/wye-desktop/src/launch/appimage.rs).
 unset APPIMAGE OWD
 
 # The programs live in libexec/, not bin/: sharun puts AppDir/bin first on

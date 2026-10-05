@@ -179,6 +179,14 @@ Each file the AppImage writes carries a marker (an `X-Wye-AppImage=true` key, a 
 missing or carries that marker, or for the links, when the link points at an AppImage.
 Anything else at those paths stays as it is, with one warning on stderr per start.
 
+The runtime's environment (`$APPDIR/bin` first on `PATH`, other paths into the AppImage,
+markers such as `APPDIR` and `URUNTIME`, `XDG_CACHE_HOME` moved to `AppImage-Cache`) is
+Wye's own and stays with Wye's programs. The apps the service launches get the session's
+instead: every variable loses its `:`-separated entries that point into the AppImage, the
+markers are unset, and `HOME` and the XDG base directories come back (LAUNCH-08). `PATH`
+keeps the `~/.local/bin` the AppImage puts first. Otherwise `flatpak run` finds the
+bundled `bwrap` shim before `/usr/bin/bwrap`, and no Flatpak browser starts.
+
 When another Wye installation is visible to the session, the AppImage integrates nothing
 and says so on stderr. That is the case when `dev.soldunov.wye.service` (D-Bus) or
 `dev.soldunov.wye.desktop` exists in `$XDG_DATA_HOME` without the marker (home-manager
@@ -248,6 +256,9 @@ mode the smoke test:
   the programs, and checks the integrated desktop entry, D-Bus services and links; no other
   Wye D-Bus service file exists, so the live session activates `wye-ui` and `wye-gtk`
   through the integrated ones;
+- makes a fake browser the primary one, opens a link through the service started from the
+  AppImage, and checks that the fake browser's environment has no path into the AppImage,
+  no runtime marker and the session's `XDG_CACHE_HOME` (LAUNCH-08);
 - runs `--remove-integration` with the planted files back in place and checks that it
   removed the eleven files and links it wrote and nothing else;
 - launches it once with a package's desktop entry in a directory on `XDG_DATA_DIRS` and

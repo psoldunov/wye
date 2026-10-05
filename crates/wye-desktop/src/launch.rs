@@ -1,4 +1,4 @@
-//! Launching targets (LAUNCH-01, LAUNCH-03 to LAUNCH-05).
+//! Launching targets (LAUNCH-01, LAUNCH-03 to LAUNCH-05, LAUNCH-08).
 //!
 //! Wye's desktop entry keeps `StartupNotify=true`: that is how launchers
 //! hand Wye the activation token it passes on (LAUNCH-03). The cost is that
@@ -7,7 +7,8 @@
 //! to time out, which on X11 shows a busy cursor for a few seconds.
 
 use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::time::Instant;
 
 use wye_core::{CustomApp, DesktopId, Target};
 
@@ -130,7 +131,9 @@ pub fn build_command(
 
 /// Starts the command detached from Wye: its own process group, no stdio,
 /// and no waiting. A background thread reaps the child so it does not
-/// linger as a zombie.
+/// linger as a zombie, and logs a failed exit. When Wye runs from its
+/// `AppImage`, the child gets the session's environment, not the runtime's
+/// (LAUNCH-08).
 ///
 /// # Errors
 ///
@@ -144,6 +147,10 @@ pub fn spawn(command: &LaunchCommand) -> std::io::Result<()> {
 /// Returns the child's process ID, for moving it into a systemd scope
 /// (LAUNCH-06). The session service passes the activation token it received
 /// with the link this way (LAUNCH-03).
+///
+/// When Wye runs from its `AppImage`, the child first loses the runtime's
+/// environment (LAUNCH-08); `remove_env` and `env` apply on top of that, so
+/// the activation token still wins.
 ///
 /// # Errors
 ///
@@ -159,6 +166,12 @@ pub fn spawn_with_env(
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .process_group(0);
+    for (name, value) in appimage::current_changes() {
+        match value {
+            Some(value) => process.env(name, value),
+            None => process.env_remove(name),
+        };
+    }
     for name in &command.remove_env {
         process.env_remove(name);
     }
@@ -168,14 +181,36 @@ pub fn spawn_with_env(
             None => process.env_remove(name),
         };
     }
-    let mut child = process.spawn()?;
+    let child = process.spawn()?;
     let pid = child.id();
-    std::thread::spawn(move || {
-        // The exit status of a launched browser is of no interest; waiting
-        // only releases the process-table entry.
-        let _ = child.wait();
-    });
+    let started = Instant::now();
+    let program = command.program.clone();
+    std::thread::spawn(move || reap(child, &program, started));
     Ok(pid)
+}
+
+/// Waits for `child`, which releases its process-table entry, and logs a
+/// failed exit. The status matters because stdout and stderr are null: a
+/// launch that dies at once (an `Exec` that cannot work in this
+/// environment) is otherwise invisible.
+fn reap(mut child: Child, program: &str, started: Instant) {
+    let pid = child.id();
+    match child.wait() {
+        Ok(status) if status.success() => {}
+        Ok(status) => tracing::warn!(
+            program,
+            pid,
+            %status,
+            after = ?started.elapsed(),
+            "launched app exited with a failure"
+        ),
+        Err(error) => tracing::warn!(
+            program,
+            pid,
+            %error,
+            "cannot wait for the launched app"
+        ),
+    }
 }
 
 fn launchable<'a>(
@@ -267,6 +302,7 @@ fn profile_flags(app: &InstalledApp, id: &str) -> Result<Vec<String>, LaunchErro
     }
 }
 
+mod appimage;
 pub mod scope;
 
 #[cfg(test)]

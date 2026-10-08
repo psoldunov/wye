@@ -32,14 +32,20 @@ on them.
    reliable ID even for Electron apps.
 3. Fallbacks: `GIO_LAUNCHED_DESKTOP_FILE` in the process environment, then matching the
    executable against desktop entries' `Exec`.
-4. Sandboxed apps (Flatpak) open links through the OpenURI portal, so the parent is
-   `xdg-desktop-portal`, not the app. Some launchers also start the handler in a unit
-   of their own: KIO on Plasma 6 runs it as a transient `app-<id>@<uuid>.service`, so
-   the handler's parent is `systemd --user` and the parent chain names no app. In both
-   cases Wye falls back to the focused window's app where the desktop allows it
-   (GNOME extension, KWin script, compositor IPC), and otherwise treats the source as
-   unknown. An app that came from the caller (a desktop ID given with the link) is
-   used as it is, without asking the focused window.
+4. The focused window's app stands in for the source in exactly two cases, where the
+   desktop allows it (GNOME extension, KWin script, compositor IPC); otherwise the
+   source is unknown.
+   - Sandboxed apps (Flatpak) open links through the OpenURI portal, so the parent is
+     `xdg-desktop-portal`, not the app.
+   - The handler (`wye open`) runs in Wye's own app unit
+     (`app-dev.soldunov.wye@<uuid>.service` or `app-<launcher>-dev.soldunov.wye-<n>.scope`)
+     and its parent chain names no app. A launcher such as KIO on Plasma 6 started it as
+     a unit of its own, so its parent is `systemd --user`.
+
+   Other chains that name no app stay unknown: a systemd timer, `systemd-run`, a caller
+   that has already exited. A desktop ID or executable given with the link wins over
+   focus. The focus is a heuristic: a link from a surface that never takes focus (a
+   notification popup, KRunner) is credited to whichever app has focus.
 
 Process names are matched as the kernel records them (`comm`, cut to 15 bytes) and in
 their NixOS-wrapped form `.NAME-wrapped`, which `makeWrapper` gives the real program.

@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use support::{ONE, Service, TWO, eventually};
 use wye_api::proxy::{ApplicationProxy, Wye1Proxy};
 use wye_api::{Error, context};
+use wye_service::platform::FocusedApp;
 use zbus::zvariant::Value;
 
 const URL: &str = "https://example.com/";
@@ -110,6 +111,94 @@ async fn open_detects_the_source_from_the_callers_pid() {
             argv("fake-two", "https://example.com/two")
         ]
     );
+}
+
+const APP_SLICE: &str = "/user.slice/user-1000.slice/user@1000.service/app.slice";
+
+/// The service for a handler a launcher started in a unit of its own (KIO on
+/// Plasma 6): `systemd --user` (pid 3006) is the handler's parent, the
+/// handler is this test process, running in `handler_cgroup`, and the chat
+/// app has focus. A rule sends links from the chat app to `fake-two`.
+async fn with_chat_focused(handler_cgroup: &str) -> Option<Service> {
+    let rule = format!(
+        "{PRIMARY_ONE}\n[[rules]]\nname = \"From chat\"\ntarget = {{ app = \"{TWO}\" }}\n\
+         url-matchers = [{{ kind = \"domain\", pattern = \"example.com\" }}]\n\
+         source-apps = [\"org.example.Chat.desktop\"]\n"
+    );
+    let service = Service::start(&rule).await?;
+    service.desktop.process(
+        3006,
+        "systemd",
+        1,
+        "/user.slice/user-1000.slice/user@1000.service/init.scope",
+    );
+    service
+        .desktop
+        .process(std::process::id(), "wye", 3006, handler_cgroup);
+    service.fakes.focus.set(Some(FocusedApp {
+        desktop_id: Some("org.example.Chat".to_owned()),
+        ..FocusedApp::default()
+    }));
+    Some(service)
+}
+
+fn from_pid_3006() -> HashMap<&'static str, Value<'static>> {
+    let mut link = cli();
+    link.insert(context::SOURCE_PID, Value::from(3006_u32));
+    link
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_handler_in_wyes_own_unit_takes_the_focused_app_as_the_source() {
+    // PIPE-01, DEF-08: the handler's parent is `systemd --user`, which names
+    // no app; the handler runs in Wye's own unit, so focus stands in.
+    let Some(service) = with_chat_focused(&format!(
+        "{APP_SLICE}/app-dev.soldunov.wye@0123abcd.service"
+    ))
+    .await
+    else {
+        return;
+    };
+    wye(&service)
+        .await
+        .open_link(URL, from_pid_3006())
+        .await
+        .expect("opened");
+    assert_eq!(service.launched(), [argv("fake-two", URL)]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_handler_in_a_timer_unit_does_not_take_the_focused_app() {
+    // A timer or `systemd-run` also leaves the parent at `systemd --user`,
+    // but focus says nothing about where that link came from.
+    let Some(service) = with_chat_focused(&format!("{APP_SLICE}/backup.service")).await else {
+        return;
+    };
+    wye(&service)
+        .await
+        .open_link(URL, from_pid_3006())
+        .await
+        .expect("opened");
+    assert_eq!(service.launched(), [argv("fake-one", URL)]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_source_executable_given_with_the_link_wins_over_focus() {
+    let Some(service) = with_chat_focused(&format!(
+        "{APP_SLICE}/app-dev.soldunov.wye@0123abcd.service"
+    ))
+    .await
+    else {
+        return;
+    };
+    let mut link = from_pid_3006();
+    link.insert(context::SOURCE_EXECUTABLE, Value::from("some-other-app"));
+    wye(&service)
+        .await
+        .open_link(URL, link)
+        .await
+        .expect("opened");
+    assert_eq!(service.launched(), [argv("fake-one", URL)]);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

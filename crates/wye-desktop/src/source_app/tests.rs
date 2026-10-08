@@ -450,3 +450,28 @@ fn detect_in_uses_the_apps_of_an_inventory() {
         Some(id("tool"))
     );
 }
+
+#[test]
+fn app_unit_names_the_desktop_id_of_the_innermost_app_unit() {
+    let slice = "0::/user.slice/user-1000.slice/user@1000.service/app.slice";
+    let root = proc_tree(&[
+        Proc {
+            cgroup: Some(&format!("{slice}/app-dev.soldunov.wye@0123abcd.service\n")),
+            ..Proc::new(10, 1, "wye")
+        },
+        Proc {
+            cgroup: Some(&format!("{slice}/app-gnome-com.slack.Slack-4242.scope\n")),
+            ..Proc::new(20, 1, "slack")
+        },
+        Proc {
+            cgroup: Some(&format!("{slice}/backup.service\n")),
+            ..Proc::new(30, 1, "backup")
+        },
+        Proc::new(40, 1, "no-cgroup"),
+    ]);
+    assert_eq!(app_unit(root.path(), 10), Some(id("dev.soldunov.wye")));
+    assert_eq!(app_unit(root.path(), 20), Some(id("com.slack.Slack")));
+    assert_eq!(app_unit(root.path(), 30), None);
+    assert_eq!(app_unit(root.path(), 40), None);
+    assert_eq!(app_unit(root.path(), 999), None);
+}

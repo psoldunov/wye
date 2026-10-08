@@ -57,7 +57,7 @@ the app it launches (LAUNCH-03).
 | Signature | Description |
 |-----------|-------------|
 | `Activate(a{sv} platform_data) → ()` | Started without a link: the first-run window when onboarding is not done, else Settings when the tray icon is hidden or no tray exists (TRAY-05), else nothing. Until onboarding state and the tray exist, Settings always opens. A UI host that cannot be reached is logged; the call still succeeds. |
-| `Open(as uris, a{sv} platform_data) → ()` | Each URI enters the pipeline as a handler link (IN-01). Source-app detection starts at the caller's PID (`GetConnectionCredentials`), skipping openers such as `kde-open` and `xdg-open` up the parent chain; when the caller is `xdg-desktop-portal`, the focused window is used instead. Every URI is tried; the first error is returned. |
+| `Open(as uris, a{sv} platform_data) → ()` | Each URI enters the pipeline as a handler link (IN-01). Source-app detection starts at the caller's PID (`GetConnectionCredentials`), skipping openers such as `kde-open` and `xdg-open` up the parent chain; when the caller is `xdg-desktop-portal`, the focused window is used instead; a chain that names no app leaves the source unknown. Every URI is tried; the first error is returned. |
 | `ActivateAction(s action_name, av parameter, a{sv} platform_data) → ()` | Desktop actions: `settings`, `clipboard`, `clipboard-alternative`, `menu`, `setup`, `history`, `test-rules`, `about`, `quit` (`wye_api::actions::ApplicationAction`). |
 
 ## Interface `dev.soldunov.wye1`
@@ -129,7 +129,7 @@ Keys in `wye_api::context`.
 |-----|------|---------|
 | `source-desktop-id` | `s` | Desktop ID of the app the link came from. |
 | `source-executable` | `s` | The source app's executable, when there is no desktop ID. |
-| `source-pid` | `u` | Detect the source app from this process up, with the installed apps (all steps of source-app detection). Used only when `source-desktop-id` is absent; `source-executable`, if given, is the fallback when detection finds nothing. `wye open` sends its parent. |
+| `source-pid` | `u` | Detect the source app from this process up, with the installed apps (all steps of source-app detection). Used only when `source-desktop-id` is absent; `source-executable`, if given, is the fallback when detection finds nothing. `wye open` sends its parent. When detection finds no app and no `source-executable` is given, the focused window is used only if the caller of `OpenLink` runs in Wye's own app unit (a launcher such as KIO started `wye open` as a unit of its own, so its parent is `systemd --user`); any other chain stays unknown. |
 | `activation-token` | `s` | `XDG_ACTIVATION_TOKEN` for the launched app (LAUNCH-03). |
 | `startup-id` | `s` | `DESKTOP_STARTUP_ID` for the launched app (LAUNCH-03). |
 | `held` | `as` | Modifiers held when the link was opened: `Shift`, `Ctrl`, `Alt`, `Super`. |

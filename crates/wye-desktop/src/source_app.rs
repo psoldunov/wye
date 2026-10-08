@@ -185,6 +185,15 @@ fn describe(proc_root: &Path, pid: u32, comm: String, matcher: Option<&ExecMatch
     }
 }
 
+/// The desktop ID of the innermost `app-…` unit in `<proc_root>/<pid>/cgroup`:
+/// the unit a launcher put the process in. `None` when the process is gone,
+/// or sits in no app unit (a timer, a login session).
+#[must_use]
+pub fn app_unit(proc_root: &Path, pid: u32) -> Option<DesktopId> {
+    let cgroup = fs::read_to_string(pid_dir(proc_root, pid).join("cgroup")).ok()?;
+    desktop_id_from_cgroup(&cgroup)
+}
+
 /// The unified-hierarchy (`0::`) cgroup path's innermost `app-…` unit.
 fn desktop_id_from_cgroup(text: &str) -> Option<DesktopId> {
     cgroup_units(text)

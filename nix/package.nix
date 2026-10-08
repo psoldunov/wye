@@ -219,6 +219,15 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
+  # The flake checks that compile the workspace (clippy, test, qmllint) use
+  # the dev profile, as the review gates in AGENTS.md do. With the release
+  # profile (thin LTO, one codegen unit) the test build alone took 48 minutes
+  # on a CI runner.
+  devArgs = commonArgs // {
+    CARGO_PROFILE = "dev";
+  };
+  devCargoArtifacts = craneLib.buildDepsOnly devArgs;
+
   package = craneLib.buildPackage (
     commonArgs
     // {
@@ -321,6 +330,8 @@ in
   inherit
     commonArgs
     cargoArtifacts
+    devArgs
+    devCargoArtifacts
     package
     qt
     gtk

@@ -297,10 +297,11 @@ Actions tab (workflow dispatch); pull requests do not run it, so a change to `pa
 or `data/` is checked by dispatching it on the branch (or by running the scripts locally).
 Pull requests run only `ci.yml` (advisories) and `rust-doctor.yml`.
 
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs on a pushed tag
-`vX.Y.Z`. It calls `flake-check.yml` and `packages.yml` and, once the flake check passed on
-both architectures and all six package jobs passed, publishes the GitHub
-release with the six packages, the three browser extension zips (from the x86_64 Nix build
-of the tag, which is not part of `packages.yml`) and their `SHA256SUMS`; a package that
-fails its smoke test is never published. A re-run of a release replaces the packages and
-zips of the existing release and leaves its notes alone.
+[`.github/workflows/release.yml`](../.github/workflows/release.yml) runs when a push to
+master changes the workspace version in `Cargo.toml` and that version has no tag yet. It
+calls `flake-check.yml` and `packages.yml` side by side. Once the flake check has passed on
+both architectures and all six package jobs have passed, it publishes the GitHub release,
+which creates the tag `vX.Y.Z`. The release carries the six packages, the three browser
+extension zips (from the flake check's Nix build, not from `packages.yml`) and their
+`SHA256SUMS`. A package that fails its smoke test is never published. A re-run of a release
+replaces the packages and zips of the existing release and leaves its notes alone.

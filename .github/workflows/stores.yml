@@ -1,0 +1,101 @@
+name: Stores
+
+# Submits a published release's browser extension to addons.mozilla.org and
+# the Chrome Web Store with frontends/extension/store/submit.sh, which
+# uploads the release's own zips and leaves a version a store already has
+# alone. The release workflow calls this one once the release is published;
+# it also runs from the Actions tab for any released version
+# (`gh workflow run stores.yml -f version=X.Y.Z`). A store whose secrets are
+# not set is skipped with a notice. Both stores review the version and
+# publish it when the review passes. The secrets and their one-time setup:
+# frontends/extension/store/README.md, "Submitting a version".
+on:
+  workflow_call:
+    inputs:
+      version:
+        type: string
+        required: true
+    secrets:
+      AMO_JWT_ISSUER:
+        required: false
+      AMO_JWT_SECRET:
+        required: false
+      CWS_SERVICE_ACCOUNT_KEY:
+        required: false
+      CWS_PUBLISHER_ID:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: A released version, X.Y.Z
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  amo:
+    name: addons.mozilla.org
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the Firefox zip of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release download "v${VERSION}" --dir dist \
+            --pattern "wye-extension-firefox-${VERSION}.zip" --pattern SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS --ignore-missing)
+
+      - name: Submit it
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::notice::AMO_JWT_ISSUER and AMO_JWT_SECRET are not set; addons.mozilla.org skipped"
+            exit 0
+          fi
+          frontends/extension/store/submit.sh amo "dist/wye-extension-firefox-${VERSION}.zip" "$VERSION"
+
+  chrome-web-store:
+    name: Chrome Web Store
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the Chrome Web Store zip of the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          gh release download "v${VERSION}" --dir dist \
+            --pattern "wye-extension-chromium-webstore-${VERSION}.zip" --pattern SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS --ignore-missing)
+
+      - name: Submit it
+        env:
+          CWS_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$CWS_SERVICE_ACCOUNT_KEY" ] || [ -z "$CWS_PUBLISHER_ID" ]; then
+            echo "::notice::CWS_SERVICE_ACCOUNT_KEY and CWS_PUBLISHER_ID are not set; the Chrome Web Store skipped"
+            exit 0
+          fi
+          frontends/extension/store/submit.sh chrome \
+            "dist/wye-extension-chromium-webstore-${VERSION}.zip" "$VERSION"

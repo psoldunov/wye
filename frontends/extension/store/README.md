@@ -103,15 +103,41 @@ The add-on ID wye@soldunov.dev is the one Wye's native-messaging manifest allows
 
 ## Submitting a version
 
-1. Cut the Wye release first (see `AGENTS.md`, Releases). A store build must not go live
-   before the Wye release whose host allows its ID.
-2. Download `wye-extension-firefox-<version>.zip` and
-   `wye-extension-chromium-webstore-<version>.zip` from the release and check them with
-   `sha256sum -c SHA256SUMS --ignore-missing`.
-3. AMO: Developer Hub › the add-on › Upload New Version › the Firefox zip. Release notes:
-   one line from the GitHub release.
-4. CWS: Developer Dashboard › the item › Package › Upload new package › the webstore zip.
-   Submit for review.
+The release workflow submits every new version. Once the GitHub release is published,
+[`stores.yml`](../../../.github/workflows/stores.yml) downloads the release's two zips,
+checks them against `SHA256SUMS` and runs [`submit.sh`](submit.sh) for each store:
+
+- AMO gets `wye-extension-firefox-<version>.zip` as a new listed version, with release
+  notes that link the GitHub release and the test instructions as notes to the reviewer.
+- CWS gets `wye-extension-chromium-webstore-<version>.zip`, followed by a publish request.
+
+Both stores review the version and publish it when the review passes. A store build never
+goes out before the Wye release, because that release's native-messaging host is what allows
+the store ID. A version a store already has is skipped, so re-running is safe. To submit a
+released version by hand, run `gh workflow run stores.yml -f version=X.Y.Z`, or run
+`submit.sh amo|chrome ZIP VERSION` locally with the variables below. A store whose secrets
+are not set is skipped with a notice in the run.
+
+### One-time setup
+
+AMO, signed in as the add-on's developer:
+
+1. Open <https://addons.mozilla.org/developers/addon/api/key/> and generate new
+   credentials.
+2. Run `gh secret set AMO_JWT_ISSUER` and paste the JWT issuer (`user:…`).
+3. Run `gh secret set AMO_JWT_SECRET` and paste the JWT secret.
+
+CWS, with a service account:
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), pick or create a
+   project and enable the Chrome Web Store API.
+2. Create a service account in that project. It needs no roles. Add a JSON key to it and
+   download the key file.
+3. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add the
+   service account's email under Account. A publisher can have one service account.
+4. Run `gh secret set CWS_SERVICE_ACCOUNT_KEY < key.json`, then delete the key file.
+5. Run `gh secret set CWS_PUBLISHER_ID` and paste the publisher ID from Publisher › Settings
+   in the dashboard.
 
 The first CWS upload was special: the zip also carried the private key, as `key.pem` at its
 root, so that the store keeps the ID the `key` fixes. That key lives outside the

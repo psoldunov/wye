@@ -504,8 +504,8 @@ fetched with the locked reference `github:psoldunov/wye/<rev>?narHash=<hash>` th
 `builtins.getFlake`, which pure evaluation accepts because the reference is locked. An old
 release therefore never meets newer packaging. The modules, though, always come from the
 flake the user locked, so they rely only on the package layout every release keeps; the
-contract is listed in `nix/channel.nix`. `.github/workflows/release.yml` writes
-the file through a pull request after tagging.
+contract is listed in `nix/channel.nix`. `.github/workflows/release.yml` commits
+the file to master once it has published the release.
 
 `nix/channel.nix` gives the home-manager and NixOS modules the same `programs.wye.channel`
 (`release` | `git`, default `release` when a release is recorded) and

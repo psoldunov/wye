@@ -6,6 +6,7 @@ notes on how they were made.
 
 | | Firefox (AMO) | Chromium family (CWS) |
 |---|---|---|
+| Listing | <https://addons.mozilla.org/en-US/firefox/addon/wye/> | <https://chromewebstore.google.com/detail/wye/jdcifhpoallkdjnbflfienpboodjfjei> |
 | ID | `wye@soldunov.dev` (`browser_specific_settings.gecko.id`) | `jdcifhpoallkdjnbflfienpboodjfjei` (fixed by `key` in `manifest.chromium.json`) |
 | Upload | `wye-extension-firefox-<version>.zip` | `wye-extension-chromium-webstore-<version>.zip` (the manifest without `key`, which the store refuses) |
 | Images | `firefox-*.png` | `chrome-*.png`, `promo-small-440x280.png`, `promo-marquee-1400x560.png` |

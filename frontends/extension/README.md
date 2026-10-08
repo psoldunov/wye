@@ -21,6 +21,17 @@ alternative-browser key work from the context menu and the toolbar button
 (BEXT-05). Chromium does not report them; Wye then reads them from the
 session where it can (KEY-06).
 
+## Installing the extension
+
+| Browsers | Store |
+|---|---|
+| Firefox, Zen, LibreWolf, Floorp | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/wye/) |
+| Chrome, Chromium, Brave, Vivaldi, Edge | [Chrome Web Store](https://chromewebstore.google.com/detail/wye/jdcifhpoallkdjnbflfienpboodjfjei) |
+
+The extension does nothing without Wye: it needs Wye's host on the same
+computer ([Installing the host](#installing-the-host)). To try a build from
+this checkout instead, see [Loading the extension](#loading-the-extension).
+
 ## How it reaches Wye
 
 The extension calls the native-messaging host `dev.soldunov.wye`, which is the
@@ -42,7 +53,7 @@ Browsers find the host through a manifest file in their own directory. The Wye
 service writes one for every browser it finds, refreshes them each time it
 starts, and writes one for a browser as soon as its directory appears (BEXT-04).
 It starts at login, so after installing Wye you only start Wye once, restart the
-browser and install the extension. Nothing else to run.
+browser and install the extension from its store. Nothing else to run.
 
 To manage the manifests by hand:
 
@@ -74,7 +85,8 @@ program outside it.
 
 ## Loading the extension
 
-Assemble the unpacked extension for your browser family:
+For everyday use, install the store build. To try a change before it reaches
+the stores, assemble the unpacked extension for your browser family:
 
 ```sh
 frontends/extension/build.sh firefox  /tmp/wye-extension-firefox
@@ -84,7 +96,8 @@ frontends/extension/build.sh chromium /tmp/wye-extension-chromium
 - **Firefox:** open `about:debugging#/runtime/this-firefox`, **Load Temporary
   Add-on…**, choose `manifest.json` in the Firefox directory. The add-on ID is
   `wye@soldunov.dev`, which the host manifest allows. A temporary add-on is
-  removed when Firefox quits; a permanent install needs a signed build.
+  removed when Firefox quits; for a permanent install, use the signed build on
+  [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/wye/).
 - **Chromium family:** open `chrome://extensions`, turn on **Developer mode**,
   **Load unpacked**, choose the Chromium directory. The `key` in
   `manifest.chromium.json` fixes the extension ID to
@@ -95,10 +108,12 @@ frontends/extension/build.sh chromium /tmp/wye-extension-chromium
 
 ## Store builds
 
-Store installs are coming: the extension is being submitted to the Firefox
-Add-ons store and the Chrome Web Store. Each Wye release attaches three zips to
-its GitHub release (and ships them in the package under
-`share/wye/extension/`):
+The extension is listed on
+[Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/wye/) and the
+[Chrome Web Store](https://chromewebstore.google.com/detail/wye/jdcifhpoallkdjnbflfienpboodjfjei).
+[`store/README.md`](store/README.md) holds the listing text and the steps to
+submit a version. Each Wye release attaches three zips to its GitHub release
+(and ships them in the package under `share/wye/extension/`):
 
 | Zip | What |
 |---|---|

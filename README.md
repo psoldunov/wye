@@ -30,7 +30,9 @@ it shipped with your desktop, in the spirit of
 - **Link cleaning** removes tracking parameters and unwraps redirects such as safe-link
   wrappers, and expands shortened links.
 - **The tray** shows the current default, the clipboard link and your recent links.
-- **The browser extension** sends a link or the page you are on to Wye.
+- **The browser extension** sends a link or the page you are on to Wye. Get it from
+  [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/wye/) or the
+  [Chrome Web Store](https://chromewebstore.google.com/detail/wye/jdcifhpoallkdjnbflfienpboodjfjei).
 
 KDE Plasma 6 comes first: the global shortcuts portal and the source-app and
 focused-window detection target it. The tray icon is a standard StatusNotifierItem, so it
@@ -233,7 +235,8 @@ on `XDG_DATA_DIRS`. The D-Bus files name `SystemdService=`, so link the units yo
    menu; middle-click it to open Settings (TRAY-19). If Plasma hides it among the hidden
    icons, right-click the system tray, choose **Configure System Tray…**, **Entries**, and set
    **Wye** to **Shown**.
-3. Optional: start the browser extension's helper (see [Browser extension](#browser-extension)).
+3. Optional: install the browser extension and restart the browser once (see [Browser
+   extension](#browser-extension)).
 
 Earlier versions shipped a Plasma applet for the tray. It is gone: the service's own tray
 icon does the same job. After a home-manager switch, a running Plasma session drops the old
@@ -308,20 +311,27 @@ created is not listed yet. `wye browsers` prints what Wye found.
 ## Browser extension
 
 The extension adds **Open Link with Wye** and **Open Page with Wye** to the context menu,
-a toolbar button and the `Alt+Shift+W` shortcut. It talks to Wye through the
-native-messaging host `wye-native-host`, which the package installs next to `wye`.
+a toolbar button and the `Alt+Shift+W` shortcut. Install it from your browser's store:
 
-Wye's service tells every detected browser where the host is each time it starts, and a
-browser first run later as soon as its directory appears, so start Wye once and restart
-the browser (`wye extension install` does it at once). Then build the
-extension and load it:
+| Browsers | Store |
+|----------|-------|
+| Firefox, Zen, LibreWolf, Floorp | [Firefox Add-ons](https://addons.mozilla.org/en-US/firefox/addon/wye/) |
+| Chrome, Chromium, Brave, Vivaldi, Edge | [Chrome Web Store](https://chromewebstore.google.com/detail/wye/jdcifhpoallkdjnbflfienpboodjfjei) |
+
+The extension talks to Wye through the native-messaging host `wye-native-host`, which the
+package installs next to `wye`. Wye's service tells every detected browser where the host
+is each time it starts, and a browser first run later as soon as its directory appears, so
+start Wye once and restart the browser (`wye extension install` does it at once). Flatpak
+and Snap browsers cannot start the host, so the extension does not work in them.
+
+To build the extension from source instead:
 
 ```sh
 nix build github:psoldunov/wye#extension
-ls result/share/wye/extension   # firefox/ chromium/ and one zip of each
+ls result/share/wye/extension   # firefox/ chromium/ and their zips
 ```
 
-Details, permanent installs and the message format are in
+How to load those builds, where the host manifests go and the message format are in
 [frontends/extension/README.md](frontends/extension/README.md).
 
 ## Troubleshooting

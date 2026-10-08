@@ -239,10 +239,23 @@ fn pid_dir(proc_root: &Path, pid: u32) -> PathBuf {
     proc_root.join(pid.to_string())
 }
 
-/// True when `comm` is `name` as the kernel would record it.
+/// True when `comm` is `program` as the kernel would record it: the name cut
+/// to 15 bytes, or its NixOS-wrapped form. `makeWrapper` and
+/// `makeBinaryWrapper` run the real program as `.NAME-wrapped`, so
+/// `xdg-desktop-portal` shows up as `.xdg-desktop-po` and `kde-open` as
+/// `.kde-open-wrapp`.
+#[must_use]
+pub fn comm_names(comm: &str, program: &str) -> bool {
+    comm == truncate_comm(program) || comm == truncate_comm(&format!(".{program}-wrapped"))
+}
+
+/// A program name as the kernel's `comm` shows it.
+fn truncate_comm(name: &str) -> &str {
+    name.get(..COMM_LEN).unwrap_or(name)
+}
+
 fn comm_is(comm: &str, name: &str) -> bool {
-    let truncated = name.get(..COMM_LEN).unwrap_or(name);
-    comm == truncated
+    comm_names(comm, name)
 }
 
 /// Decodes systemd's `\xNN` unit-name escapes.

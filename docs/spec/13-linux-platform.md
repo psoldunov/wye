@@ -33,9 +33,17 @@ on them.
 3. Fallbacks: `GIO_LAUNCHED_DESKTOP_FILE` in the process environment, then matching the
    executable against desktop entries' `Exec`.
 4. Sandboxed apps (Flatpak) open links through the OpenURI portal, so the parent is
-   `xdg-desktop-portal`, not the app. Wye then falls back to the focused window's app
-   where the desktop allows it (GNOME extension, KWin script, compositor IPC), and
-   otherwise treats the source as unknown.
+   `xdg-desktop-portal`, not the app. Some launchers also start the handler in a unit
+   of their own: KIO on Plasma 6 runs it as a transient `app-<id>@<uuid>.service`, so
+   the handler's parent is `systemd --user` and the parent chain names no app. In both
+   cases Wye falls back to the focused window's app where the desktop allows it
+   (GNOME extension, KWin script, compositor IPC), and otherwise treats the source as
+   unknown. An app that came from the caller (a desktop ID given with the link) is
+   used as it is, without asking the focused window.
+
+Process names are matched as the kernel records them (`comm`, cut to 15 bytes) and in
+their NixOS-wrapped form `.NAME-wrapped`, which `makeWrapper` gives the real program.
+So `.xdg-desktop-po` is the portal and `.kde-open-wrapp` is `kde-open`.
 
 Rules with source apps simply do not match when the source is unknown.
 

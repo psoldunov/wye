@@ -166,7 +166,10 @@ enum SourceHint {
     /// The caller said.
     Known(SourceApp),
     /// Detect it from `pid` up (PIPE-01; step 3 uses the apps), else use
-    /// `fallback`.
+    /// `fallback`, else ask the focused window. The parent chain names no app
+    /// when the launcher ran the handler in a unit of its own (KIO's
+    /// transient `app-<id>@<uuid>.service`): its parent is then
+    /// `systemd --user`.
     Pid { pid: u32, fallback: SourceApp },
 }
 
@@ -237,7 +240,10 @@ async fn held_now(ctx: &ServiceContext, incoming: &Incoming, probe: bool) -> Mod
 }
 
 /// The link's source app (PIPE-01): from `hint`, reading `/proc` on a
-/// blocking thread, else the focused window. Hands `snapshot` back.
+/// blocking thread, else the focused window (13-linux-platform, step 4):
+/// when the caller hides the app (the portal) or when the parent chain names
+/// none, as with a handler a launcher started in a unit of its own. Hands
+/// `snapshot` back.
 async fn detect_source(
     ctx: &ServiceContext,
     environment: &Environment,
@@ -259,6 +265,12 @@ async fn detect_source(
 
 /// The source `hint` names or detects; `None` when the focused window has
 /// to be asked.
+///
+/// That is the case when the caller is the portal, and also when the chain
+/// names no app and the hint has no fallback either. A launcher that starts
+/// the handler in a unit of its own (KIO on Plasma 6 runs it as a transient
+/// `app-<id>@<uuid>.service`) leaves its parent at `systemd --user`, so the
+/// walk finds nothing even though the app that was clicked still has focus.
 fn from_hint(
     proc_root: &std::path::Path,
     hint: SourceHint,
@@ -267,13 +279,14 @@ fn from_hint(
     match hint {
         SourceHint::Known(source) => Some(source),
         SourceHint::Pid { pid, fallback } => {
-            source::from_pid(proc_root, pid, inventory).map(|found| {
-                if found == SourceApp::default() {
-                    fallback
-                } else {
-                    found
-                }
-            })
+            let found = source::from_pid(proc_root, pid, inventory)?;
+            if !found.is_unknown() {
+                Some(found)
+            } else if fallback.is_unknown() {
+                None
+            } else {
+                Some(fallback)
+            }
         }
     }
 }
@@ -419,5 +432,107 @@ async fn answer_failure_buttons(ctx: ServiceContext) {
         if let Err(error) = opened {
             tracing::warn!(%error, "cannot open the alternative");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use wye_core::DesktopId;
+    use wye_desktop::Inventory;
+
+    use super::*;
+
+    fn no_apps() -> Inventory {
+        Inventory::from_apps(Vec::new(), Vec::new())
+    }
+
+    fn notion() -> SourceApp {
+        SourceApp {
+            desktop_id: DesktopId::new("notion.desktop").ok(),
+            executable: None,
+        }
+    }
+
+    /// A fake process under `root` with the given cgroup.
+    fn process(root: &Path, pid: u32, comm: &str, parent: u32, cgroup: &str) {
+        let dir = root.join(pid.to_string());
+        fs::create_dir_all(&dir).expect("dir");
+        fs::write(dir.join("comm"), format!("{comm}\n")).expect("comm");
+        fs::write(
+            dir.join("status"),
+            format!("Name:\t{comm}\nPPid:\t{parent}\n"),
+        )
+        .expect("status");
+        fs::write(dir.join("stat"), format!("{pid} ({comm}) S {parent} 0 0\n")).expect("stat");
+        fs::write(dir.join("cgroup"), format!("0::{cgroup}\n")).expect("cgroup");
+        fs::write(dir.join("environ"), "").expect("environ");
+    }
+
+    /// KIO on Plasma 6 starts the handler in a transient unit, so its parent
+    /// is `systemd --user` (PIPE-01, 13-linux-platform step 4).
+    fn started_by_systemd() -> tempfile::TempDir {
+        let root = tempfile::tempdir().expect("temp dir");
+        process(
+            root.path(),
+            3006,
+            "systemd",
+            1,
+            "/user.slice/user@1000.service/init.scope",
+        );
+        root
+    }
+
+    #[test]
+    fn a_handler_started_by_systemd_asks_the_focused_window() {
+        let root = started_by_systemd();
+        let hint = SourceHint::Pid {
+            pid: 3006,
+            fallback: SourceApp::default(),
+        };
+        assert_eq!(from_hint(root.path(), hint, &no_apps()), None);
+    }
+
+    #[test]
+    fn a_known_fallback_stands_in_for_a_chain_that_names_no_app() {
+        let root = started_by_systemd();
+        let hint = SourceHint::Pid {
+            pid: 3006,
+            fallback: notion(),
+        };
+        assert_eq!(from_hint(root.path(), hint, &no_apps()), Some(notion()));
+    }
+
+    #[test]
+    fn an_app_found_in_the_chain_wins_over_the_fallback() {
+        let root = tempfile::tempdir().expect("temp dir");
+        process(
+            root.path(),
+            100,
+            "chat",
+            1,
+            "/user.slice/user@1000.service/app.slice/app-org.example.Chat-1.scope",
+        );
+        let hint = SourceHint::Pid {
+            pid: 100,
+            fallback: notion(),
+        };
+        let source = from_hint(root.path(), hint, &no_apps()).expect("an app");
+        assert_eq!(
+            source.desktop_id,
+            DesktopId::new("org.example.Chat.desktop").ok()
+        );
+    }
+
+    #[test]
+    fn a_known_source_is_used_as_it_is() {
+        let root = started_by_systemd();
+        let hint = SourceHint::Known(SourceApp::default());
+        assert_eq!(
+            from_hint(root.path(), hint, &no_apps()),
+            Some(SourceApp::default())
+        );
     }
 }

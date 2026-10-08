@@ -6,7 +6,8 @@
 //! Detection starts at the caller's PID, skipping openers up the parent
 //! chain, and then follows the same rules as `wye open`. A caller that is
 //! `xdg-desktop-portal` (Flatpak apps through `OpenURI`) hides the app; the
-//! focused window stands in for it.
+//! focused window stands in for it. Process names are matched in their
+//! NixOS-wrapped form (`.NAME-wrapped`) too.
 
 use std::path::Path;
 
@@ -18,8 +19,8 @@ use zbus::names::BusName;
 
 use crate::platform::FocusSource;
 
-/// `xdg-desktop-portal` as the kernel's 15-byte `comm` shows it.
-const PORTAL_COMM: &str = "xdg-desktop-por";
+/// The portal frontend that Flatpak apps open links through.
+const PORTAL: &str = "xdg-desktop-portal";
 
 /// How far up the chain openers are skipped.
 const MAX_OPENERS: usize = 8;
@@ -45,10 +46,13 @@ pub(crate) fn from_pid(proc_root: &Path, pid: u32, inventory: &Inventory) -> Opt
         let Some(comm) = comm(proc_root, current) else {
             break;
         };
-        if comm == PORTAL_COMM {
+        if source_app::comm_names(&comm, PORTAL) {
             return None;
         }
-        if !OPENERS.iter().any(|opener| truncated(opener) == comm) {
+        if !OPENERS
+            .iter()
+            .any(|opener| source_app::comm_names(&comm, opener))
+        {
             break;
         }
         current = parent_pid(proc_root, current)?;
@@ -89,11 +93,6 @@ fn parent_pid(proc_root: &Path, pid: u32) -> Option<u32> {
         .lines()
         .find_map(|line| line.strip_prefix("PPid:"))
         .and_then(|value| value.trim().parse().ok())
-}
-
-/// A program name as `comm` shows it.
-fn truncated(name: &str) -> &str {
-    name.get(..15).unwrap_or(name)
 }
 
 #[cfg(test)]
@@ -152,11 +151,52 @@ mod tests {
         process(
             root.path(),
             300,
-            PORTAL_COMM,
+            "xdg-desktop-por",
             1,
             "/user.slice/xdg-desktop-portal.service",
         );
         assert_eq!(from_pid(root.path(), 300, &no_apps()), None);
+    }
+
+    #[test]
+    fn a_wrapped_portal_hides_the_app() {
+        // NixOS runs the portal frontend as `.xdg-desktop-portal-wrapped`.
+        let root = tempfile::tempdir().expect("temp dir");
+        process(
+            root.path(),
+            300,
+            ".xdg-desktop-po",
+            1,
+            "/user.slice/xdg-desktop-portal.service",
+        );
+        assert_eq!(from_pid(root.path(), 300, &no_apps()), None);
+    }
+
+    #[test]
+    fn a_wrapped_opener_is_skipped() {
+        // `kde-open` is a binary wrapper that runs `.kde-open-wrapped`. Its
+        // own cgroup is no app unit, so skipping it is what finds the app.
+        let root = tempfile::tempdir().expect("temp dir");
+        let slice = "/user.slice/user-1000.slice/user@1000.service/app.slice";
+        process(
+            root.path(),
+            100,
+            "chat",
+            1,
+            &format!("{slice}/app-org.example.Chat-1.scope"),
+        );
+        process(
+            root.path(),
+            200,
+            ".kde-open-wrapp",
+            100,
+            "/user.slice/user-1000.slice/session-2.scope",
+        );
+        let source = from_pid(root.path(), 200, &no_apps()).expect("an app");
+        assert_eq!(
+            source.desktop_id,
+            DesktopId::new("org.example.Chat.desktop").ok()
+        );
     }
 
     #[test]

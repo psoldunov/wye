@@ -200,13 +200,14 @@ jobs:
     needs: [check, release]
     permissions:
       contents: read
+      # The Chrome Web Store job signs in to Google with GitHub's OIDC token.
+      id-token: write
     uses: ./.github/workflows/stores.yml
     with:
       version: ${{ needs.check.outputs.version }}
     secrets:
       AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
       AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
-      CWS_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
       CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
 
   record:

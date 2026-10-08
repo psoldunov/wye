@@ -154,6 +154,54 @@ fn portal_and_systemd_mean_unknown() {
 }
 
 #[test]
+fn comm_names_match_the_plain_and_the_nixos_wrapped_name() {
+    // The kernel cuts `comm` to 15 bytes; NixOS runs `.NAME-wrapped`.
+    assert!(comm_names("kde-open", "kde-open"));
+    assert!(comm_names(".kde-open-wrapp", "kde-open"));
+    assert!(comm_names("xdg-desktop-por", "xdg-desktop-portal"));
+    assert!(comm_names(".xdg-desktop-po", "xdg-desktop-portal"));
+    assert!(comm_names(".sh-wrapped", "sh"));
+
+    assert!(!comm_names("kde-open5", "kde-open"));
+    assert!(!comm_names(".kde-open-wrapp", "kde-open5"));
+    assert!(!comm_names(".kde-open5-wrap", "kde-open"));
+    assert!(!comm_names(".xdg-open-wrapp", "kde-open"));
+    assert!(!comm_names("", "kde-open"));
+}
+
+#[test]
+fn walks_past_wrapped_launch_helpers_to_the_scope() {
+    // NixOS runs the shell and the opener as `.NAME-wrapped`.
+    let root = proc_tree(&[
+        Proc::new(300, 200, ".xdg-open-wrapp"),
+        Proc::new(200, 100, ".bash-wrapped"),
+        Proc {
+            cgroup: Some(
+                "0::/user.slice/user-1000.slice/user@1000.service/app.slice/\
+                 app-gnome-com.slack.Slack-4242.scope\n",
+            ),
+            ..Proc::new(100, 1, "slack")
+        },
+    ]);
+    assert_eq!(
+        detect(root.path(), 300).desktop_id,
+        Some(id("com.slack.Slack"))
+    );
+}
+
+#[test]
+fn a_wrapped_portal_or_systemd_means_unknown() {
+    let portal = proc_tree(&[
+        Proc::new(20, 10, "xdg-open"),
+        Proc::new(10, 1, ".xdg-desktop-po"),
+    ]);
+    assert!(detect(portal.path(), 20).is_unknown());
+
+    let systemd = proc_tree(&[Proc::new(20, 10, "sh"), Proc::new(10, 1, ".systemd-wrappe")]);
+    assert!(detect(systemd.path(), 20).is_unknown());
+}
+
+#[test]
 fn strips_deleted_suffix_from_exe() {
     let root = proc_tree(&[Proc {
         exe: Some("/opt/app/app-bin (deleted)"),
@@ -401,4 +449,29 @@ fn detect_in_uses_the_apps_of_an_inventory() {
         detect_in(root.path(), 90, &inventory).desktop_id,
         Some(id("tool"))
     );
+}
+
+#[test]
+fn app_unit_names_the_desktop_id_of_the_innermost_app_unit() {
+    let slice = "0::/user.slice/user-1000.slice/user@1000.service/app.slice";
+    let root = proc_tree(&[
+        Proc {
+            cgroup: Some(&format!("{slice}/app-dev.soldunov.wye@0123abcd.service\n")),
+            ..Proc::new(10, 1, "wye")
+        },
+        Proc {
+            cgroup: Some(&format!("{slice}/app-gnome-com.slack.Slack-4242.scope\n")),
+            ..Proc::new(20, 1, "slack")
+        },
+        Proc {
+            cgroup: Some(&format!("{slice}/backup.service\n")),
+            ..Proc::new(30, 1, "backup")
+        },
+        Proc::new(40, 1, "no-cgroup"),
+    ]);
+    assert_eq!(app_unit(root.path(), 10), Some(id("dev.soldunov.wye")));
+    assert_eq!(app_unit(root.path(), 20), Some(id("com.slack.Slack")));
+    assert_eq!(app_unit(root.path(), 30), None);
+    assert_eq!(app_unit(root.path(), 40), None);
+    assert_eq!(app_unit(root.path(), 999), None);
 }

@@ -22,6 +22,7 @@ use tokio::task::JoinHandle;
 use wye_api::Error;
 use wye_core::config::HeldKeys;
 use wye_core::{LinkRequest, Modifiers, SourceApp, Target};
+use wye_desktop::{WYE_DESKTOP_ID, source_app};
 
 pub use environment::Environment;
 pub(crate) use environment::Snapshot;
@@ -111,7 +112,7 @@ impl State {
 /// `dev.soldunov.wye1.OpenLink`.
 pub async fn open_link(
     ctx: &ServiceContext,
-    _caller: &Caller,
+    caller: &Caller,
     url: &str,
     context: &Dict,
 ) -> Result<()> {
@@ -122,6 +123,8 @@ pub async fn open_link(
         Some(pid) if known.desktop_id.is_none() => SourceHint::Pid {
             pid,
             fallback: known,
+            // The caller is the `wye open` handler (PIPE-01, DEF-08).
+            handler: caller_pid(ctx, caller).await,
         },
         _ => SourceHint::Known(known),
     };
@@ -166,8 +169,18 @@ enum SourceHint {
     /// The caller said.
     Known(SourceApp),
     /// Detect it from `pid` up (PIPE-01; step 3 uses the apps), else use
-    /// `fallback`.
-    Pid { pid: u32, fallback: SourceApp },
+    /// `fallback`. When the chain names no app and `fallback` is unknown, the
+    /// focused window stands in only if `handler`, the process that called
+    /// Wye, runs in Wye's own app unit: a launcher such as KIO on Plasma 6
+    /// started `wye open` as a unit of its own
+    /// (`app-dev.soldunov.wye@<uuid>.service`), so its parent is
+    /// `systemd --user` and says nothing about the app (DEF-08). Any other
+    /// chain without an app (a timer, `systemd-run`) stays unknown.
+    Pid {
+        pid: u32,
+        fallback: SourceApp,
+        handler: Option<u32>,
+    },
 }
 
 async fn open_one(
@@ -237,7 +250,10 @@ async fn held_now(ctx: &ServiceContext, incoming: &Incoming, probe: bool) -> Mod
 }
 
 /// The link's source app (PIPE-01): from `hint`, reading `/proc` on a
-/// blocking thread, else the focused window. Hands `snapshot` back.
+/// blocking thread, else the focused window (13-linux-platform, step 4):
+/// when the caller is the portal, which hides the app, or when the handler
+/// runs in Wye's own app unit and its chain names no app (see
+/// [`SourceHint::Pid`]; DEF-08). Hands `snapshot` back.
 async fn detect_source(
     ctx: &ServiceContext,
     environment: &Environment,
@@ -259,6 +275,15 @@ async fn detect_source(
 
 /// The source `hint` names or detects; `None` when the focused window has
 /// to be asked.
+///
+/// That is the case when the caller is the portal, and when the chain names
+/// no app, the hint has no fallback, and the handler runs in Wye's own app
+/// unit. A launcher that starts `wye open` in a unit of its own (KIO on
+/// Plasma 6 runs it as a transient `app-dev.soldunov.wye@<uuid>.service`)
+/// leaves its parent at `systemd --user`, so the walk finds nothing even
+/// though the app that was clicked still has focus (PIPE-01, DEF-08). A chain
+/// that names no app for another reason (a timer, `systemd-run`, a caller
+/// that has exited) stays unknown: focus would credit an unrelated app.
 fn from_hint(
     proc_root: &std::path::Path,
     hint: SourceHint,
@@ -266,16 +291,27 @@ fn from_hint(
 ) -> Option<SourceApp> {
     match hint {
         SourceHint::Known(source) => Some(source),
-        SourceHint::Pid { pid, fallback } => {
-            source::from_pid(proc_root, pid, inventory).map(|found| {
-                if found == SourceApp::default() {
-                    fallback
-                } else {
-                    found
-                }
-            })
+        SourceHint::Pid {
+            pid,
+            fallback,
+            handler,
+        } => {
+            let found = source::from_pid(proc_root, pid, inventory)?;
+            if !found.is_unknown() {
+                Some(found)
+            } else if fallback.is_unknown() && in_wyes_unit(proc_root, handler) {
+                None
+            } else {
+                Some(fallback)
+            }
         }
     }
+}
+
+/// Whether process `pid` runs in Wye's own app unit.
+fn in_wyes_unit(proc_root: &std::path::Path, pid: Option<u32>) -> bool {
+    pid.and_then(|pid| source_app::app_unit(proc_root, pid))
+        .is_some_and(|id| id.as_str() == WYE_DESKTOP_ID)
 }
 
 /// Carry out where the link was routed.
@@ -353,17 +389,23 @@ async fn probe_modifiers(platform: &Platform) -> Modifiers {
 
 /// Where to detect the source of a link `caller` handed over (IN-01).
 async fn caller_hint(ctx: &ServiceContext, caller: &Caller) -> SourceHint {
-    let pid = match (ctx.connection(), caller.sender.as_deref()) {
-        (Some(connection), Some(sender)) => source::caller_pid(connection, sender).await,
-        _ => None,
-    };
-    pid.map_or_else(
+    caller_pid(ctx, caller).await.map_or_else(
         || SourceHint::Known(SourceApp::default()),
         |pid| SourceHint::Pid {
             pid,
             fallback: SourceApp::default(),
+            // A chain that names no app stays unknown here.
+            handler: None,
         },
     )
+}
+
+/// The process ID of the D-Bus peer that sent the call.
+async fn caller_pid(ctx: &ServiceContext, caller: &Caller) -> Option<u32> {
+    match (ctx.connection(), caller.sender.as_deref()) {
+        (Some(connection), Some(sender)) => source::caller_pid(connection, sender).await,
+        _ => None,
+    }
 }
 
 /// PKS-07: show the held link's picker once the screen unlocks.
@@ -419,5 +461,156 @@ async fn answer_failure_buttons(ctx: ServiceContext) {
         if let Err(error) = opened {
             tracing::warn!(%error, "cannot open the alternative");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use wye_core::DesktopId;
+    use wye_desktop::Inventory;
+
+    use super::*;
+
+    fn no_apps() -> Inventory {
+        Inventory::from_apps(Vec::new(), Vec::new())
+    }
+
+    fn notion() -> SourceApp {
+        SourceApp {
+            desktop_id: DesktopId::new("notion.desktop").ok(),
+            executable: None,
+        }
+    }
+
+    /// A fake process under `root` with the given cgroup.
+    fn process(root: &Path, pid: u32, comm: &str, parent: u32, cgroup: &str) {
+        let dir = root.join(pid.to_string());
+        fs::create_dir_all(&dir).expect("dir");
+        fs::write(dir.join("comm"), format!("{comm}\n")).expect("comm");
+        fs::write(
+            dir.join("status"),
+            format!("Name:\t{comm}\nPPid:\t{parent}\n"),
+        )
+        .expect("status");
+        fs::write(dir.join("stat"), format!("{pid} ({comm}) S {parent} 0 0\n")).expect("stat");
+        fs::write(dir.join("cgroup"), format!("0::{cgroup}\n")).expect("cgroup");
+        fs::write(dir.join("environ"), "").expect("environ");
+    }
+
+    const SLICE: &str = "/user.slice/user-1000.slice/user@1000.service/app.slice";
+
+    /// KIO on Plasma 6 starts `wye open` (pid 4000) in a transient unit of
+    /// Wye's own, so its parent is `systemd --user` (pid 3006), whose chain
+    /// names no app (PIPE-01, DEF-08, 13-linux-platform step 4).
+    fn started_by_systemd(handler_cgroup: &str) -> tempfile::TempDir {
+        let root = tempfile::tempdir().expect("temp dir");
+        process(
+            root.path(),
+            3006,
+            "systemd",
+            1,
+            "/user.slice/user@1000.service/init.scope",
+        );
+        process(root.path(), 4000, "wye", 3006, handler_cgroup);
+        root
+    }
+
+    fn wyes_unit() -> String {
+        format!("{SLICE}/app-dev.soldunov.wye@0123abcd.service")
+    }
+
+    fn pid_hint(fallback: SourceApp, handler: Option<u32>) -> SourceHint {
+        SourceHint::Pid {
+            pid: 3006,
+            fallback,
+            handler,
+        }
+    }
+
+    #[test]
+    fn a_handler_in_wyes_own_unit_with_no_app_in_the_chain_asks_the_focused_window() {
+        let root = started_by_systemd(&wyes_unit());
+        let hint = pid_hint(SourceApp::default(), Some(4000));
+        assert_eq!(from_hint(root.path(), hint, &no_apps()), None);
+    }
+
+    #[test]
+    fn a_handler_in_a_scope_of_wyes_own_asks_the_focused_window_too() {
+        let root = started_by_systemd(&format!("{SLICE}/app-gnome-dev.soldunov.wye-777.scope"));
+        let hint = pid_hint(SourceApp::default(), Some(4000));
+        assert_eq!(from_hint(root.path(), hint, &no_apps()), None);
+    }
+
+    #[test]
+    fn a_handler_in_a_timer_unit_stays_unknown() {
+        let root = started_by_systemd(&format!("{SLICE}/backup.service"));
+        let hint = pid_hint(SourceApp::default(), Some(4000));
+        assert_eq!(
+            from_hint(root.path(), hint, &no_apps()),
+            Some(SourceApp::default())
+        );
+    }
+
+    #[test]
+    fn a_handler_that_is_gone_or_not_given_stays_unknown() {
+        let root = started_by_systemd(&wyes_unit());
+        assert_eq!(
+            from_hint(
+                root.path(),
+                pid_hint(SourceApp::default(), None),
+                &no_apps()
+            ),
+            Some(SourceApp::default())
+        );
+        assert_eq!(
+            from_hint(
+                root.path(),
+                pid_hint(SourceApp::default(), Some(9999)),
+                &no_apps()
+            ),
+            Some(SourceApp::default())
+        );
+    }
+
+    #[test]
+    fn a_known_fallback_stands_in_for_a_chain_that_names_no_app() {
+        let root = started_by_systemd(&wyes_unit());
+        let hint = pid_hint(notion(), Some(4000));
+        assert_eq!(from_hint(root.path(), hint, &no_apps()), Some(notion()));
+    }
+
+    #[test]
+    fn an_app_found_in_the_chain_wins_over_the_fallback() {
+        let root = tempfile::tempdir().expect("temp dir");
+        process(
+            root.path(),
+            100,
+            "chat",
+            1,
+            &format!("{SLICE}/app-org.example.Chat-1.scope"),
+        );
+        let hint = SourceHint::Pid {
+            pid: 100,
+            fallback: notion(),
+            handler: Some(100),
+        };
+        let source = from_hint(root.path(), hint, &no_apps()).expect("an app");
+        assert_eq!(
+            source.desktop_id,
+            DesktopId::new("org.example.Chat.desktop").ok()
+        );
+    }
+
+    #[test]
+    fn a_known_source_is_used_as_it_is() {
+        let root = started_by_systemd(&wyes_unit());
+        let hint = SourceHint::Known(SourceApp::default());
+        assert_eq!(
+            from_hint(root.path(), hint, &no_apps()),
+            Some(SourceApp::default())
+        );
     }
 }

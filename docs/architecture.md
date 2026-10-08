@@ -74,7 +74,7 @@ bus connection; `wye service --activate` only asks the bus to start it.
    activation token. Source-app detection starts at the caller's PID, read with
    `GetConnectionCredentials`, skipping openers (`kde-open`, `xdg-open`, `gio`, …) up the
    parent chain; a caller that is `xdg-desktop-portal` hides the app, so the focused window
-   stands in.
+   stands in. A chain that names no app leaves the source unknown.
 2. **`wye open` (Exec fallback).** It detects the source from its own parent chain, reads
    `XDG_ACTIVATION_TOKEN`/`DESKTOP_STARTUP_ID`, and calls `OpenLink` for each link, bounded
    by 3 s including bus activation. Without a desktop ID it also sends its parent's PID, so
@@ -265,8 +265,11 @@ names nothing, as when `gio open` has already exited and Wye was reparented to
 own. The service starts at the D-Bus caller's PID instead (see "How a link reaches the
 service") and matches the executable against desktop entries' `Exec` (spec step 3,
 `wye_desktop::source_app::detect_in`); so does `wye open` when it routes a link itself. The
-portal case falls back to the focused window (spec step 4, see "Session probes"); where no
-probe can read it, the source is unknown.
+focused window stands in (spec step 4, see "Session probes") in two cases: the portal, and a
+`wye open` that runs in Wye's own app unit with a chain that names no app (KIO on Plasma 6
+starts it as a unit of its own, so its parent is `systemd --user`). Other chains that name no
+app (a timer, `systemd-run`) stay unknown, as does the source where no probe can read the
+focus.
 
 ### Session probes
 

@@ -88,6 +88,10 @@ is published. Merging that pull request is what makes `programs.wye.channel =
 "release"` the default. Never edit `nix/release.json` by hand. The workflow needs the
 repository setting "Allow GitHub Actions to create and approve pull requests".
 
+The browser extension's listings on addons.mozilla.org and the Chrome Web Store are
+updated by hand after the release, from the release's zips: see "Submitting a version" in
+[frontends/extension/store/README.md](frontends/extension/store/README.md).
+
 A pull request opened with `GITHUB_TOKEN` does not start other workflows, so `ci.yml` does
 not run on it by itself: close and reopen it (or push a commit to it) to run the checks
 before merging. Re-running the workflow is safe: the record step replaces its

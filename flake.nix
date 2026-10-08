@@ -114,19 +114,22 @@
         in
         {
           build = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          # clippy, test and qmllint build with the dev profile (devArgs in
+          # nix/package.nix); the package itself keeps the release profile.
+          #
           # clippy::pedantic is on for the whole workspace (Cargo.toml); CI
           # turns every warning into an error.
           clippy = craneLib.cargoClippy (
-            wye.commonArgs
+            wye.devArgs
             // {
-              cargoArtifacts = wye.cargoArtifacts;
+              cargoArtifacts = wye.devCargoArtifacts;
               cargoClippyExtraArgs = "--all-targets -- --deny warnings";
             }
           );
           test = craneLib.cargoTest (
-            wye.commonArgs
+            wye.devArgs
             // {
-              inherit (wye) cargoArtifacts;
+              cargoArtifacts = wye.devCargoArtifacts;
               # dbus-daemon for the private-bus tests (wye, wye-service,
               # wye-ui); without it they skip.
               nativeBuildInputs = wye.commonArgs.nativeBuildInputs ++ [ sandboxDbusDaemon ];
@@ -256,9 +259,9 @@
           # Every QML file of wye-ui against the types its imports and its own
           # cxx-qt bridges declare; any warning fails.
           qmllint = craneLib.mkCargoDerivation (
-            wye.commonArgs
+            wye.devArgs
             // {
-              inherit (wye) cargoArtifacts;
+              cargoArtifacts = wye.devCargoArtifacts;
               pname = "wye-ui-qmllint";
               nativeBuildInputs = wye.commonArgs.nativeBuildInputs ++ [ wye.qt.qmllint ];
               # The build writes the module's qmldir and qmltypes to

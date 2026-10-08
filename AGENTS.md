@@ -23,7 +23,7 @@ window or desktop app, or asks with a small picker. The specification is in
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`, `wye-gtk.service`); `kwin/` the KWin query script. |
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `packaging/` | Docker builds of the `.deb` (`deb/`, Debian testing), the `.rpm` (`rpm/`, Fedora 44) and the AppImage (`appimage/`, Arch base, Arch Linux ARM on aarch64, sharun bundles every library including glibc; its `AppRun` integrates the AppImage into `~/.local` on every start), each for the machine's own architecture (x86_64 or aarch64), the shared `install.sh` (mirrors the `postInstall` of `nix/package.nix`) and `smoke-test.sh` (installs each in a clean container and launches both UI hosts). See its README. |
-| `.github/workflows/` | `ci.yml` (advisories, on pull requests and pushes to master), `rust-doctor.yml`, `flake-check.yml` (`nix flake check` on x86_64 and aarch64; each release and workflow dispatch only, not pull requests or pushes to master), `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; each release and workflow dispatch only, not pull requests), `release.yml` (tag check, Nix build of the tag on both architectures, `flake-check.yml`, `packages.yml`, GitHub release with the six packages, the three extension zips and `SHA256SUMS`, pull request recording it in `nix/release.json`). |
+| `.github/workflows/` | `ci.yml` (advisories, on pull requests and pushes to master), `rust-doctor.yml`, `flake-check.yml` (`nix flake check` on x86_64 and aarch64; each release and workflow dispatch only, not pull requests or pushes to master), `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; each release and workflow dispatch only, not pull requests), `release.yml` (on a push to master that changes the workspace version: `flake-check.yml` and `packages.yml` side by side, then the GitHub release and its tag with the six packages, the three extension zips and `SHA256SUMS`, then a commit recording it in `nix/release.json`). |
 | `docs/spec/` | The specification. |
 | `docs/investigations/` | Bug investigation reports: one confirmed root cause per file, with the evidence that pinned it down and the fix it calls for. |
 | `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session, `gnome/stage/` the GNOME ones in a headless GNOME Shell session (their READMEs). |
@@ -76,26 +76,27 @@ Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`, 
 
 ## Releases
 
-Push a tag `vX.Y.Z` that equals the workspace `version` in `Cargo.toml`, on master.
-`.github/workflows/release.yml` builds the tagged flake for x86_64 and aarch64 (pushing it to
-Cachix), builds and smoke-tests the `.deb`, `.rpm` and AppImage for both through
-`packages.yml`, creates the GitHub release with those six packages, the three browser extension zips
-(`wye-extension-firefox-X.Y.Z.zip`, `wye-extension-chromium-X.Y.Z.zip`,
-`wye-extension-chromium-webstore-X.Y.Z.zip`, taken from the x86_64 Nix build),
-`SHA256SUMS` and generated notes, and opens a pull request that writes the tag's commit and content hash to
-`nix/release.json`. A package that fails its smoke test stops the release before anything
-is published. Merging that pull request is what makes `programs.wye.channel =
-"release"` the default. Never edit `nix/release.json` by hand. The workflow needs the
-repository setting "Allow GitHub Actions to create and approve pull requests".
+Merging the version bump is the release. The bump is a pull request that sets the workspace
+`version` in `Cargo.toml`, the `wye*` entries of `Cargo.lock` and the `version` of both
+extension manifests; gates 1 to 5 and its pull request checks are all it needs. On the push
+to master, `.github/workflows/release.yml` sees the version change with no tag `vX.Y.Z` yet
+and runs `flake-check.yml` and `packages.yml` side by side. When both pass on both
+architectures it creates the GitHub release, and with it the tag `vX.Y.Z` on that commit,
+with the six packages, the three browser extension zips (`wye-extension-firefox-X.Y.Z.zip`,
+`wye-extension-chromium-X.Y.Z.zip`, `wye-extension-chromium-webstore-X.Y.Z.zip`, from the
+Nix build), `SHA256SUMS` and generated notes. Then it commits the release's commit and
+content hash to `nix/release.json` on master, which is what makes `programs.wye.channel =
+"release"` install it. Nothing is published and no tag is created unless every check and
+package passes.
+
+Do not push a tag, and do not dispatch `packages.yml` or `flake-check.yml` on the bump's
+branch: the release run does both. After a failure, re-run the failed jobs, or fix master
+and run `gh workflow run release.yml`, which releases master's version when its tag does not
+exist yet. Never edit `nix/release.json` by hand.
 
 The browser extension's listings on addons.mozilla.org and the Chrome Web Store are
 updated by hand after the release, from the release's zips: see "Submitting a version" in
 [frontends/extension/store/README.md](frontends/extension/store/README.md).
-
-A pull request opened with `GITHUB_TOKEN` does not start other workflows, so `ci.yml` does
-not run on it by itself: close and reopen it (or push a commit to it) to run the checks
-before merging. Re-running the workflow is safe: the record step replaces its
-`release/vX.Y.Z` branch and reuses an open pull request.
 
 The modules of a newer flake may install an older release's package, so the package layout
 they rely on is a contract (listed in `nix/channel.nix`): add paths, never move or rename

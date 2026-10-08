@@ -127,17 +127,43 @@ AMO, signed in as the add-on's developer:
 2. Run `gh secret set AMO_JWT_ISSUER` and paste the JWT issuer (`user:…`).
 3. Run `gh secret set AMO_JWT_SECRET` and paste the JWT secret.
 
-CWS, with a service account:
+CWS, through a service account without a key. The service account
+`wye-release@wye-release-1c3351.iam.gserviceaccount.com` lives in the Google Cloud project
+`wye-release-1c3351` and holds no roles. The project's Workload Identity Federation provider
+`github/wye-github` accepts GitHub's OIDC token only from this repository's runs on
+`refs/heads/master`, matched by repository and owner ID, and lets those runs act as the
+service account. `stores.yml` names both and asks for a token with the `chromewebstore`
+scope, so no key exists to leak (the organisation's policy forbids service account keys
+anyway). What remains is on the store's side:
 
-1. In the [Google Cloud console](https://console.cloud.google.com/), pick or create a
-   project and enable the Chrome Web Store API.
-2. Create a service account in that project. It needs no roles. Add a JSON key to it and
-   download the key file.
-3. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add the
-   service account's email under Account. A publisher can have one service account.
-4. Run `gh secret set CWS_SERVICE_ACCOUNT_KEY < key.json`, then delete the key file.
-5. Run `gh secret set CWS_PUBLISHER_ID` and paste the publisher ID from Publisher › Settings
+1. In the [Developer Dashboard](https://chrome.google.com/webstore/devconsole), add
+   `wye-release@wye-release-1c3351.iam.gserviceaccount.com` under Account. A publisher can
+   have one service account.
+2. Run `gh secret set CWS_PUBLISHER_ID` and paste the publisher ID from Publisher › Settings
    in the dashboard.
+
+To submit by hand, an account with Service Account Token Creator on that service account
+gets a token with `gcloud auth print-access-token
+--impersonate-service-account=wye-release@wye-release-1c3351.iam.gserviceaccount.com
+--scopes=https://www.googleapis.com/auth/chromewebstore` and passes it as
+`CWS_ACCESS_TOKEN`. The Google Cloud side was set up with these commands, should it ever need
+to be rebuilt in another project (then update the two names in `stores.yml`):
+
+```sh
+gcloud projects create PROJECT
+gcloud services enable chromewebstore.googleapis.com iam.googleapis.com \
+  iamcredentials.googleapis.com sts.googleapis.com --project PROJECT
+gcloud iam service-accounts create wye-release --project PROJECT
+gcloud iam workload-identity-pools create github --project PROJECT --location global
+gcloud iam workload-identity-pools providers create-oidc wye-github --project PROJECT \
+  --location global --workload-identity-pool github \
+  --issuer-uri https://token.actions.githubusercontent.com \
+  --attribute-mapping 'google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref' \
+  --attribute-condition "assertion.repository_id == '1397105680' && assertion.repository_owner_id == '69530789' && assertion.ref == 'refs/heads/master'"
+gcloud iam service-accounts add-iam-policy-binding wye-release@PROJECT.iam.gserviceaccount.com \
+  --project PROJECT --role roles/iam.workloadIdentityUser \
+  --member principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/1397105680
+```
 
 The first CWS upload was special: the zip also carried the private key, as `key.pem` at its
 root, so that the store keeps the ID the `key` fixes. That key lives outside the

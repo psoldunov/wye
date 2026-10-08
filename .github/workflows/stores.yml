@@ -7,7 +7,7 @@ name: Stores
 # it also runs from the Actions tab for any released version
 # (`gh workflow run stores.yml -f version=X.Y.Z`). A store whose secrets are
 # not set is skipped with a notice. Both stores review the version and
-# publish it when the review passes. The secrets and their one-time setup:
+# publish it when the review passes. The secrets and the Google Cloud setup:
 # frontends/extension/store/README.md, "Submitting a version".
 on:
   workflow_call:
@@ -19,8 +19,6 @@ on:
       AMO_JWT_ISSUER:
         required: false
       AMO_JWT_SECRET:
-        required: false
-      CWS_SERVICE_ACCOUNT_KEY:
         required: false
       CWS_PUBLISHER_ID:
         required: false
@@ -35,8 +33,45 @@ permissions:
   contents: read
 
 jobs:
+  configured:
+    name: Configured stores
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      amo: ${{ steps.check.outputs.amo }}
+      chrome: ${{ steps.check.outputs.chrome }}
+    steps:
+      - id: check
+        env:
+          VERSION: ${{ inputs.version }}
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          set -euo pipefail
+          if ! [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version $VERSION is not X.Y.Z"
+            exit 1
+          fi
+          amo=true
+          chrome=true
+          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
+            echo "::notice::AMO_JWT_ISSUER and AMO_JWT_SECRET are not set; addons.mozilla.org is skipped"
+            amo=false
+          fi
+          if [ -z "$CWS_PUBLISHER_ID" ]; then
+            echo "::notice::CWS_PUBLISHER_ID is not set; the Chrome Web Store is skipped"
+            chrome=false
+          fi
+          {
+            echo "amo=$amo"
+            echo "chrome=$chrome"
+          } >> "$GITHUB_OUTPUT"
+
   amo:
     name: addons.mozilla.org
+    needs: configured
+    if: needs.configured.outputs.amo == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -59,19 +94,18 @@ jobs:
           AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
           AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
           VERSION: ${{ inputs.version }}
-        run: |
-          set -euo pipefail
-          if [ -z "$AMO_JWT_ISSUER" ] || [ -z "$AMO_JWT_SECRET" ]; then
-            echo "::notice::AMO_JWT_ISSUER and AMO_JWT_SECRET are not set; addons.mozilla.org skipped"
-            exit 0
-          fi
-          frontends/extension/store/submit.sh amo "dist/wye-extension-firefox-${VERSION}.zip" "$VERSION"
+        run: frontends/extension/store/submit.sh amo "dist/wye-extension-firefox-${VERSION}.zip" "$VERSION"
 
   chrome-web-store:
     name: Chrome Web Store
+    needs: configured
+    if: needs.configured.outputs.chrome == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
+      # GitHub's OIDC token, which Workload Identity Federation exchanges for
+      # a short-lived token of the service account: no key exists.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -86,16 +120,21 @@ jobs:
             --pattern "wye-extension-chromium-webstore-${VERSION}.zip" --pattern SHA256SUMS
           (cd dist && sha256sum -c SHA256SUMS --ignore-missing)
 
+      # The provider accepts only this repository's runs on master.
+      - id: google
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: projects/936592312146/locations/global/workloadIdentityPools/github/providers/wye-github
+          service_account: wye-release@wye-release-1c3351.iam.gserviceaccount.com
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+          create_credentials_file: false
+
       - name: Submit it
         env:
-          CWS_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+          CWS_ACCESS_TOKEN: ${{ steps.google.outputs.access_token }}
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
           VERSION: ${{ inputs.version }}
         run: |
-          set -euo pipefail
-          if [ -z "$CWS_SERVICE_ACCOUNT_KEY" ] || [ -z "$CWS_PUBLISHER_ID" ]; then
-            echo "::notice::CWS_SERVICE_ACCOUNT_KEY and CWS_PUBLISHER_ID are not set; the Chrome Web Store skipped"
-            exit 0
-          fi
           frontends/extension/store/submit.sh chrome \
             "dist/wye-extension-chromium-webstore-${VERSION}.zip" "$VERSION"

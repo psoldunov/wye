@@ -11,8 +11,11 @@
 #
 # chrome uploads the Chromium webstore zip (the manifest without `key`) to
 # the Chrome Web Store item jdcifhpoallkdjnbflfienpboodjfjei and submits it
-# for review. Environment: CWS_SERVICE_ACCOUNT_KEY, the JSON key of the
-# service account added under Account in the Developer Dashboard, and
+# for review. Environment: CWS_ACCESS_TOKEN, an access token with the scope
+# https://www.googleapis.com/auth/chromewebstore of the service account
+# added under Account in the Developer Dashboard (stores.yml gets one
+# through Workload Identity Federation; by hand, `gcloud auth
+# print-access-token --impersonate-service-account=… --scopes=…`), and
 # CWS_PUBLISHER_ID (Publisher > Settings).
 #
 # Both stores review the version and publish it once the review passes; this
@@ -25,8 +28,6 @@ readonly AMO_API=https://addons.mozilla.org/api/v5
 readonly AMO_ADDON=wye%40soldunov.dev
 readonly CWS_API=https://chromewebstore.googleapis.com
 readonly CWS_ITEM=jdcifhpoallkdjnbflfienpboodjfjei
-readonly CWS_SCOPE=https://www.googleapis.com/auth/chromewebstore
-readonly GOOGLE_TOKEN_URL=https://oauth2.googleapis.com/token
 readonly RELEASES=https://github.com/psoldunov/wye/releases/tag
 readonly TEST_INSTRUCTIONS=https://github.com/psoldunov/wye/blob/master/frontends/extension/store/README.md#chrome-web-store
 readonly POLL_SECONDS=10
@@ -117,27 +118,9 @@ amo() {
   echo "submitted $version to addons.mozilla.org for review"
 }
 
-# An access token for the service account: a JWT signed with its key,
-# exchanged at Google's token endpoint.
-cws_token() {
-  local now header claims signature
-  now=$(date +%s)
-  header=$(printf '{"alg":"RS256","typ":"JWT"}' | base64url)
-  claims=$(jq -c --arg scope "$CWS_SCOPE" --arg aud "$GOOGLE_TOKEN_URL" --argjson iat "$now" \
-    '{iss: .client_email, scope: $scope, aud: $aud, iat: $iat, exp: ($iat + 600)}' \
-    <<< "$CWS_SERVICE_ACCOUNT_KEY" | base64url)
-  signature=$(printf '%s.%s' "$header" "$claims" |
-    openssl dgst -sha256 -binary -sign <(jq -r .private_key <<< "$CWS_SERVICE_ACCOUNT_KEY") |
-    base64url)
-  request --data-urlencode grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer \
-    --data-urlencode "assertion=$header.$claims.$signature" "$GOOGLE_TOKEN_URL" |
-    jq -er .access_token
-}
-
 chrome() {
-  local zip=$1 version=$2 token item current upload state=
-  : "${CWS_SERVICE_ACCOUNT_KEY:?}" "${CWS_PUBLISHER_ID:?}"
-  token=$(cws_token)
+  local zip=$1 version=$2 token=${CWS_ACCESS_TOKEN:-} item current upload state=
+  : "${token:?CWS_ACCESS_TOKEN is not set}" "${CWS_PUBLISHER_ID:?}"
   item=publishers/$CWS_PUBLISHER_ID/items/$CWS_ITEM
 
   current=$(request -H "Authorization: Bearer $token" "$CWS_API/v2/$item:fetchStatus")

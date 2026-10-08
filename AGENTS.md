@@ -23,7 +23,7 @@ window or desktop app, or asks with a small picker. The specification is in
 | `data/` | Shipped data (`services.toml`, `expansion.toml`, `tracking-parameters.toml`); `applications/` the desktop entry; `icons/` the hicolor icons and their generator; `dbus/` and `systemd/` `@bindir@` templates for the D-Bus service files and the systemd user units (`wye.service`, `wye-ui.service`, `wye-gtk.service`); `kwin/` the KWin query script. |
 | `nix/`, `flake.nix` | `package.nix` (crane package and Qt wiring), `frontends.nix` (browser extension), `hm-module.nix` and `nixos-module.nix` with the shared `channel.nix`, `release.nix` and `release.json` (the latest release), `tests/modules.nix` (module evaluation check). Checks and dev shell. |
 | `packaging/` | Docker builds of the `.deb` (`deb/`, Debian testing), the `.rpm` (`rpm/`, Fedora 44) and the AppImage (`appimage/`, Arch base, Arch Linux ARM on aarch64, sharun bundles every library including glibc; its `AppRun` integrates the AppImage into `~/.local` on every start), each for the machine's own architecture (x86_64 or aarch64), the shared `install.sh` (mirrors the `postInstall` of `nix/package.nix`) and `smoke-test.sh` (installs each in a clean container and launches both UI hosts). See its README. |
-| `.github/workflows/` | `ci.yml` (advisories, on pull requests and pushes to master), `rust-doctor.yml`, `flake-check.yml` (`nix flake check` on x86_64 and aarch64; each release and workflow dispatch only, not pull requests or pushes to master), `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; each release and workflow dispatch only, not pull requests), `release.yml` (on a push to master that changes the workspace version: `flake-check.yml` and `packages.yml` side by side, then the GitHub release and its tag with the six packages, the three extension zips and `SHA256SUMS`, then a commit recording it in `nix/release.json`). |
+| `.github/workflows/` | `ci.yml` (advisories, on pull requests and pushes to master), `rust-doctor.yml`, `flake-check.yml` (`nix flake check` on x86_64 and aarch64; each release and workflow dispatch only, not pull requests or pushes to master), `packages.yml` (builds and smoke-tests the `.deb`, `.rpm` and AppImage for x86_64 and aarch64 on native runners; each release and workflow dispatch only, not pull requests), `release.yml` (on a push to master that changes the workspace version: `flake-check.yml` and `packages.yml` side by side, then the GitHub release and its tag with the six packages, the three extension zips and `SHA256SUMS`, then `stores.yml` and a commit recording it in `nix/release.json`), `stores.yml` (submits a released version's extension to addons.mozilla.org and the Chrome Web Store; called by `release.yml`, or workflow dispatch with a version). |
 | `docs/spec/` | The specification. |
 | `docs/investigations/` | Bug investigation reports: one confirmed root cause per file, with the evidence that pinned it down and the fix it calls for. |
 | `docs/media/` | Screenshots and the demo GIF, shown in `docs/tour.md`; `kde/stage/` regenerates the KDE ones in a headless KWin and Plasma session, `gnome/stage/` the GNOME ones in a headless GNOME Shell session (their READMEs). |
@@ -94,9 +94,11 @@ branch: the release run does both. After a failure, re-run the failed jobs, or f
 and run `gh workflow run release.yml`, which releases master's version when its tag does not
 exist yet. Never edit `nix/release.json` by hand.
 
-The browser extension's listings on addons.mozilla.org and the Chrome Web Store are
-updated by hand after the release, from the release's zips: see "Submitting a version" in
-[frontends/extension/store/README.md](frontends/extension/store/README.md).
+After publishing, the release submits the browser extension zips to addons.mozilla.org and
+the Chrome Web Store (`stores.yml`, `frontends/extension/store/submit.sh`); both stores
+review the version before it goes live. A store whose secrets are not set is skipped with a
+notice. `gh workflow run stores.yml -f version=X.Y.Z` submits a released version again: see
+"Submitting a version" in [frontends/extension/store/README.md](frontends/extension/store/README.md).
 
 The modules of a newer flake may install an older release's package, so the package layout
 they rely on is a contract (listed in `nix/channel.nix`): add paths, never move or rename

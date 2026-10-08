@@ -13,6 +13,8 @@ name: Release
 # - publishes the GitHub release with the six packages, the three browser
 #   extension zips and SHA256SUMS, which creates the tag `vX.Y.Z` on the
 #   commit;
+# - submits the extension to addons.mozilla.org and the Chrome Web Store
+#   (stores.yml), where its secrets are set;
 # - commits nix/release.json to master, which is what
 #   `programs.wye.channel = "release"` installs.
 #
@@ -191,6 +193,21 @@ jobs:
           EOF
           gh release create "$tag" packages/* --target "$REV" --title "Wye ${VERSION}" \
             --notes-file notes.md --generate-notes
+
+  # After the release, so no store build goes live before the Wye release
+  # whose native-messaging host allows its ID.
+  stores:
+    needs: [check, release]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/stores.yml
+    with:
+      version: ${{ needs.check.outputs.version }}
+    secrets:
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+      CWS_SERVICE_ACCOUNT_KEY: ${{ secrets.CWS_SERVICE_ACCOUNT_KEY }}
+      CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
 
   record:
     needs: [check, release]

@@ -88,6 +88,50 @@ fn launches_apps_through_exec() {
 }
 
 #[test]
+fn starts_targets_without_a_link_tray_20() {
+    let fx = browsers();
+    let inv = inventory(&fx);
+    let start = |target: &Target| {
+        let command = build_command(
+            &inv,
+            &LaunchRequest {
+                target,
+                url: "",
+                background: false,
+                new_window: false,
+            },
+        )
+        .unwrap();
+        argv(&command)
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        start(&Target::App(id("firefox"))),
+        ["firefox", "--name", "firefox"]
+    );
+    assert_eq!(
+        start(&Target::Private(id("google-chrome"))),
+        ["/usr/bin/google-chrome-stable", "--incognito"]
+    );
+    assert_eq!(
+        start(&Target::Profile {
+            app: id("google-chrome"),
+            id: "Profile 1".into(),
+        }),
+        [
+            "/usr/bin/google-chrome-stable",
+            "--profile-directory=Profile 1"
+        ]
+    );
+    assert_eq!(
+        start(&Target::Custom(CustomApp::Executable("/opt/x".into()))),
+        ["/opt/x"]
+    );
+}
+
+#[test]
 fn opens_private_windows() {
     let fx = browsers();
     let inv = inventory(&fx);

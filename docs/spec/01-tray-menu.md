@@ -59,6 +59,7 @@ profile.
 | TRAY-16 | "Settings…" opens the Settings window or raises it if already open. | Expected |
 | TRAY-17 | Quitting Wye while it is the default browser means links stop opening. Proposed: when Wye quits, the next link still starts it (D-Bus activation of the handler, [DEF-04](11-url-pipeline.md#default-browser-registration)), so "Quit" only removes the tray icon until then. | Proposed |
 | TRAY-18 | While Wye is not the default browser, the menu starts with **Make Wye Default Browser** and a separator, and the icon carries a warning overlay ([ONB-11](18-onboarding.md#default-browser-status)). | Proposed |
+| TRAY-20 | Holding Ctrl or Shift while choosing a browser, profile or private window in the "Primary Browser" group starts it without a link (a browser that is already running opens a new window) and leaves the primary browser as it is. Alt and Super do not count. The Picker has nothing to start, so a Ctrl- or Shift-click on it changes nothing. History records nothing, and a failed start is reported as in [LAUNCH-07](05-browsers.md#discovery-and-launching), without other browsers to try. | Proposed |
 
 Target metrics: menu width about 250 px; section header in a smaller, dimmed font;
 checkmark column at the leading edge; shortcut column right-aligned and dimmed.
@@ -81,5 +82,10 @@ checkmark column at the leading edge; shortcut column right-aligned and dimmed.
   call, so the host cannot be asked to show the menu. Options: pop up the same menu as a
   Wye-owned popup (see picker placement limits in [13](13-linux-platform.md)), or map the
   shortcut to the GNOME extension's own menu. See [14](14-open-questions.md).
+- TRAY-20: a DBusMenu click carries no keyboard state, and the Wye popups and the GNOME
+  extension send only the item's ID, so the service asks the session which modifiers are
+  held when the item arrives, as it does for links ([13](13-linux-platform.md#capability-matrix)).
+  Where the session cannot tell, or `advanced.held-keys` is `off`, every click sets the
+  primary browser.
 - TRAY-10 on Wayland: an unfocused app cannot read the clipboard with the core protocol.
   See clipboard access in [13](13-linux-platform.md).

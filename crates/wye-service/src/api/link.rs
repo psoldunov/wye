@@ -27,7 +27,7 @@ use wye_desktop::{WYE_DESKTOP_ID, source_app};
 pub use environment::Environment;
 pub(crate) use environment::Snapshot;
 pub(crate) use incoming::Activation;
-pub(crate) use route::{PickerNeeded, Plan, plan_for, plan_with};
+pub(crate) use route::{PickerNeeded, Plan, plan_for, plan_start, plan_with};
 
 use self::incoming::Incoming;
 use self::route::Routed;
@@ -239,14 +239,17 @@ fn needs_probe(config: &wye_core::Config, incoming: &Incoming) -> bool {
 async fn held_now(ctx: &ServiceContext, incoming: &Incoming, probe: bool) -> Modifiers {
     match incoming.held {
         Some(held) => held,
-        None if probe => {
-            // A link that started the service may arrive before the probes
-            // are detected (`run`); give them a moment.
-            ctx.probes_settled(PROBES_PATIENCE).await;
-            probe_modifiers(&ctx.platform()).await
-        }
+        None if probe => held_modifiers(ctx).await,
         None => Modifiers::NONE,
     }
+}
+
+/// The modifiers held now (KEY-06), for links and for the tray (TRAY-20).
+pub(crate) async fn held_modifiers(ctx: &ServiceContext) -> Modifiers {
+    // A call that started the service may arrive before the probes are
+    // detected (`run`); give them a moment.
+    ctx.probes_settled(PROBES_PATIENCE).await;
+    probe_modifiers(&ctx.platform()).await
 }
 
 /// The link's source app (PIPE-01): from `hint`, reading `/proc` on a

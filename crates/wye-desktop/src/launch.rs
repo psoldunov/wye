@@ -28,6 +28,7 @@ pub const ACTIVATION_ENV: [&str; 2] = ["XDG_ACTIVATION_TOKEN", "DESKTOP_STARTUP_
 #[derive(Debug, Clone, Copy)]
 pub struct LaunchRequest<'a> {
     pub target: &'a Target,
+    /// The link; empty starts the target without one (TRAY-20).
     pub url: &'a str,
     /// Open without taking focus (RUL-22, LAUNCH-04). The activation
     /// variables are removed, so the launcher's startup sequence for Wye
@@ -93,9 +94,9 @@ pub fn build_command(
         Target::Picker | Target::Default => {
             return Err(LaunchError::NotConcrete(request.target.clone()));
         }
-        Target::Custom(CustomApp::Executable(program)) => {
-            vec![program.clone(), request.url.to_owned()]
-        }
+        Target::Custom(CustomApp::Executable(program)) => std::iter::once(program.clone())
+            .chain(Some(request.url.to_owned()).filter(|url| !url.is_empty()))
+            .collect(),
         Target::App(id) | Target::Custom(CustomApp::Desktop(id)) => {
             let app = launchable(inventory, id)?;
             let flags = new_window_flag(app, request.new_window);

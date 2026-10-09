@@ -79,4 +79,4 @@ Hold while choosing
 | ID | Requirement | Evidence |
 |---|---|---|
 | KEY-50 | Settings window keys follow desktop conventions and are not configurable: `Ctrl+,` (open), `Ctrl+W` and `Escape` (close), `Ctrl+Q` (quit Wye). | Specified (`Ctrl+,`, `Ctrl+Q`), Expected (rest) |
-| KEY-51 | Tray menu accelerators (`P`, `1`–`9`) stay fixed, because tray hosts decide whether and how menu accelerators work. | Proposed |
+| KEY-51 | Tray menu accelerators (`P`, `1`–`9`) stay fixed, because tray hosts decide whether and how menu accelerators work. Ctrl or Shift with a click on a browser item, which starts it instead of making it primary ([TRAY-20](01-tray-menu.md#menu-layout)), is fixed too. | Proposed |

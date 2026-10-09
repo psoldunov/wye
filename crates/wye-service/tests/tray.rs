@@ -1,4 +1,4 @@
-//! The tray on a private bus (TRAY-01 to TRAY-18, decision 8): the `Tray`
+//! The tray on a private bus (TRAY-01 to TRAY-20, decision 8): the `Tray`
 //! property, `ActivateTrayItem`, an external host's `RegisterTray` hiding
 //! the `StatusNotifierItem` and bringing it back, and the item's own events.
 //! Skips without `dbus-daemon`.
@@ -9,6 +9,7 @@ use serde_json::Value;
 use serde_json::json;
 use support::{ONE, Service, eventually};
 use wye_api::Error;
+use wye_api::context::Modifier;
 use wye_api::proxy::Wye1Proxy;
 use wye_api::tray::{TrayItem, TrayItemKind, TrayMenu};
 use wye_service::platform::TrayEvent;
@@ -89,6 +90,47 @@ async fn choosing_a_browser_sets_the_primary_and_redraws_the_item_tray_11() {
         }
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ctrl_or_shift_opens_the_browser_and_keeps_the_primary_tray_20() {
+    let Some(service) = Service::start(SHOWN).await else {
+        return;
+    };
+    let wye = Wye1Proxy::new(&service.client).await.expect("proxy");
+    for held in [Modifier::Ctrl, Modifier::Shift] {
+        service.fakes.modifiers.set(Some(vec![held]));
+        wye.activate_tray_item(FIRST_BROWSER)
+            .await
+            .expect("the radio item opens its browser");
+    }
+    assert_eq!(
+        service.launched(),
+        [vec!["fake-one".to_owned()], vec!["fake-one".to_owned()]],
+        "started without a link"
+    );
+    assert_eq!(
+        primary(&wye).await,
+        json!({ "picker": true }),
+        "the primary stays"
+    );
+    let menu = tray(&wye).await;
+    assert!(find(&menu.items, "primary:picker").expect("item").checked);
+
+    // The Picker has nothing to open.
+    wye.activate_tray_item("primary:picker")
+        .await
+        .expect("a modifier click on the Picker is not an error");
+    assert_eq!(service.launched().len(), 2, "nothing more started");
+    assert_eq!(primary(&wye).await, json!({ "picker": true }));
+
+    // Other modifiers keep TRAY-11.
+    service.fakes.modifiers.set(Some(vec![Modifier::Alt]));
+    wye.activate_tray_item(FIRST_BROWSER)
+        .await
+        .expect("the radio item works");
+    assert_eq!(primary(&wye).await, json!({ "app": ONE }));
+    assert_eq!(service.launched().len(), 2);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

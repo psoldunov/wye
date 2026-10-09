@@ -1,4 +1,4 @@
-//! The tray menu as data (TRAY-02, TRAY-10 to TRAY-15, TRAY-18).
+//! The tray menu as data (TRAY-02, TRAY-10 to TRAY-15, TRAY-18, TRAY-20).
 //!
 //! One model feeds every tray surface: the `StatusNotifierItem` maps it to a
 //! `DBusMenu` and the `wye-ui` popup draws it. Item IDs are stable, so a
@@ -62,6 +62,10 @@ pub mod ids {
 
 /// How many recent links the submenu lists (TRAY-15).
 pub const RECENT_LIMIT: usize = 10;
+
+/// TRAY-20: holding either of these while choosing a primary-browser item
+/// opens its target instead of making it the primary browser.
+pub const OPEN_MODIFIERS: [Modifier; 2] = [Modifier::Ctrl, Modifier::Shift];
 /// The longest label of a recent link before it is cut in the middle.
 pub const RECENT_LABEL_CHARS: usize = 48;
 
@@ -192,6 +196,35 @@ pub struct RecentLink {
     pub url: String,
 }
 
+/// What choosing an item of the "Primary Browser" group does.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrimaryChoice {
+    /// TRAY-11: the target becomes the primary browser.
+    SetPrimary(Target),
+    /// TRAY-20: the target opens without a link; the primary browser stays.
+    Open(Target),
+    /// TRAY-20: the Picker has nothing to open, so a click with
+    /// [`OPEN_MODIFIERS`] changes nothing.
+    Nothing,
+}
+
+impl PrimaryChoice {
+    /// What choosing the item for `target` does while `held` are held.
+    #[must_use]
+    pub fn new(target: Target, held: Modifiers) -> Self {
+        let opens = OPEN_MODIFIERS
+            .iter()
+            .any(|modifier| held.contains(*modifier));
+        if !opens {
+            Self::SetPrimary(target)
+        } else if target.is_concrete() {
+            Self::Open(target)
+        } else {
+            Self::Nothing
+        }
+    }
+}
+
 /// The tray icon and its menu.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TrayMenu {
@@ -238,6 +271,14 @@ impl TrayMenu {
     #[must_use]
     pub fn find(&self, id: &str) -> Option<&TrayItem> {
         find_in(&self.items, id)
+    }
+
+    /// What choosing the primary-browser item `id` does while `held` are
+    /// held (TRAY-11, TRAY-20); `None` when `id` names no such item.
+    #[must_use]
+    pub fn primary_choice(&self, id: &str, held: Modifiers) -> Option<PrimaryChoice> {
+        let target = self.find(id)?.target.clone()?;
+        Some(PrimaryChoice::new(target, held))
     }
 }
 

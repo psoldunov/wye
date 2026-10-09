@@ -134,6 +134,30 @@ async fn ctrl_or_shift_opens_the_browser_and_keeps_the_primary_tray_20() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_chosen_item_publishes_the_menu_again_even_when_unchanged_tray_20() {
+    let Some(service) = Service::start(SHOWN).await else {
+        return;
+    };
+    let sni = service.fakes.sni.clone();
+    eventually("the StatusNotifierItem shows", || {
+        let sni = sni.clone();
+        async move { sni.shown().is_some() }
+    })
+    .await;
+    let before = sni.calls().len();
+    // Shift-click: opens the browser, the primary and the menu stay.
+    service.fakes.modifiers.set(Some(vec![Modifier::Shift]));
+    sni.send(TrayEvent::Activated(FIRST_BROWSER.to_owned()));
+    eventually("the unchanged menu is shown again", || {
+        let sni = sni.clone();
+        async move { sni.calls().len() > before }
+    })
+    .await;
+    let calls = sni.calls();
+    assert_eq!(calls[before], calls[before - 1], "the same menu");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_items_own_events_are_carried_out() {
     let Some(service) = Service::start(SHOWN).await else {
         return;

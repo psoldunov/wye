@@ -139,12 +139,20 @@ impl StatusNotifier for KsniNotifier {
         let mut handle = self.handle.lock().await;
         if let Some(running) = handle.as_ref().filter(|running| !running.is_closed()) {
             let next = menu.clone();
-            if running.update(move |tray| tray.menu = next).await.is_some() {
+            if running
+                .update(move |tray| {
+                    tray.menu = next;
+                    tray.clicked = None;
+                })
+                .await
+                .is_some()
+            {
                 return Ok(());
             }
         }
         let tray = WyeTray {
             menu: menu.clone(),
+            clicked: None,
             events: self.events.clone(),
             icon_theme_path: self.icon_theme_path.clone(),
         };
@@ -179,6 +187,8 @@ impl StatusNotifier for KsniNotifier {
 /// What ksni serves: the latest `Tray` model.
 struct WyeTray {
     menu: TrayMenu,
+    /// The item chosen last, until the next `show` (see [`menu::items`]).
+    clicked: Option<String>,
     events: broadcast::Sender<TrayEvent>,
     icon_theme_path: String,
 }
@@ -210,6 +220,7 @@ pub fn tool_tip_text(menu: &TrayMenu) -> String {
 
 impl menu::Chooser for WyeTray {
     fn chosen(&mut self, id: &str) {
+        self.clicked = Some(id.to_owned());
         self.send(TrayEvent::Activated(id.to_owned()));
     }
 }
@@ -273,7 +284,7 @@ impl ksni::Tray for WyeTray {
     }
 
     fn menu(&self) -> Vec<ksni::MenuItem<Self>> {
-        menu::items(&self.menu.items)
+        menu::items(&self.menu.items, self.clicked.as_deref())
     }
 
     fn menu_about_to_show(&mut self) {

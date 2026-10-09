@@ -25,8 +25,11 @@ pub(crate) async fn present(ctx: ServiceContext) {
     let mut hosts = ctx.tray().hosts.subscribe();
     let mut changes = tray_changes(&ctx).await;
     let mut shown: Option<TrayMenu> = None;
+    // Set after an item was chosen: see `sync`.
+    let mut republish = false;
     loop {
-        shown = sync(&ctx, sni.as_ref(), shown).await;
+        shown = sync(&ctx, sni.as_ref(), shown, republish).await;
+        republish = false;
         ctx.tray().set_sni_shown(shown.is_some());
         tokio::select! {
             // A host registered or the last one left: the next sync hides or
@@ -42,6 +45,7 @@ pub(crate) async fn present(ctx: ServiceContext) {
                     if let Err(error) = super::activate_tray_item(&ctx, &id).await {
                         tracing::warn!(%error, id, "the tray item failed");
                     }
+                    republish = true;
                 }
                 // TRAY-10: the next sync reads the clipboard again.
                 Ok(TrayEvent::AboutToShow) | Err(RecvError::Lagged(_)) => {}
@@ -53,10 +57,18 @@ pub(crate) async fn present(ctx: ServiceContext) {
 
 /// Show, update or hide the item for the menu as it is now; returns what
 /// is shown.
+///
+/// `republish` shows the menu again even when it equals what is shown. After
+/// an item was chosen the menu host may display it differently from the
+/// model: Plasma checks a clicked radio item itself, and a Shift- or
+/// Ctrl-click leaves the primary unchanged (TRAY-20), so the model is the
+/// same and, unpublished, the host would keep several radios checked. Showing
+/// it again makes the item send what is really checked (TRAY-11).
 async fn sync(
     ctx: &ServiceContext,
     sni: &dyn StatusNotifier,
     shown: Option<TrayMenu>,
+    republish: bool,
 ) -> Option<TrayMenu> {
     let menu = match super::build(ctx).await {
         Ok(menu) => menu,
@@ -71,7 +83,7 @@ async fn sync(
         }
         return None;
     }
-    if shown.as_ref() == Some(&menu) {
+    if !republish && shown.as_ref() == Some(&menu) {
         return shown;
     }
     match sni.show(&menu).await {

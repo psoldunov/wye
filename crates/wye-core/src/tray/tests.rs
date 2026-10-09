@@ -443,3 +443,67 @@ fn the_menu_serialises_for_the_api() {
         serde_json::json!({ "picker": true })
     );
 }
+
+fn held(modifiers: &[Modifier]) -> Modifiers {
+    Modifiers::from_slice(modifiers)
+}
+
+#[test]
+fn a_plain_click_sets_the_primary_browser_tray_11() {
+    let menu = build(&config(), &status());
+    assert_eq!(
+        menu.primary_choice(&ids::primary(1), Modifiers::NONE),
+        Some(PrimaryChoice::SetPrimary(work()))
+    );
+    assert_eq!(
+        menu.primary_choice(ids::PRIMARY_PICKER, Modifiers::NONE),
+        Some(PrimaryChoice::SetPrimary(Target::Picker))
+    );
+    // Only Ctrl and Shift open (TRAY-20).
+    assert_eq!(
+        menu.primary_choice(&ids::primary(0), held(&[Modifier::Alt, Modifier::Super])),
+        Some(PrimaryChoice::SetPrimary(app("firefox.desktop")))
+    );
+}
+
+#[test]
+fn ctrl_or_shift_opens_the_target_instead_tray_20() {
+    let menu = build(&config(), &status());
+    for modifiers in [
+        held(&[Modifier::Ctrl]),
+        held(&[Modifier::Shift]),
+        held(&[Modifier::Ctrl, Modifier::Shift, Modifier::Alt]),
+    ] {
+        assert_eq!(
+            menu.primary_choice(&ids::primary(0), modifiers),
+            Some(PrimaryChoice::Open(app("firefox.desktop"))),
+            "{modifiers}"
+        );
+        assert_eq!(
+            menu.primary_choice(&ids::primary(1), modifiers),
+            Some(PrimaryChoice::Open(work())),
+            "{modifiers}"
+        );
+    }
+}
+
+#[test]
+fn the_picker_has_nothing_to_open_tray_20() {
+    let menu = build(&config(), &status());
+    assert_eq!(
+        menu.primary_choice(ids::PRIMARY_PICKER, held(&[Modifier::Ctrl])),
+        Some(PrimaryChoice::Nothing)
+    );
+}
+
+#[test]
+fn only_primary_browser_items_have_a_choice() {
+    let menu = build(&config(), &status());
+    for id in [ids::SETTINGS, ids::PRIMARY_HEADER, "primary:9", "nothing"] {
+        assert_eq!(
+            menu.primary_choice(id, held(&[Modifier::Ctrl])),
+            None,
+            "{id}"
+        );
+    }
+}

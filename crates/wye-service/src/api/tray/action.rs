@@ -16,7 +16,7 @@ pub(crate) enum TrayAction {
     MakeDefault,
     /// IN-02.
     OpenClipboard,
-    /// TRAY-11: the radio item with this ID.
+    /// TRAY-11, TRAY-20: the radio item with this ID.
     Primary(String),
     /// A window: Settings (TRAY-16), History, Test Rules, Set Up, About.
     Show(Window),

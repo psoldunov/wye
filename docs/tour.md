@@ -45,7 +45,8 @@ menu with the Open In submenu, Copy Link, Create Rule… and Settings….
 
 ## The tray
 
-The tray menu opens the clipboard link and chooses the primary browser. Its More submenu
+The tray menu opens the clipboard link and chooses the primary browser. Ctrl- or
+Shift-click a browser there to open it without making it primary. Its More submenu
 holds History, Recent Links, Test Rules…, Rescan Browsers, Set Up Wye…, Help and About.
 
 <p align="center">

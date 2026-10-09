@@ -117,7 +117,9 @@ impl ExecTemplate {
     ///
     /// `flags` go immediately before the URL argument, or before Flatpak's
     /// `@@u` marker when one precedes it. Without a URL field code, the flags
-    /// and then the URL are appended.
+    /// and then the URL are appended. An empty `url` starts the app without
+    /// a link (TRAY-20): a field code alone is removed, as for any field
+    /// code that expands to nothing, and nothing is appended.
     #[must_use]
     pub fn expand(&self, context: &ExecContext<'_>, url: &str, flags: &[String]) -> Vec<String> {
         let url_index = self.url_index();
@@ -136,7 +138,7 @@ impl ExecTemplate {
         if insert_at == self.args.len() {
             out.extend(flags.iter().cloned());
         }
-        if url_index.is_none() {
+        if url_index.is_none() && !url.is_empty() {
             out.push(url.to_owned());
         }
         out
@@ -314,6 +316,33 @@ mod tests {
         assert_eq!(
             run("app --url=%u", &[]),
             vec!["app".to_owned(), format!("--url={URL}")]
+        );
+    }
+
+    #[test]
+    fn an_empty_url_starts_the_app_without_a_link_tray_20() {
+        let path = PathBuf::from("/apps/firefox.desktop");
+        let expand = |exec: &str, flags: &[String]| {
+            ExecTemplate::parse(exec)
+                .unwrap()
+                .expand(&context(&path), "", flags)
+        };
+        let private = ["--private-window".to_owned()];
+        assert_eq!(
+            expand("firefox --name firefox %u", &private),
+            vec!["firefox", "--name", "firefox", "--private-window"]
+        );
+        assert_eq!(expand("app --flag", &[]), vec!["app", "--flag"]);
+        assert_eq!(
+            expand("flatpak run --file-forwarding org.app @@u %u @@", &[]),
+            vec![
+                "flatpak",
+                "run",
+                "--file-forwarding",
+                "org.app",
+                "@@u",
+                "@@"
+            ]
         );
     }
 

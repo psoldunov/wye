@@ -149,6 +149,16 @@ pub(crate) fn plan_for(snapshot: &Snapshot, target: &Target, url: &str) -> Plan 
     }
 }
 
+/// A plan to start `target` without a link (TRAY-20): nothing to record in
+/// history, and no other target to offer when it fails, since the user
+/// asked for this one.
+pub(crate) fn plan_start(snapshot: &Snapshot, target: &Target) -> Plan {
+    Plan {
+        alternatives: Vec::new(),
+        ..plan_for(snapshot, target, "")
+    }
+}
+
 /// The app's name, or the target itself.
 pub(crate) fn name(target: &Target, inventory: &Inventory) -> String {
     target

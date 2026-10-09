@@ -71,9 +71,15 @@ async fn failed(
     activation: &Activation,
 ) -> Result<()> {
     tracing::warn!(target = %plan.target, %reason, "launch failed");
+    // A start without a link (TRAY-20) has no URL line.
+    let body = if plan.url.is_empty() {
+        reason.clone()
+    } else {
+        format!("{reason}\n{}", plan.url)
+    };
     let notification = Notification {
         summary: format!("Couldn't open {}", plan.name),
-        body: format!("{reason}\n{}", plan.url),
+        body,
         actions: actions(&plan.alternatives),
         ..Notification::default()
     };

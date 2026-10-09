@@ -1,6 +1,6 @@
 //! The tray: the `Tray` property, `ActivateTrayItem`, the
 //! `StatusNotifierItem` that is Wye's tray on every desktop, and
-//! `RegisterTray` for external tray hosts (TRAY-01 to TRAY-18, ONB-11,
+//! `RegisterTray` for external tray hosts (TRAY-01 to TRAY-20, ONB-11,
 //! decision 8).
 //!
 //! One model, `wye_core::tray::TrayMenu`, built from the configuration, the
@@ -24,7 +24,8 @@ use wye_api::actions::TrayHost;
 use wye_api::history::History;
 use wye_api::json;
 use wye_api::tray::TrayMenu;
-use wye_core::tray::{self as model, RecentLink, TrayStatus};
+use wye_core::Target;
+use wye_core::tray::{self as model, PrimaryChoice, RecentLink, TrayStatus};
 
 use self::action::{HELP_URL, RECENT_REOPEN, TrayAction};
 use self::hosts::Hosts;
@@ -232,7 +233,7 @@ pub async fn activate_tray_item(ctx: &ServiceContext, id: &str) -> Result<()> {
     match TrayAction::parse(id)? {
         TrayAction::MakeDefault => super::default_browser::make_default(ctx).await,
         TrayAction::OpenClipboard => super::clipboard::open_clipboard(ctx, &nobody, false).await,
-        TrayAction::Primary(id) => set_primary(ctx, &id).await,
+        TrayAction::Primary(id) => choose_primary(ctx, &id).await,
         TrayAction::Show(window) => super::windows::show_window(ctx, window.as_str(), "").await,
         TrayAction::Recent(entry) => {
             super::history::reopen_history_entry(ctx, entry, RECENT_REOPEN.as_str()).await
@@ -243,22 +244,49 @@ pub async fn activate_tray_item(ctx: &ServiceContext, id: &str) -> Result<()> {
     }
 }
 
-/// TRAY-11: the radio item's target becomes the primary browser.
-async fn set_primary(ctx: &ServiceContext, id: &str) -> Result<()> {
-    let menu = {
-        let environment = ctx.environment()?;
-        let config = super::config::current(ctx).await?;
-        let inventory = super::inventory::current(ctx).await?;
-        let catalog = inventory.inventory.catalog(&environment.xdg.locale, &[]);
-        let status = TrayStatus {
-            wye_is_default: true,
-            ..TrayStatus::default()
-        };
-        model::TrayMenu::build(&config.config, &catalog, &status)
-    };
-    let target = menu
-        .find(id)
-        .and_then(|item| item.target.clone())
+/// A radio item of the "Primary Browser" group: its target becomes the
+/// primary browser (TRAY-11), or opens without a link while Ctrl or Shift
+/// is held, leaving the primary browser as it is (TRAY-20). No tray host
+/// says which keys were held (a `DBusMenu` click carries none), so the
+/// probe asks the session, alongside reading the menu, before a key
+/// released right after the click is gone.
+async fn choose_primary(ctx: &ServiceContext, id: &str) -> Result<()> {
+    let (held, menu) = tokio::join!(super::link::held_modifiers(ctx), primary_menu(ctx));
+    let choice = menu?
+        .primary_choice(id, held)
         .ok_or_else(|| Error::NotFound(format!("no primary-browser item {id:?}")))?;
-    super::config::set_primary(ctx, &json::encode(&target)?).await
+    match choice {
+        PrimaryChoice::SetPrimary(target) => {
+            super::config::set_primary(ctx, &json::encode(&target)?).await
+        }
+        PrimaryChoice::Open(target) => start(ctx, target).await,
+        PrimaryChoice::Nothing => {
+            tracing::info!(id, %held, "the Picker has nothing to open");
+            Ok(())
+        }
+    }
+}
+
+/// The menu as far as the "Primary Browser" group goes: the items and their
+/// targets, without reading the clipboard or the history.
+async fn primary_menu(ctx: &ServiceContext) -> Result<model::TrayMenu> {
+    let environment = ctx.environment()?;
+    let config = super::config::current(ctx).await?;
+    let inventory = super::inventory::current(ctx).await?;
+    let catalog = inventory.inventory.catalog(&environment.xdg.locale, &[]);
+    let status = TrayStatus {
+        wye_is_default: true,
+        ..TrayStatus::default()
+    };
+    Ok(model::TrayMenu::build(&config.config, &catalog, &status))
+}
+
+/// TRAY-20: start `target` without a link, as a link's launch would
+/// (LAUNCH-06, LAUNCH-07); history records nothing.
+async fn start(ctx: &ServiceContext, target: Target) -> Result<()> {
+    let plan = super::link::with_snapshot(ctx, move |snapshot| {
+        super::link::plan_start(snapshot, &target)
+    })
+    .await?;
+    super::link::open_plan(ctx, plan, &super::link::Activation::default()).await
 }

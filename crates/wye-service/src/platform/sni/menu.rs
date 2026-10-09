@@ -16,8 +16,15 @@ pub trait Chooser: Sized + Send + 'static {
 
 /// The `DBusMenu` items for `items`. Consecutive radio items form one radio
 /// group, since `DBusMenu` groups radios by position.
+///
+/// `clicked` is the ID of the item the user last chose, until the menu is
+/// published again. A `DBusMenu` host checks a clicked radio item by itself
+/// (Plasma does), so the tray shows that item selected too: ksni then sees
+/// what the host shows, and publishing the real menu afterwards makes it send
+/// what is really checked (TRAY-11, TRAY-20: a Shift- or Ctrl-click opens the
+/// browser and leaves the primary unchanged).
 #[must_use]
-pub fn items<T: Chooser>(items: &[TrayItem]) -> Vec<MenuItem<T>> {
+pub fn items<T: Chooser>(items: &[TrayItem], clicked: Option<&str>) -> Vec<MenuItem<T>> {
     let mut built = Vec::new();
     let mut radios: Vec<&TrayItem> = Vec::new();
     for item in items {
@@ -26,17 +33,17 @@ pub fn items<T: Chooser>(items: &[TrayItem]) -> Vec<MenuItem<T>> {
             continue;
         }
         if !radios.is_empty() {
-            built.push(radio_group(&std::mem::take(&mut radios)));
+            built.push(radio_group(&std::mem::take(&mut radios), clicked));
         }
-        built.push(item_for(item));
+        built.push(item_for(item, clicked));
     }
     if !radios.is_empty() {
-        built.push(radio_group(&radios));
+        built.push(radio_group(&radios, clicked));
     }
     built
 }
 
-fn item_for<T: Chooser>(item: &TrayItem) -> MenuItem<T> {
+fn item_for<T: Chooser>(item: &TrayItem, clicked: Option<&str>) -> MenuItem<T> {
     match item.kind {
         TrayItemKind::Separator => MenuItem::Separator,
         TrayItemKind::Submenu => {
@@ -46,7 +53,7 @@ fn item_for<T: Chooser>(item: &TrayItem) -> MenuItem<T> {
                 enabled: item.enabled,
                 icon_name,
                 icon_data,
-                submenu: items(&item.children),
+                submenu: items(&item.children, clicked),
                 ..SubMenu::default()
             }
             .into()
@@ -69,10 +76,15 @@ fn item_for<T: Chooser>(item: &TrayItem) -> MenuItem<T> {
     }
 }
 
-fn radio_group<T: Chooser>(radios: &[&TrayItem]) -> MenuItem<T> {
+fn radio_group<T: Chooser>(radios: &[&TrayItem], clicked: Option<&str>) -> MenuItem<T> {
     let ids: Vec<String> = radios.iter().map(|item| item.id.clone()).collect();
+    // The clicked item, when it is in this group, else the checked one.
+    let selected = clicked
+        .and_then(|id| radios.iter().position(|item| item.id == id))
+        .or_else(|| radios.iter().position(|item| item.checked))
+        .unwrap_or(0);
     RadioGroup {
-        selected: radios.iter().position(|item| item.checked).unwrap_or(0),
+        selected,
         select: Box::new(move |tray: &mut T, index: usize| {
             if let Some(id) = ids.get(index) {
                 tray.chosen(id);
@@ -200,7 +212,7 @@ mod tests {
             item("separator:0", TrayItemKind::Separator),
             item("quit", TrayItemKind::Action),
         ];
-        let built = items::<Recorder>(&menu);
+        let built = items::<Recorder>(&menu, None);
         assert_eq!(built.len(), 4, "header, one radio group, separator, quit");
         let MenuItem::RadioGroup(group) = &built[1] else {
             panic!("the radios are one group");
@@ -212,12 +224,38 @@ mod tests {
         assert_eq!(recorder.chosen, vec!["primary:picker"]);
     }
 
+    fn selected(menu: &[TrayItem], clicked: Option<&str>) -> usize {
+        let built = items::<Recorder>(menu, clicked);
+        let Some(MenuItem::RadioGroup(group)) = built.first() else {
+            panic!("the radios are one group");
+        };
+        group.selected
+    }
+
+    #[test]
+    fn a_clicked_radio_is_selected_until_published_again_tray_20() {
+        let menu = [
+            item("primary:picker", TrayItemKind::Radio),
+            TrayItem {
+                checked: true,
+                ..item("primary:0", TrayItemKind::Radio)
+            },
+            item("primary:1", TrayItemKind::Radio),
+        ];
+        assert_eq!(selected(&menu, None), 1, "the checked item");
+        assert_eq!(selected(&menu, Some("primary:1")), 2, "the clicked item");
+        assert_eq!(selected(&menu, Some("quit")), 1, "not in the group");
+    }
+
     #[test]
     fn headers_are_disabled_and_actions_report_their_id() {
-        let built = items::<Recorder>(&[
-            item("primary-header", TrayItemKind::Header),
-            item("settings", TrayItemKind::Action),
-        ]);
+        let built = items::<Recorder>(
+            &[
+                item("primary-header", TrayItemKind::Header),
+                item("settings", TrayItemKind::Action),
+            ],
+            None,
+        );
         let MenuItem::Standard(header) = &built[0] else {
             panic!("a header is a standard item");
         };
@@ -257,7 +295,7 @@ mod tests {
             label: "my_profile".to_owned(),
             ..item("primary:0", TrayItemKind::Action)
         };
-        let built = items::<Recorder>(&[more, named]);
+        let built = items::<Recorder>(&[more, named], None);
         let MenuItem::SubMenu(submenu) = &built[0] else {
             panic!("a submenu");
         };

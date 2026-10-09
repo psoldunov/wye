@@ -30,6 +30,11 @@ Window {
     property bool wasActive: false
     // The level the keyboard is in: 0 is the menu, N the Nth submenu.
     property int depth: 0
+    // TRAY-21: Ctrl or Shift is held, so a radio row opens its browser
+    // rather than making it primary (TRAY-20); the radio rows hide their
+    // marks. Learnt from key events and pointer motion: a key held before
+    // the popup opened shows once the pointer moves or another key goes.
+    property bool openHeld: false
 
     function handle(action, key, argument) {
         if (action !== "toggle") {
@@ -43,6 +48,7 @@ Window {
             return;
         }
         menu.currentIndex = -1;
+        openHeld = false;
         closeSubmenus(1);
         chooseScreen();
         wasActive = false;
@@ -53,7 +59,26 @@ Window {
 
     function dismiss() {
         closeSubmenus(1);
+        openHeld = false;
         hide();
+    }
+
+    // TRAY-21: whether `modifiers` hold Ctrl or Shift (Alt and Super do not
+    // count, TRAY-20).
+    function trackModifiers(modifiers) {
+        openHeld = (modifiers & (Qt.ControlModifier | Qt.ShiftModifier)) !== 0;
+    }
+
+    // The modifiers after key event `event`: whether a press of Ctrl or Shift
+    // already carries its own modifier, and a release still does, differs
+    // between platforms, so the key itself decides.
+    function trackKey(event, pressed) {
+        let modifiers = event.modifiers;
+        const own = event.key === Qt.Key_Control ? Qt.ControlModifier : event.key === Qt.Key_Shift ? Qt.ShiftModifier : 0;
+        if (own !== 0) {
+            modifiers = pressed ? modifiers | own : modifiers & ~own;
+        }
+        trackModifiers(modifiers);
     }
 
     // The output the pointer is on (as the picker, PICK-02).
@@ -227,7 +252,9 @@ Window {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
         onPressed: popup.dismiss()
+        onPositionChanged: mouse => popup.trackModifiers(mouse.modifiers)
     }
 
     Item {
@@ -235,7 +262,12 @@ Window {
 
         focus: true
         Keys.onPressed: event => {
+            popup.trackKey(event, true);
             event.accepted = popup.keyPressed(event);
+        }
+        Keys.onReleased: event => {
+            popup.trackKey(event, false);
+            event.accepted = false;
         }
     }
 
@@ -245,6 +277,8 @@ Window {
         x: backend.placed ? popup.clamp(backend.placementX, popup.margin, popup.width - menu.width - popup.margin) : (popup.width - menu.width) / 2
         y: backend.placed ? popup.clamp(backend.placementY, popup.margin, popup.height - menu.height - popup.margin) : (popup.height - menu.height) / 2
         entries: JSON.parse(backend.rows || "[]")
+        openHeld: popup.openHeld
+        onModifiersMoved: modifiers => popup.trackModifiers(modifiers)
         onPointed: row => {
             popup.depth = 0;
             popup.openSubmenu(0, row);
@@ -276,6 +310,8 @@ Window {
             leftward: !roomRight || (level.parentList !== null && level.parentList.leftward && roomLeft)
             x: level.parentList === null ? 0 : (leftward ? level.parentList.x - level.width : level.parentList.x + level.parentList.width)
             y: popup.clamp(level.anchorY - level.padding, popup.levelTop, popup.levelBottom - level.height)
+            openHeld: popup.openHeld
+            onModifiersMoved: modifiers => popup.trackModifiers(modifiers)
             onPointed: row => {
                 popup.depth = level.index + 1;
                 popup.openSubmenu(level.index + 1, row);

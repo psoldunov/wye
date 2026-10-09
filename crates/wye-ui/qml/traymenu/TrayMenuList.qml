@@ -18,6 +18,8 @@ Item {
     // Whether this panel opened to the left of its parent (a submenu with no
     // room on the right); the next level then prefers the left too.
     property bool leftward: false
+    // TRAY-21: Ctrl or Shift is held; the radio rows hide their marks.
+    property bool openHeld: false
     readonly property int padding: Kirigami.Units.smallSpacing
     readonly property var currentEntry: currentIndex >= 0 && currentIndex < entries.length ? entries[currentIndex] : null
     // Whether a row has a check mark: then every row keeps the check column.
@@ -38,6 +40,8 @@ Item {
     signal pointed(int index)
     // A row was clicked.
     signal chosen(int index)
+    // The pointer moved over the panel with these keyboard modifiers (TRAY-21).
+    signal modifiersMoved(int modifiers)
 
     // Move the highlight by `step` to the next interactive row, wrapping.
     function move(step) {
@@ -81,6 +85,8 @@ Item {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
+        hoverEnabled: true
+        onPositionChanged: mouse => list.modifiersMoved(mouse.modifiers)
     }
 
     Column {
@@ -102,12 +108,14 @@ Item {
                 width: column.width
                 entry: modelData
                 checkColumn: list.hasChecks
+                openHeld: list.openHeld
                 current: index === list.currentIndex
                 onPointed: {
                     list.currentIndex = index;
                     list.pointed(index);
                 }
                 onChosen: list.chosen(index)
+                onModifiersMoved: modifiers => list.modifiersMoved(modifiers)
             }
         }
     }

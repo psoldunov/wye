@@ -81,6 +81,30 @@ export function itemForShortcut(items, chord) {
 }
 
 /**
+ * Whether these held modifiers make a primary-browser row open the browser
+ * rather than select it: Ctrl or Shift, not Alt or Super (TRAY-20).
+ *
+ * @param {string[]} mods as `Keys.sortModifiers` gives them
+ */
+export function opensWith(mods) {
+    return mods.includes('Ctrl') || mods.includes('Shift');
+}
+
+/**
+ * The mark a radio row shows: none while a click opens rather than selects,
+ * so the row keeps the mark's room without the mark (TRAY-21).
+ *
+ * @param {boolean} checked
+ * @param {boolean} opening as `opensWith` tells
+ * @returns {'dot'|'no-dot'|'none'}
+ */
+export function radioMark(checked, opening) {
+    if (opening)
+        return 'none';
+    return checked ? 'dot' : 'no-dot';
+}
+
+/**
  * Whether entries at one level show icons, so the others keep the column
  * and every label lines up (TRAY-14).
  *

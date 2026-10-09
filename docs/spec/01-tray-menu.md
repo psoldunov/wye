@@ -60,6 +60,7 @@ profile.
 | TRAY-17 | Quitting Wye while it is the default browser means links stop opening. Proposed: when Wye quits, the next link still starts it (D-Bus activation of the handler, [DEF-04](11-url-pipeline.md#default-browser-registration)), so "Quit" only removes the tray icon until then. | Proposed |
 | TRAY-18 | While Wye is not the default browser, the menu starts with **Make Wye Default Browser** and a separator, and the icon carries a warning overlay ([ONB-11](18-onboarding.md#default-browser-status)). | Proposed |
 | TRAY-20 | Holding Ctrl or Shift while choosing a browser, profile or private window in the "Primary Browser" group starts it without a link (a browser that is already running opens a new window) and leaves the primary browser as it is. Alt and Super do not count. The Picker has nothing to start, so a Ctrl- or Shift-click on it changes nothing. History records nothing, and a failed start is reported as in [LAUNCH-07](05-browsers.md#discovery-and-launching), without other browsers to try. | Proposed |
+| TRAY-21 | While Ctrl or Shift is held over a menu Wye draws itself (the `wye-ui` and `wye-gtk` tray-menu popups and the GNOME Shell extension's menus), the radio items of the "Primary Browser" group show no mark, so the menu tells the user that a click opens the item (TRAY-20) instead of making it the primary browser. The marks keep their room and come back when the keys are released. Where the toolkit cannot read the keys as the menu opens, a key held since before counts once the pointer moves or another key is pressed. | Proposed |
 
 Target metrics: menu width about 250 px; section header in a smaller, dimmed font;
 checkmark column at the leading edge; shortcut column right-aligned and dimmed.
@@ -87,5 +88,13 @@ checkmark column at the leading edge; shortcut column right-aligned and dimmed.
   held when the item arrives, as it does for links ([13](13-linux-platform.md#capability-matrix)).
   Where the session cannot tell, or `advanced.held-keys` is `off`, every click sets the
   primary browser.
+- TRAY-11 and TRAY-20 on Plasma: its DBusMenu client gives each radio item a `QActionGroup`
+  of its own and checks a clicked item itself, without waiting for Wye. The
+  StatusNotifierItem records the click as Plasma shows it, and the service publishes the
+  menu again after every click, even when nothing changed (a Ctrl- or Shift-click keeps the
+  primary browser), so Plasma receives the real `toggle-state` of each radio item.
+- TRAY-21 cannot work on a DBusMenu host: the host draws the menu and reports no keys, and
+  Plasma ignores a `toggle-type` that changes after it created the item. The
+  StatusNotifierItem's menu keeps its marks while Ctrl or Shift is held.
 - TRAY-10 on Wayland: an unfocused app cannot read the clipboard with the core protocol.
   See clipboard access in [13](13-linux-platform.md).

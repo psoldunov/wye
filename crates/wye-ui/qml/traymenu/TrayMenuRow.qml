@@ -23,6 +23,9 @@ Item {
     // Whether any row of the list has a check mark: then every row keeps that
     // column, so the labels line up (as Plasma's menus do).
     property bool checkColumn: false
+    // TRAY-21: Ctrl or Shift is held, so choosing a radio row opens it rather
+    // than making it primary (TRAY-20): its mark hides, its column stays.
+    property bool openHeld: false
 
     readonly property bool separator: entry.kind === "separator"
     readonly property bool header: entry.kind === "header"
@@ -38,6 +41,8 @@ Item {
 
     signal chosen
     signal pointed
+    // The pointer moved over the row with these keyboard modifiers (TRAY-21).
+    signal modifiersMoved(int modifiers)
 
     Accessible.role: separator ? Accessible.Separator : header ? Accessible.StaticText : Accessible.MenuItem
     Accessible.name: separator ? "" : row.entry.label
@@ -79,7 +84,7 @@ Item {
             Layout.preferredHeight: Kirigami.Units.iconSizes.small
             Layout.rightMargin: Kirigami.Units.smallSpacing / 2
             visible: !row.header && row.checkColumn
-            source: row.entry.checked ? "checkmark" : ""
+            source: row.entry.checked && !(row.openHeld && row.entry.kind === "radio") ? "checkmark" : ""
             color: row.textColor
         }
 
@@ -130,6 +135,7 @@ Item {
         enabled: row.interactive
         hoverEnabled: true
         onEntered: row.pointed()
+        onPositionChanged: mouse => row.modifiersMoved(mouse.modifiers)
         onClicked: row.chosen()
     }
 }

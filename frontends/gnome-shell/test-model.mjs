@@ -285,6 +285,19 @@ test('the tray model reads icons, shortcuts and emblems (TRAY-02, TRAY-13, ONB-1
     assert.ok(tray.WINDOW_ITEMS.has('settings'));
 });
 
+test('Ctrl or Shift hides the radio marks (TRAY-20, TRAY-21)', () => {
+    assert.equal(tray.opensWith(['Shift']), true);
+    assert.equal(tray.opensWith(['Ctrl', 'Alt']), true);
+    assert.equal(tray.opensWith(['Alt', 'Super']), false);
+    assert.equal(tray.opensWith([]), false);
+    assert.equal(tray.opensWith(keys.heldAfter([], 'Control_R', true)), true);
+    assert.equal(tray.opensWith(keys.heldAfter(['Shift'], 'Shift_L', false)), false);
+    assert.equal(tray.radioMark(true, false), 'dot');
+    assert.equal(tray.radioMark(false, false), 'no-dot');
+    assert.equal(tray.radioMark(true, true), 'none');
+    assert.equal(tray.radioMark(false, true), 'none');
+});
+
 test('Wye windows are recognised by any of their IDs', () => {
     assert.equal(model.isWyeWindow([null, 'dev.soldunov.wye']), true);
     assert.equal(model.isWyeWindow(['dev.soldunov.wye.Gtk.desktop']), true);

@@ -464,6 +464,12 @@ popover.wye-tray-menu > contents {
   min-width: 17em;
 }
 
+/* TRAY-21: while Ctrl or Shift is held a click opens the browser rather than
+ * making it primary, so the radio marks hide; each keeps its room. */
+popover.wye-tray-menu.wye-opening modelbutton radio {
+  opacity: 0;
+}
+
 /* Onboarding */
 
 /* ONB-06: the footer under the steps: Back, the dots, the step's button. */

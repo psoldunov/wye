@@ -9,7 +9,9 @@
 //! window the window manager places. A second toggle, a click outside,
 //! Escape or an item chosen closes it. Choosing an item sends its ID with
 //! `ActivateTrayItem`, the tray's own dispatcher; `P` and `1`–`9` choose the
-//! item with that shortcut (KEY-51).
+//! item with that shortcut (KEY-51). While Ctrl or Shift is held the radio
+//! marks hide, since a click then opens the browser rather than making it
+//! primary (TRAY-20, TRAY-21).
 //!
 //! - [`model`]: the payload read into rows (crates/wye-ui/src/tray_menu,
 //!   shared from source).
@@ -40,6 +42,10 @@ use crate::widgets::menu_icons;
 
 /// The layer-shell namespace: compositor rules can match it (README).
 pub const NAMESPACE: &str = "wye-menu";
+
+/// The popover's class while Ctrl or Shift is held: style.css hides the
+/// radio marks (TRAY-21).
+const OPENING: &str = "wye-opening";
 
 /// The popup surface: one window and one popover, reused.
 pub struct TrayMenu {
@@ -92,11 +98,13 @@ fn connect(window: &gtk::Window, popover: &gtk::PopoverMenu, inner: &Weak<Inner>
     let weak = inner.clone();
     popover.connect_closed(move |_| {
         if let Some(inner) = weak.upgrade() {
+            inner.set_opening(false);
             inner.window.set_visible(false);
         }
     });
     popover.add_controller(keys(inner));
     window.add_controller(keys(inner));
+    popover.add_controller(motion(inner));
     let weak = inner.clone();
     window.connect_close_request(move |_| {
         if let Some(inner) = weak.upgrade() {
@@ -136,6 +144,11 @@ fn keys(inner: &Weak<Inner>) -> gtk::EventControllerKey {
         let Some(inner) = weak.upgrade() else {
             return glib::Propagation::Proceed;
         };
+        if let Some(mask) = modifier_mask(keyval) {
+            // The event's state does not count the key being pressed yet.
+            inner.set_opening(opens(modifiers | mask));
+            return glib::Propagation::Proceed;
+        }
         if keyval == gdk::Key::Escape {
             inner.popover.popdown();
             return glib::Propagation::Stop;
@@ -146,7 +159,51 @@ fn keys(inner: &Weak<Inner>) -> gtk::EventControllerKey {
             glib::Propagation::Proceed
         }
     });
+    // TRAY-21: the marks follow Ctrl and Shift. The state of a release
+    // still counts the key released.
+    let weak = inner.clone();
+    keys.connect_key_released(move |_, keyval, _, modifiers| {
+        if let Some((inner, mask)) = weak.upgrade().zip(modifier_mask(keyval)) {
+            inner.set_opening(opens(modifiers - mask));
+        }
+    });
+    let weak = inner.clone();
+    keys.connect_modifiers(move |_, modifiers| {
+        if let Some(inner) = weak.upgrade() {
+            inner.set_opening(opens(modifiers));
+        }
+        glib::Propagation::Proceed
+    });
     keys
+}
+
+/// TRAY-21: a key held since before the menu opened shows on the pointer's
+/// first move over it.
+fn motion(inner: &Weak<Inner>) -> gtk::EventControllerMotion {
+    let motion = gtk::EventControllerMotion::new();
+    motion.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = inner.clone();
+    motion.connect_motion(move |controller, _, _| {
+        if let Some(inner) = weak.upgrade() {
+            inner.set_opening(opens(controller.current_event_state()));
+        }
+    });
+    motion
+}
+
+/// TRAY-20: Ctrl or Shift held means a primary-browser row opens rather than
+/// selects; Alt and Super do not count.
+fn opens(modifiers: gdk::ModifierType) -> bool {
+    modifiers.intersects(gdk::ModifierType::SHIFT_MASK | gdk::ModifierType::CONTROL_MASK)
+}
+
+/// The mask a Shift or Ctrl key sets, for the press or release of that key.
+fn modifier_mask(keyval: gdk::Key) -> Option<gdk::ModifierType> {
+    match keyval {
+        gdk::Key::Shift_L | gdk::Key::Shift_R => Some(gdk::ModifierType::SHIFT_MASK),
+        gdk::Key::Control_L | gdk::Key::Control_R => Some(gdk::ModifierType::CONTROL_MASK),
+        _ => None,
+    }
 }
 
 impl Inner {
@@ -226,6 +283,7 @@ impl Inner {
             .and_then(|at| overlay::monitor_named(&at.output));
         overlay::set_monitor(&self.window, monitor.as_ref());
         self.had_focus.set(false);
+        self.set_opening(opens(self.held()));
         self.window.present();
         if let Some((at, monitor)) = placement.as_ref().zip(monitor.as_ref()) {
             // On X11 the menu hangs from the window: put it at the pointer.
@@ -305,6 +363,27 @@ impl Inner {
         Some((width, height))
     }
 
+    /// TRAY-21: hide the radio marks while a click on one opens the browser.
+    /// Only a class: the menu is not rebuilt, so a submenu stays open.
+    fn set_opening(&self, opening: bool) {
+        if opening {
+            self.popover.add_css_class(OPENING);
+        } else {
+            self.popover.remove_css_class(OPENING);
+        }
+    }
+
+    /// The modifiers the keyboard holds as far as GDK knows; none when it
+    /// cannot tell (no keyboard, or on Wayland before the client had focus).
+    fn held(&self) -> gdk::ModifierType {
+        WidgetExt::display(&self.window)
+            .default_seat()
+            .and_then(|seat| seat.keyboard())
+            .map_or(gdk::ModifierType::empty(), |keyboard| {
+                keyboard.modifier_state()
+            })
+    }
+
     /// KEY-51: the top-level row whose shortcut is the key pressed.
     fn accelerator(&self, keyval: gdk::Key, modifiers: gdk::ModifierType) -> bool {
         let plain = !modifiers.intersects(
@@ -352,5 +431,36 @@ impl Inner {
         );
         self.popover.popdown();
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ctrl_or_shift_opens_rather_than_selects() {
+        assert!(opens(gdk::ModifierType::SHIFT_MASK));
+        assert!(opens(
+            gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK
+        ));
+        assert!(!opens(
+            gdk::ModifierType::ALT_MASK | gdk::ModifierType::SUPER_MASK
+        ));
+        assert!(!opens(gdk::ModifierType::empty()));
+    }
+
+    #[test]
+    fn only_shift_and_ctrl_keys_have_a_mask() {
+        assert_eq!(
+            modifier_mask(gdk::Key::Shift_R),
+            Some(gdk::ModifierType::SHIFT_MASK)
+        );
+        assert_eq!(
+            modifier_mask(gdk::Key::Control_L),
+            Some(gdk::ModifierType::CONTROL_MASK)
+        );
+        assert_eq!(modifier_mask(gdk::Key::Alt_L), None);
+        assert_eq!(modifier_mask(gdk::Key::p), None);
     }
 }

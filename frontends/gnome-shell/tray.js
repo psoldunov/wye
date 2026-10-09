@@ -10,7 +10,7 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {bundled, gicon} from './icons.js';
-import {chordLabel} from './keys.mjs';
+import {chordLabel, heldAfter} from './keys.mjs';
 import {MenuPages, headingItem, onActivate, pageItem, shortcutLabel, syncStyle, themeScale} from './menus.js';
 import {modifiersOf} from './picker.js';
 import * as TrayModel from './tray-model.mjs';
@@ -22,6 +22,13 @@ const POINTER_MENU_MARGIN = 12;
 // What a page of the menu shares the screen with: the panel, the menu's
 // padding, the back row and the screen margins (logical px).
 const PAGE_CHROME = 140;
+// TRAY-21: `TrayModel.radioMark` as the Shell draws it. NONE keeps the
+// mark's room empty; HIDDEN would close it up.
+const ORNAMENTS = {
+    'dot': PopupMenu.Ornament.DOT,
+    'no-dot': PopupMenu.Ornament.NO_DOT,
+    'none': PopupMenu.Ornament.NONE,
+};
 
 const Indicator = GObject.registerClass(
 class WyeIndicator extends PanelMenu.Button {
@@ -101,6 +108,10 @@ export class Tray {
         // Set by destroy(): a refresh that resumes after it does nothing.
         this._destroyed = false;
         this._clipboardItems = new Map();
+        // TRAY-21: whether Ctrl or Shift is held over each menu, and the
+        // menu's radio rows.
+        this._opening = new Map();
+        this._radioItems = new Map();
         this._indicator = new Indicator(() => this._run('settings'));
         this._indicator.hide();
         this._indicator.menu.connect('open-state-changed', (menu, open) => {
@@ -108,6 +119,7 @@ export class Tray {
                 this._opened(menu);
         });
         this._indicator.menu.actor.connect('key-press-event', (_actor, event) => this._shortcut(event));
+        this._watchModifiers(this._indicator.menu);
         this._pages = new Map();
         this._addPages(this._indicator.menu);
         Main.panel.addToStatusArea(uuid, this._indicator);
@@ -123,6 +135,7 @@ export class Tray {
                 this._opened(menu);
         });
         this._pointerMenu.actor.connect('key-press-event', (_actor, event) => this._shortcut(event));
+        this._watchModifiers(this._pointerMenu);
         this._addPages(this._pointerMenu);
         this._menuManager = new PopupMenu.PopupMenuManager(this._anchor,
             {actionMode: Shell.ActionMode.POPUP});
@@ -137,6 +150,52 @@ export class Tray {
             maxHeight: () => this._pageRoom(menu),
             root: section => this._fillRoot(menu, section),
         }));
+    }
+
+    // TRAY-20, TRAY-21: a radio row chosen with Ctrl or Shift held opens the
+    // browser rather than making it primary, so the marks hide while either
+    // is held: as the menu opens, on each key and on the pointer's moves.
+    _watchModifiers(menu) {
+        this._radioItems.set(menu, new Set());
+        menu.connect('open-state-changed', (_menu, open) => {
+            const [, , state] = global.get_pointer();
+            this._setOpening(menu, open && TrayModel.opensWith(modifiersOf(state)));
+        });
+        for (const [signal, pressed] of [['key-press-event', true], ['key-release-event', false]]) {
+            menu.actor.connect(signal, (_actor, event) => {
+                // The event's state does not count the key itself yet.
+                const name = Clutter.keyval_name(event.get_key_symbol()) ?? '';
+                const held = heldAfter(modifiersOf(event.get_state()), name, pressed);
+                this._setOpening(menu, TrayModel.opensWith(held));
+                return Clutter.EVENT_PROPAGATE;
+            });
+        }
+        menu.actor.connect('motion-event', (_actor, event) => {
+            this._setOpening(menu, TrayModel.opensWith(modifiersOf(event.get_state())));
+            return Clutter.EVENT_PROPAGATE;
+        });
+    }
+
+    _setOpening(menu, opening) {
+        if (this._opening.get(menu) === opening)
+            return;
+        this._opening.set(menu, opening);
+        for (const item of this._radioItems.get(menu))
+            this._mark(item, opening);
+    }
+
+    _mark(item, opening) {
+        item.setOrnament(ORNAMENTS[TrayModel.radioMark(item._wyeChecked, opening)]);
+    }
+
+    // A radio row, kept until its page is drawn again (TRAY-21).
+    _addRadio(menu, item, checked) {
+        const radios = this._radioItems.get(menu);
+        item._wyeChecked = checked;
+        radios.add(item);
+        item.connect('destroy', () => radios.delete(item));
+        if (this._opening.get(menu))
+            this._mark(item, true);
     }
 
     // The tallest a page may be on the menu's monitor.
@@ -354,6 +413,8 @@ export class Tray {
         if (entry.shortcut)
             item.add_child(shortcutLabel(entry.shortcut));
         item.setSensitive(entry.enabled);
+        if (entry.kind === 'radio')
+            this._addRadio(menu, item, entry.checked);
         if (entry.id === 'open-clipboard') {
             // TRAY-10: enabled while the clipboard holds a link.
             item._wyeEnabled = entry.enabled;

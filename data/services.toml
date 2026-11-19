@@ -16,6 +16,10 @@
 #               generic sign-in words miss (DEF-09). Matched at a path
 #               segment boundary, case ignored. A mapping to an app that
 #               is not a browser leaves these pages to a browser.
+# web-paths:    path prefixes of the service's own website on its hosts,
+#               which its desktop app does not open (APP-14). Matched as
+#               sign-in-paths are; a mapping to an app that is not a browser
+#               leaves these pages to a browser.
 # desktop-apps: desktop IDs of the service's own app (distro, Flatpak, Snap).
 #               A "pass-through" service also finds an installed app whose
 #               Name is the service's name (APP-12), so an unlisted client
@@ -96,6 +100,53 @@ desktop-apps = ["org.jitsi.jitsi-meet.desktop", "jitsi-meet.desktop"]
 id = "linear"
 name = "Linear"
 hosts = ["linear.app"]
+# The desktop app opens workspace pages (linear.app/<workspace>/…) and shows
+# nothing for the website around them. These are the top-level paths of
+# linear.app/sitemap.xml: the site's own pages, so no workspace lives there.
+# shortcut: a page Linear adds to its site later goes to the app until it is listed here.
+web-paths = [
+    "/about",
+    "/agents",
+    "/ai",
+    "/asks",
+    "/brand",
+    "/build",
+    "/careers",
+    "/change",
+    "/changelog",
+    "/coding-agent",
+    "/contact",
+    "/customer-requests",
+    "/customers",
+    "/data",
+    "/developers",
+    "/docs",
+    "/download",
+    "/dpa",
+    "/enablement",
+    "/enterprise",
+    "/features",
+    "/fm",
+    "/insights",
+    "/intake",
+    "/integrations",
+    "/legal",
+    "/method",
+    "/mobile",
+    "/now",
+    "/plan",
+    "/pricing",
+    "/privacy",
+    "/quality",
+    "/readme",
+    "/releases",
+    "/resource-kit",
+    "/reviews",
+    "/security",
+    "/startups",
+    "/switch",
+    "/terms",
+]
 
 [[service]]
 id = "microsoft-teams"

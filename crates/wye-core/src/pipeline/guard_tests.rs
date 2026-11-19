@@ -1,6 +1,6 @@
-//! DEF-08 and DEF-09: rules and web app mappings that would send a link
-//! back to the app it came from, or a sign-in page to an app, are passed
-//! over.
+//! DEF-08, DEF-09, APP-13 and APP-14: rules and web app mappings that would
+//! send a link back to the app it came from, a sign-in page to an app, or a
+//! link its app does not open, are passed over.
 
 use super::*;
 
@@ -418,5 +418,53 @@ fn a_mapping_to_a_profile_keeps_every_notion_link() {
             &Apps::default(),
         );
         assert!(notion_mapping_applies(&resolution, &work), "{link}");
+    }
+}
+
+fn config_with_linear(target: Target) -> Config {
+    let mut config = Config::default();
+    config.browsers.primary = firefox();
+    config.apps.insert("linear".to_owned(), target);
+    config
+}
+
+// APP-14: a mapping to the Linear app takes workspace pages, and leaves
+// Linear's docs to a browser, since the app shows nothing for them. A
+// browser profile still takes both.
+#[test]
+fn a_mapping_to_the_linear_app_leaves_its_docs_to_a_browser() {
+    const ISSUE: &str = "https://linear.app/acme/issue/AA-137/x";
+    const DOCS: &str = "https://linear.app/docs/board-layout";
+    let applies = |resolution: &Resolution, target: &Target| {
+        resolution.target == *target
+            && matches!(&resolution.decision, Decision::Mapping { service } if service == "linear")
+    };
+    let resolution = resolve(
+        config_with_linear(linear()),
+        &handler(ISSUE, SourceApp::default()),
+        &Apps::default(),
+    );
+    assert!(applies(&resolution, &linear()));
+
+    let resolution = resolve(
+        config_with_linear(linear()),
+        &handler(DOCS, SourceApp::default()),
+        &Apps::default(),
+    );
+    assert_eq!(resolution.target, firefox());
+    assert_eq!(resolution.decision, Decision::Fallback);
+    assert!(skipped_mapping(&resolution, SkipReason::WebPage));
+
+    let work = Target::Profile {
+        app: desktop_id("firefox.desktop"),
+        id: "work".into(),
+    };
+    for link in [ISSUE, DOCS] {
+        let resolution = resolve(
+            config_with_linear(work.clone()),
+            &handler(link, SourceApp::default()),
+            &Apps::default(),
+        );
+        assert!(applies(&resolution, &work), "{link}");
     }
 }

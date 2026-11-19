@@ -201,7 +201,7 @@ executable. `wye default set` never remembers such an entry as the browser to re
 `wye default unset` never restores one. Shell wrappers and D-Bus calls to the `OpenURI`
 portal are not recognised.
 
-### Back to the source app, sign-in pages and app hosts (DEF-08, DEF-09, APP-13)
+### Back to the source app, sign-in pages, app hosts and web pages (DEF-08, DEF-09, APP-13, APP-14)
 
 The logic is in `wye-core`: `crates/wye-core/src/sign_in.rs` (`is_sign_in_page`) and
 `crates/wye-core/src/pipeline/guard.rs` (`Guard`, `SkipReason`). `Pipeline::decide` builds one
@@ -231,6 +231,11 @@ loop. `ServiceDefinition::app_opens_host` compares hosts exactly (`host::host_is
 `notion.so` does not cover `mail.notion.so`, and `Guard::skip_mapping` skips a mapping to an
 app with `SkipReason::NotAppHost` after the sign-in test. The service still matches, so a
 mapping to a browser target is unaffected.
+
+Its `web-paths` do the same for paths on a host the app opens (APP-14): the Linear app opens
+`linear.app/<workspace>/…` but shows nothing for `linear.app/docs` or the rest of Linear's
+website. `ServiceDefinition::is_web_page` matches them as `sign-in-paths` are, and
+`Guard::skip_mapping` skips with `SkipReason::WebPage` after the host test.
 
 A skip is a trace step of kind `rule` or `web-app`, so the
 D-Bus contract gets no new step kinds and the UIs, the rule tester and `wye test` show it

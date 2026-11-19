@@ -63,6 +63,8 @@ pub struct ServiceDefinition {
     #[serde(default)]
     sign_in_paths: Vec<String>,
     #[serde(default)]
+    web_paths: Vec<String>,
+    #[serde(default)]
     pub desktop_apps: Vec<DesktopId>,
     #[serde(default)]
     pub hand_over: HandOver,
@@ -88,6 +90,16 @@ impl ServiceDefinition {
     pub fn app_opens_host(&self, url: &Url) -> bool {
         let host = url.host_str().unwrap_or_default();
         self.app_hosts.is_empty() || self.app_hosts.iter().any(|h| host_is(host, h))
+    }
+
+    /// True when `url` is a page of the service's website that its desktop
+    /// app does not open (APP-14), such as Linear's `/docs`: one under a
+    /// `web-paths` prefix, matched as `sign-in-paths` are.
+    #[must_use]
+    pub fn is_web_page(&self, url: &Url) -> bool {
+        self.web_paths
+            .iter()
+            .any(|prefix| has_path_prefix(url.path(), prefix))
     }
 
     /// True when `url` is a sign-in or authorisation page of this service
@@ -523,6 +535,58 @@ mod tests {
         ] {
             assert!(notion.matches(&url(link)), "{link}");
             assert!(!app_takes(link), "{link}");
+        }
+    }
+
+    // APP-14
+    #[test]
+    fn web_paths_match_at_a_segment_boundary_ignoring_case() {
+        let service: ServiceDefinition = toml::from_str(
+            "id = \"x\"\nname = \"X\"\nhosts = [\"x.test\"]\nweb-paths = [\"/docs\"]\n",
+        )
+        .unwrap();
+        for link in [
+            "https://x.test/docs",
+            "https://x.test/docs/board-layout",
+            "https://x.test/Docs/x#y",
+        ] {
+            assert!(service.is_web_page(&url(link)), "{link}");
+        }
+        for link in [
+            "https://x.test/docsy",
+            "https://x.test/acme/docs",
+            "https://x.test/",
+        ] {
+            assert!(!service.is_web_page(&url(link)), "{link}");
+        }
+        assert!(!service_with_sign_in_paths(&[]).is_web_page(&url("https://x.test/docs")));
+    }
+
+    // APP-14: the Linear app opens workspace pages, not linear.app's own
+    // website, which it shows as nothing at all.
+    #[test]
+    fn the_linear_app_gets_only_workspace_pages() {
+        let catalogue = ServiceCatalogue::shipped();
+        let linear = catalogue.get("linear").unwrap();
+        for link in [
+            "https://linear.app/docs/board-layout",
+            "https://linear.app/docs/delete-archive-issues",
+            "https://linear.app/changelog/2026-11-12-x",
+            "https://linear.app/integrations/github",
+            "https://linear.app/now/x",
+            "https://linear.app/pricing",
+        ] {
+            let link = url(link);
+            assert!(linear.matches(&link), "{link}");
+            assert!(linear.is_web_page(&link), "{link}");
+        }
+        for link in [
+            "https://linear.app/almost-always/issue/AA-137/login",
+            "https://linear.app/acme/project/x-0123456789ab/overview",
+            "https://linear.app/acme/view/x",
+            "https://linear.app/",
+        ] {
+            assert!(!linear.is_web_page(&url(link)), "{link}");
         }
     }
 

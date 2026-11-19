@@ -1,9 +1,10 @@
-//! Links an app must not receive (DEF-08, DEF-09, APP-13).
+//! Links an app must not receive (DEF-08, DEF-09, APP-13, APP-14).
 //!
 //! A rule or web app mapping may send a link to a desktop app. Three kinds
 //! of link would then loop or fail: a link the app itself just handed to
 //! Wye, a sign-in page, which only a browser can complete, and, for a
-//! mapping, a link on a host of the service that its app does not open.
+//! mapping, a link on a host of the service that its app does not open, or
+//! a page of the service's website that it does not open.
 //! [`Guard`] spots them so the pipeline passes over that rule or mapping.
 
 use url::Url;
@@ -24,6 +25,9 @@ pub enum SkipReason {
     /// APP-13: a host of the service that its desktop app does not open,
     /// such as Notion's MCP sign-in or Notion Mail.
     NotAppHost,
+    /// APP-14: a page of the service's website that its desktop app does
+    /// not open, such as Linear's docs.
+    WebPage,
 }
 
 /// What the pipeline knows about one link that decides whether an app may
@@ -56,7 +60,8 @@ impl<'a> Guard<'a> {
 
     /// Why the mapping of `service` must not send the link to `target`, or
     /// `None` when it may. A mapping also knows the service's own sign-in
-    /// routes (DEF-09) and the hosts its app opens (APP-13).
+    /// routes (DEF-09), the hosts its app opens (APP-13) and the pages of
+    /// its website the app does not open (APP-14).
     pub(super) fn skip_mapping(
         &self,
         service: &ServiceDefinition,
@@ -66,6 +71,8 @@ impl<'a> Guard<'a> {
             Some(SkipReason::SignInPage)
         } else if !service.app_opens_host(self.url) {
             Some(SkipReason::NotAppHost)
+        } else if service.is_web_page(self.url) {
+            Some(SkipReason::WebPage)
         } else {
             None
         };
